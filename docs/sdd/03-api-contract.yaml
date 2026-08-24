@@ -71,6 +71,8 @@ paths:
           $ref: '#/components/responses/EmailConflictProblem'
         '500':
           $ref: '#/components/responses/UnexpectedProblem'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableProblem'
   /api/auth/login:
     post:
       tags:
@@ -114,11 +116,11 @@ paths:
                   value:
                     accessToken: <JWT-issued-at-runtime>
         '400':
-          $ref: '#/components/responses/ValidationProblem'
-        '401':
-          $ref: '#/components/responses/InvalidCredentialsProblem'
+          $ref: '#/components/responses/LoginValidationProblem'
         '500':
           $ref: '#/components/responses/UnexpectedProblem'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableProblem'
   /api/profile:
     get:
       tags:
@@ -159,6 +161,8 @@ paths:
           $ref: '#/components/responses/CurrentUserNotFoundProblem'
         '500':
           $ref: '#/components/responses/UnexpectedProblem'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableProblem'
     put:
       tags:
         - Profile
@@ -213,6 +217,8 @@ paths:
           $ref: '#/components/responses/EmailConflictProblem'
         '500':
           $ref: '#/components/responses/UnexpectedProblem'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableProblem'
   /api/profile/password:
     put:
       tags:
@@ -269,6 +275,8 @@ paths:
           $ref: '#/components/responses/CurrentUserNotFoundProblem'
         '500':
           $ref: '#/components/responses/UnexpectedProblem'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableProblem'
   /health:
     get:
       tags:
@@ -468,7 +476,7 @@ components:
           example: about:blank
         title:
           type: string
-          example: Request failed.
+          example: Bad Request
         status:
           type: integer
           format: int32
@@ -491,7 +499,9 @@ components:
           properties:
             errors:
               type: object
-              description: Erros indexados pelo nome JSON do campo.
+              description: >-
+                Erros indexados pelo nome JSON do campo; falhas genéricas de
+                login usam a chave credentials sem identificar qual valor falhou.
               additionalProperties:
                 type: array
                 minItems: 1
@@ -502,7 +512,7 @@ components:
                   - The supplied value is invalid.
   responses:
     ValidationProblem:
-      description: Request inválido, incluindo confirmação divergente ou senha atual incorreta.
+      description: Request ou regra de formulário inválida, incluindo confirmação divergente ou senha atual incorreta.
       content:
         application/problem+json:
           schema:
@@ -510,14 +520,27 @@ components:
           examples:
             validation:
               value:
-                type: about:blank
-                title: One or more validation errors occurred.
+                title: Bad Request
                 status: 400
                 detail: Check the errors object for details.
-                instance: /api/profile
                 errors:
                   field:
                     - The supplied value is invalid.
+    LoginValidationProblem:
+      description: Payload de login inválido ou credenciais não reconhecidas; nenhuma sessão é criada.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ValidationProblemDetails'
+          examples:
+            invalidCredentials:
+              value:
+                title: Bad Request
+                status: 400
+                detail: Invalid email or password.
+                errors:
+                  credentials:
+                    - Invalid email or password.
     EmailConflictProblem:
       description: O email normalizado já pertence a outro usuário.
       content:
@@ -527,27 +550,19 @@ components:
           examples:
             duplicateEmail:
               value:
-                type: about:blank
-                title: Email already registered.
+                title: Conflict
                 status: 409
                 detail: An account with this email already exists.
-                instance: /api/auth/register
-    InvalidCredentialsProblem:
-      description: Credenciais de login inválidas; nenhuma sessão é criada.
-      content:
-        application/problem+json:
-          schema:
-            $ref: '#/components/schemas/ProblemDetails'
-          examples:
-            invalidCredentials:
-              value:
-                type: about:blank
-                title: Authentication failed.
-                status: 401
-                detail: Invalid email or password.
-                instance: /api/auth/login
     BearerUnauthorizedProblem:
       description: Bearer ausente, inválido ou expirado.
+      headers:
+        WWW-Authenticate:
+          required: true
+          description: Challenge Bearer, opcionalmente com parâmetros padronizados do erro.
+          schema:
+            type: string
+            pattern: '^Bearer(?: .*)?$'
+          example: Bearer
       content:
         application/problem+json:
           schema:
@@ -555,11 +570,9 @@ components:
           examples:
             unauthorized:
               value:
-                type: about:blank
-                title: Authentication required.
+                title: Unauthorized
                 status: 401
                 detail: A valid Bearer token is required.
-                instance: /api/profile
     CurrentUserNotFoundProblem:
       description: O claim sub é válido, mas o usuário correspondente não existe.
       content:
@@ -569,13 +582,14 @@ components:
           examples:
             notFound:
               value:
-                type: about:blank
-                title: Profile not found.
+                title: Not Found
                 status: 404
                 detail: The current profile could not be found.
-                instance: /api/profile
     ServiceUnavailableProblem:
-      description: A API ou a persistência não está pronta.
+      description: >-
+        O health check perdeu acesso ao SQLite ou o Nginx não conseguiu
+        conectar ao upstream/atingiu seu timeout. Falhas não tratadas durante
+        uma operação de negócio continuam sendo 500.
       content:
         application/problem+json:
           schema:
@@ -583,11 +597,9 @@ components:
           examples:
             unavailable:
               value:
-                type: about:blank
-                title: Service unavailable.
+                title: Service Unavailable
                 status: 503
                 detail: The service is not ready.
-                instance: /health
     UnexpectedProblem:
       description: Falha inesperada sem exposição de detalhes internos.
       content:
@@ -597,7 +609,6 @@ components:
           examples:
             unexpected:
               value:
-                type: about:blank
-                title: An unexpected error occurred.
+                title: Internal Server Error
                 status: 500
                 detail: The request could not be completed.

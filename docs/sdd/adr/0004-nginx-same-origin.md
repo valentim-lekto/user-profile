@@ -11,6 +11,8 @@ O avaliador deve iniciar frontend, backend e persistência com Compose e acessar
 - Compilar o Angular em uma imagem multi-stage e servir os arquivos estáticos com Nginx.
 - Publicar somente `http://localhost:8080` pelo serviço `web`.
 - Encaminhar `/api/*` e `/health` ao serviço interno `api:8080`.
+- Converter falha de conexão ou timeout gerada pelo próprio Nginx (`502`/`504`) em `503 application/problem+json`, sem interceptar respostas já formatadas pela API.
+- Executar a única probe do Compose no serviço `web`, com BusyBox `wget` contra `http://127.0.0.1:8080/health`; `web` depende de `api` apenas como `service_started`.
 - Usar URLs relativas no frontend e fallback para `index.html` apenas nas rotas da SPA.
 - Não habilitar CORS amplo na entrega Docker; o proxy de desenvolvimento do Angular reproduz a mesma origem localmente.
 - Fixar a imagem em `nginx:1.30.4-alpine3.24-slim`.
@@ -22,10 +24,11 @@ O avaliador deve iniciar frontend, backend e persistência com Compose e acessar
 - Uma URL para o avaliador, sem CORS e sem expor a API diretamente no host.
 - O mesmo artefato Angular funciona sem injetar URL de backend em runtime.
 - Nginx pode servir estáticos e atuar como limite simples de rede.
+- O frontend recebe o mesmo formato de erro quando o upstream está indisponível, em vez da página HTML padrão do proxy.
 
 ### Negativas
 
-- A configuração do proxy faz parte do caminho crítico e precisa de testes E2E.
+- A configuração do proxy faz parte do caminho crítico: conexão recusada exige teste runtime, e os mapeamentos de `502` e `504` exigem inspeção automatizada.
 - Logs e health checks atravessam dois serviços.
 - HTTPS não é fornecido na demonstração local; terminação TLS de produção está fora de escopo.
 

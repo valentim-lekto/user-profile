@@ -15,6 +15,7 @@ Somente um milestone pode estar em andamento. O próximo começa após o anterio
 - `AC-PASS-01`–`AC-PASS-04` — alteração de senha e encerramento da sessão.
 - `UI-STATE-01`, `API-ERROR-01` — estados de UI e erros HTTP.
 - `SEC-AUTH-01`, `SEC-SESSION-01`, `SEC-SECRET-01`, `SEC-LOG-01` — segurança.
+- `TECH-BACKEND-01`, `TECH-FRONTEND-01` — tecnologias obrigatórias e builds reproduzíveis.
 - `OPS-DOCKER-01`–`OPS-DOCKER-03` — execução e persistência.
 - `DOC-RUN-01`, `DOC-SDD-01`, `DOC-TRACE-01` — documentação e rastreabilidade.
 - `TEST-FLOW-01`, `AI-SDD-01`, `AI-EXPLAIN-01`, `DEL-REPO-01` — qualidade e entrega.
@@ -38,18 +39,19 @@ Entregas:
 
 - criar solution, `UserProfile.Api` com Controllers e o único projeto de integração;
 - criar Angular standalone/strict com routing, Reactive Forms e Angular Material;
-- fixar SDK, pacotes, lockfile e todas as tags Docker aprovadas;
+- fixar SDK com `rollForward: disable`, pacotes, bootstrap único dos `packages.lock.json` via `--use-lock-file`, `package-lock.json` e todas as tags Docker aprovadas; após versionar os locks, todo restore usa `--locked-mode`;
 - implementar estrutura mínima por funcionalidades, `User`, `DbContext`, configuração, migration inicial com índice único e aplicação de migrations no startup;
 - disponibilizar `/health` com checagem SQLite;
-- criar Dockerfiles multi-stage, Nginx same-origin, volume e `compose.yaml` sem dependência de `.env`;
+- criar Dockerfiles multi-stage, Nginx same-origin com conversão explícita de `502/504` do upstream para `503 ProblemDetails`, volume e `compose.yaml` sem dependência de `.env`; a única probe do Compose roda no `web` com `wget -q -O /dev/null http://127.0.0.1:8080/health`, e `web` depende de `api` como `service_started`;
 - criar testes mínimos de startup, migration, health, build e smoke do Compose;
-- manter o OpenAPI versionado e validar sua sintaxe/estrutura em CI.
+- criar validação automatizada local da sintaxe/estrutura do OpenAPI; a integração desse check ao CI ocorre em M5.
 
 Gates observáveis:
 
 - backend e frontend compilam;
 - testes de M1 passam;
-- `docker compose up --build --wait` disponibiliza `http://localhost:8080` e `/health` saudável;
+- `docker compose up --build --wait` disponibiliza `http://localhost:8080` somente depois que a probe do `web` atravessa Nginx, API e SQLite por `/health`;
+- com a API parada após startup, `/health` pelo Nginx retorna `503 application/problem+json` em vez de HTML, e a inspeção da configuração confirma o mesmo mapeamento para timeout `504`;
 - nenhum `latest`, segredo ou porta pública adicional existe.
 
 ### M2 — Cadastro
@@ -75,18 +77,21 @@ Gates observáveis:
 
 Entregas:
 
-- implementar emissão/validação JWT, chave externa e fallback aleatório de desenvolvimento;
-- implementar `POST /api/auth/login` com erro genérico e sem refresh token;
-- implementar sessão em `sessionStorage`, functional interceptor e functional route guard;
+- implementar emissão/validação JWT, chave externa Base64 de ao menos 32 bytes, falha fechada para configuração inválida e fallback aleatório somente quando ausente em `Development`;
+- criar `.env.example` opcional com nomes e placeholders não utilizáveis, sem tornar sua cópia pré-requisito do Compose;
+- implementar `POST /api/auth/login` com `400 ValidationProblemDetails` genérico para credenciais inválidas e sem refresh token;
+- implementar sessão em `sessionStorage`, functional interceptor com allowlist apenas para URLs relativas protegidas e functional route guard;
 - implementar `GET /api/profile` resolvendo exclusivamente o claim `sub`;
 - implementar login e dashboard com boas-vindas, navegação e estados de UI;
-- implementar `BE-LOGIN-*`, `BE-AUTH-*`, `BE-PROF-001/002`, `FE-LOGIN-*`, `FE-GUARD-*`, `FE-INT-*` e `FE-DASH-*`, sempre verificando ProblemDetails e os DTOs da fatia.
+- implementar `BE-LOGIN-*`, `BE-AUTH-*`, `BE-CONFIG-001`, `BE-PROF-001/002`, `TECH-BACKEND-001`, `FE-LOGIN-*`, `FE-GUARD-*`, `FE-INT-*` e `FE-DASH-*`, sempre verificando ProblemDetails, challenge Bearer obrigatório nos recursos protegidos e os DTOs da fatia.
 
 Gates observáveis:
 
 - login válido cria token de 15 minutos com claims mínimas e navega ao dashboard;
 - login inválido retorna a mesma mensagem para email ou senha incorretos;
 - dashboard não abre sem JWT válido e mostra o nome obtido da API;
+- chave ausente/inválida fora de `Development` impede startup e o token nunca é enviado a destino público, absoluto ou externo;
+- `.env.example` contém somente nomes e placeholders não utilizáveis, e o Compose continua iniciando sem copiá-lo;
 - nenhuma operação recebe `userId` do cliente.
 
 ### M4 — Edição de perfil e senha
@@ -95,11 +100,11 @@ Gates observáveis:
 
 Entregas:
 
-- implementar `PUT /api/profile` com validação, unicidade e `UpdatedAtUtc`;
+- implementar `PUT /api/profile` com validação e unicidade;
 - implementar `PUT /api/profile/password` com senha atual, nova senha e confirmação;
 - implementar tela de perfil com formulários separados para dados e senha;
 - encerrar a sessão do frontend após troca de senha bem-sucedida;
-- implementar `BE-PROF-003/004/005`, `BE-PASS-*`, `FE-PROF-*` e `FE-PASS-*`, sempre verificando ProblemDetails e os DTOs da fatia.
+- implementar `BE-PROF-003/004/005/006`, `BE-PASS-*`, `FE-PROF-*` e `FE-PASS-*`, incluindo autorização por `sub` dos dois endpoints novos e sempre verificando ProblemDetails e os DTOs da fatia.
 
 Gates observáveis:
 
@@ -138,11 +143,12 @@ Entregas:
 - validar recriação dos serviços preservando o volume SQLite;
 - atualizar estado de todos os itens em `06-traceability.md`, plano e documentos SDD;
 - revisar OpenAPI contra comportamento real, diff completo e decisões ADR;
+- executar e registrar o walkthrough manual `DOC-EXPLAIN-001` sem transcrever conversas;
 - registrar evidências finais e limitações; a publicação do repositório permanece ação explícita do responsável.
 
 Gates observáveis:
 
-- `OPS-COMPOSE-*`, `OPS-ORIGIN-001`, `OPS-PERSIST-001`, `OPS-TAGS-001`, `OPS-SECRET-001` e `DOC-RUN-001` são reexecutados e passam;
+- `TECH-*`, `OPS-COMPOSE-*`, `OPS-ORIGIN-001`, `OPS-PERSIST-001`, `OPS-TAGS-001`, `OPS-SECRET-001`, `DOC-RUN-001` e `DOC-EXPLAIN-001` são reexecutados e passam;
 - documentação reproduz exatamente o ambiente observado;
 - todos os critérios possuem evidência e estado final correto;
 - build, testes, E2E e revisão do diff estão aprovados.
@@ -150,6 +156,7 @@ Gates observáveis:
 ## Progresso
 
 - `2026-08-24` — `design concluído` — artefatos de design e planejamento criados; M1–M6 permanecem pendentes e nenhum código foi implementado.
+- `2026-08-24` — `revisão independente concluída` — commit `b184432` auditado; 0 High, 15 Medium e 6 Low corrigidos; contrato, IDs, links, segredos e diff revalidados em [`review-log.md`](review-log.md); M1–M6 permanecem pendentes.
 
 Ao iniciar um milestone, alterar somente seu estado para `em andamento`. Ao concluir, registrar data, comandos, evidências, desvios e hash do commit antes de iniciar o próximo.
 
@@ -158,16 +165,24 @@ Ao iniciar um milestone, alterar somente seu estado para `em andamento`. Ao conc
 Comandos planejados para o scaffold de M1, executados somente na etapa de implementação:
 
 ```sh
-dotnet new sln -n UserProfile
-dotnet new webapi -n UserProfile.Api -f net10.0 --use-controllers
-dotnet new xunit -n UserProfile.Api.IntegrationTests -f net10.0
-npx @angular/cli@22.1.3 new user-profile-web --standalone --strict --routing --style=scss --skip-git --package-manager=npm
+dotnet new sln -n UserProfile --format sln
+dotnet new webapi -n UserProfile.Api -o src/backend/UserProfile.Api -f net10.0 --use-controllers
+dotnet new xunit -n UserProfile.Api.IntegrationTests -o tests/UserProfile.Api.IntegrationTests -f net10.0
+dotnet sln UserProfile.sln add src/backend/UserProfile.Api/UserProfile.Api.csproj tests/UserProfile.Api.IntegrationTests/UserProfile.Api.IntegrationTests.csproj
+dotnet add tests/UserProfile.Api.IntegrationTests/UserProfile.Api.IntegrationTests.csproj reference src/backend/UserProfile.Api/UserProfile.Api.csproj
+npx @angular/cli@22.1.3 new user-profile-web --directory src/frontend/user-profile-web --standalone --strict --routing --style=scss --skip-git --package-manager=npm
 ```
 
-Comandos recorrentes após a criação dos projetos:
+Depois de adicionar todos os `PackageReference` previstos para M1, executar uma única vez o bootstrap dos locks, revisar os arquivos gerados e versioná-los:
 
 ```sh
-dotnet restore UserProfile.sln
+dotnet restore UserProfile.sln --use-lock-file
+```
+
+Comandos recorrentes posteriores:
+
+```sh
+dotnet restore UserProfile.sln --locked-mode
 dotnet build UserProfile.sln --no-restore
 dotnet test UserProfile.sln --no-build
 npm ci --prefix src/frontend/user-profile-web
@@ -187,6 +202,7 @@ Os nomes de scripts npm devem ser confirmados no scaffold e então congelados. M
 - `/health` só fica saudável após migrations e acesso ao SQLite.
 - Cadastro cria dados sem autenticar; login cria sessão curta; dashboard consulta a API.
 - Rotas e endpoints protegidos rejeitam ausência, adulteração ou expiração do token.
+- Toda resposta `401` de recurso protegido inclui challenge Bearer obrigatório; login inválido usa `400` genérico; indisponibilidade do upstream chega ao browser como `503 ProblemDetails`.
 - Perfil do usuário A nunca consulta ou altera o usuário B.
 - Atualizações persistem após recriar serviços mantendo o volume.
 - Respostas e logs nunca expõem campos sensíveis.
@@ -197,6 +213,7 @@ Os nomes de scripts npm devem ser confirmados no scaffold e então congelados. M
 - **Drift OpenAPI/implementação** — validar contrato em CI e revisar status/schemas em cada milestone.
 - **Concorrência SQLite/migrations** — manter uma instância; falhar startup em migration; documentar o limite.
 - **Token em `sessionStorage`** — evitar HTML inseguro e dependências desnecessárias; expiração curta e limpeza em `401`.
+- **Enumeração no cadastro** — o `409` de email duplicado é observável para cumprir o feedback explícito de erro; não expor outros dados e manter login genérico. Controles de abuso de produção permanecem fora da demonstração.
 - **Token antigo após troca de senha** — aceitar validade até `exp`; não ampliar para revogação fora do escopo.
 - **Chave sem `.env`** — gerar somente em `Development`; exigir configuração externa nos demais ambientes.
 - **Tags envelhecidas** — reconfirmar as tags fixadas em M1; qualquer upgrade deve ser explícito e testado.
@@ -218,8 +235,9 @@ Os nomes de scripts npm devem ser confirmados no scaffold e então congelados. M
 - `2026-08-24` — Escolhido fluxo direto Controllers → EF Core/componentes concretos para preservar o monólito proporcional.
 - `2026-08-24` — Fixada duração JWT em 15 minutos e tolerância de relógio em 30 segundos, sem refresh/revogação.
 - `2026-08-24` — Definida normalização `Trim().ToUpperInvariant()` para cadastro, login e edição; email aparado preserva caixa para exibição.
-- `2026-08-24` — Fixados `200` para login/updates, `201` para cadastro, `400` para validação/senha atual, `401` para autenticação, `409` para email e `503` para health.
+- `2026-08-24` — Fixados `200` para login/updates, `201` para cadastro, `400` para validação, senha atual e credenciais de login inválidas, `401` com challenge Bearer para recursos protegidos, `409` para email e `503` para health/proxy.
 - `2026-08-24` — Definida origem única em `http://localhost:8080`, com API interna e Nginx encaminhando `/api` e `/health`.
+- `2026-08-24` — Revisão independente removeu timestamps sem requisito, fechou o contrato `503` do proxy, a validação da chave e os gates de autorização/rastreabilidade antes do scaffold.
 
 ## Resultado final
 

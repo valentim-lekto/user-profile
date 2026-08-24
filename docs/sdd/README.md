@@ -12,7 +12,8 @@ Este diretório reúne os artefatos versionados do processo Spec-Driven Developm
 6. [`05-execution-plan.md`](05-execution-plan.md) — plano executável M1–M6.
 7. [`06-traceability.md`](06-traceability.md) — ligação entre requisitos, design, plano e evidências.
 8. [`adr/`](adr/) — decisões arquiteturais relevantes e suas consequências.
-9. [`ai-usage.md`](ai-usage.md) — regras e registros resumidos do uso de IA.
+9. [`review-log.md`](review-log.md) — revisões independentes, achados, decisões e validações.
+10. [`ai-usage.md`](ai-usage.md) — regras e registros resumidos do uso de IA.
 
 ## Estado atual
 
@@ -20,11 +21,12 @@ Este diretório reúne os artefatos versionados do processo Spec-Driven Developm
 |---|---|---|
 | [`00-challenge.md`](00-challenge.md) | Preservar o enunciado, com requisitos originais e decisões aprovadas claramente separados. | Concluído nesta etapa. |
 | [`01-requirements.md`](01-requirements.md) | Definir escopo, atores, casos de uso, requisitos, critérios, premissas, exclusões e Definition of Done. | Concluído nesta etapa. |
-| [`02-technical-design.md`](02-technical-design.md) | Definir arquitetura, modelo de dados, segurança, frontend, operação e versões fixadas. | Definido nesta etapa; implementação pendente. |
-| [`03-api-contract.yaml`](03-api-contract.yaml) | Definir requests, responses, schemas, autenticação e erros da API. | Definido nesta etapa; implementação pendente. |
-| [`04-test-strategy.md`](04-test-strategy.md) | Definir integração, frontend, E2E, Docker e gates. | Definido nesta etapa; testes pendentes. |
-| [`05-execution-plan.md`](05-execution-plan.md) | Organizar a implementação incremental em M1–M6. | Pronto; todos os milestones pendentes. |
-| [`06-traceability.md`](06-traceability.md) | Relacionar requisito, critério, design, milestone, teste e estado. | Baseline concluída; atualização contínua. |
+| [`02-technical-design.md`](02-technical-design.md) | Definir arquitetura, modelo de dados, segurança, frontend, operação e versões fixadas. | Revisado independentemente; implementação pendente. |
+| [`03-api-contract.yaml`](03-api-contract.yaml) | Definir requests, responses, schemas, autenticação e erros da API. | Revisado independentemente; implementação pendente. |
+| [`04-test-strategy.md`](04-test-strategy.md) | Definir integração, frontend, E2E, Docker e gates. | Revisada independentemente; testes pendentes. |
+| [`05-execution-plan.md`](05-execution-plan.md) | Organizar a implementação incremental em M1–M6. | Revisado; todos os milestones pendentes. |
+| [`06-traceability.md`](06-traceability.md) | Relacionar requisito, critério, design, milestone, teste e estado. | Baseline revisada; atualização contínua. |
+| [`review-log.md`](review-log.md) | Registrar revisão independente, achados, decisões, comandos e riscos. | Atualizado nesta etapa. |
 | [`ai-usage.md`](ai-usage.md) | Definir e registrar de forma resumida o uso responsável de IA. | Atualizado nesta etapa. |
 
 ## Governança

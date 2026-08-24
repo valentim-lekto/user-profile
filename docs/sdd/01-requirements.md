@@ -134,11 +134,13 @@ IDs publicados não devem ser renumerados nem reutilizados para outro comportame
 | ID | Critério |
 |---|---|
 | `UI-STATE-01` | Cadastro, login, consulta e edições apresentam estado de carregamento e resultado de sucesso ou erro conforme aplicável. |
-| `API-ERROR-01` | Respostas HTTP de erro seguem `ProblemDetails`; falhas de validação seguem `ValidationProblemDetails`. |
+| `API-ERROR-01` | Respostas HTTP de erro produzidas pela API seguem `ProblemDetails`; falhas de validação seguem `ValidationProblemDetails`. Quando o proxy de mesma origem não alcança a API, ele converte a falha de transporte em `503 ProblemDetails`, sem devolver HTML ao frontend. |
 | `SEC-AUTH-01` | Endpoints de perfil identificam o usuário exclusivamente pelo claim `sub` do JWT e não aceitam `userId` do cliente. |
 | `SEC-SESSION-01` | O JWT de curta duração fica em `sessionStorage` e não há refresh token. |
 | `SEC-SECRET-01` | O repositório não contém credenciais reais, segredos, senhas ou tokens; valores sensíveis são fornecidos por configuração externa. |
 | `SEC-LOG-01` | Logs não expõem senhas, segredos ou tokens. |
+| `TECH-BACKEND-01` | A solução de backend compila usando ASP.NET Core/C#, EF Core SQLite e autenticação JWT nas versões fixadas pelo design. |
+| `TECH-FRONTEND-01` | O frontend compila usando Angular standalone/strict, Reactive Forms e Angular Material nas versões fixadas pelo design. |
 | `OPS-DOCKER-01` | Em checkout limpo, `docker compose up` disponibiliza frontend, backend e persistência SQLite em volume, sem exigir criação manual de `.env`. |
 | `OPS-DOCKER-02` | A aplicação pode ser acessada e validada sem instalar SDKs, runtimes ou banco de dados fora do Docker e Docker Compose. |
 | `OPS-DOCKER-03` | Os dados SQLite sobrevivem à recriação dos contêineres da aplicação enquanto o volume Docker for preservado. |

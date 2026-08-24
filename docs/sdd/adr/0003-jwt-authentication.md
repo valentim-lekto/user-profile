@@ -9,13 +9,13 @@ A API precisa autenticar por email e senha, proteger dashboard/perfil e identifi
 ## Decisão
 
 - Armazenar somente `PasswordHash`, gerado e verificado por `PasswordHasher<User>` no formato Identity V3.
-- Emitir JWT Bearer HMAC SHA-256 com duração de 15 minutos e claims mínimas `sub`, `jti`, `iat` e `exp`.
+- Emitir JWT Bearer HMAC SHA-256 com duração de 15 minutos e claims mínimas `sub`, `jti`, `iat` e `exp`; a chave externa deve ser Base64 válido que decodifica para ao menos 32 bytes aleatórios.
 - Validar issuer, audience, assinatura e expiração, com tolerância de relógio de 30 segundos.
 - Desabilitar `MapInboundClaims`, exigir as quatro claims mínimas e ler diretamente o claim chamado `sub`; claim ausente ou malformada resulta em `401`.
 - Usar exclusivamente o `sub` validado como ID do usuário; contratos de perfil não recebem `userId`.
 - Armazenar o JWT em `sessionStorage`; não emitir refresh token.
 - Após trocar a senha, remover o token no frontend. Não haverá revogação server-side dos tokens já emitidos.
-- Exigir chave externa fora de `Development`. Na demonstração, gerar uma chave aleatória por processo quando ela não estiver configurada, sem persistir ou logar o valor.
+- Exigir chave externa válida fora de `Development` e falhar o startup para chave ausente, malformada ou curta. Na demonstração, gerar uma chave aleatória por processo somente quando ela estiver ausente em `Development`, sem persistir ou logar o valor.
 
 ## Consequências
 

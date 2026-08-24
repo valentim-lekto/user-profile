@@ -40,8 +40,8 @@ Verificação realizada em 2026-08-24. Foram escolhidas versões estáveis e sup
 | Componente | Versão escolhida | Motivo e suporte | Fixação prevista |
 |---|---|---|---|
 | .NET / ASP.NET Core | .NET 10 LTS; runtime `10.0.11` | Linha LTS ativa até novembro de 2028. | TFM `net10.0`; pacotes Microsoft `10.0.11`. |
-| .NET SDK | `10.0.400` | SDK estável que inclui o runtime `10.0.11`. | `global.json` e `mcr.microsoft.com/dotnet/sdk:10.0.400-noble`. |
-| EF Core SQLite | `10.0.11` | Mesma linha e patch do runtime; EF Core 10 é LTS. | Pacotes EF Core Microsoft em `10.0.11`. |
+| .NET SDK | `10.0.400` | SDK estável que inclui o runtime `10.0.11`. | `global.json` com `rollForward: disable` e `mcr.microsoft.com/dotnet/sdk:10.0.400-noble`. |
+| EF Core SQLite | `10.0.11` | Mesma linha e patch do runtime; EF Core 10 é LTS. | Pacotes EF Core Microsoft em `10.0.11` e `packages.lock.json` versionado por projeto. |
 | Angular e Angular CLI | `22.1.3` | Release estável em suporte ativo; sem uso da linha `next`. | Dependências exatas e `package-lock.json`. |
 | Angular Material | `22.1.3` | Alinhada à linha do framework. | Dependência exata e `package-lock.json`. |
 | Node.js | `24.19.0` LTS | Compatível com Angular 22 (`^24.15.0`) e em LTS. | `node:24.19.0-bookworm-slim`. |
@@ -56,6 +56,8 @@ Fontes oficiais consultadas:
 - [releases suportadas do Node.js](https://nodejs.org/en/about/previous-releases), [manifesto oficial da imagem Node](https://github.com/docker-library/official-images/blob/master/library/node) e [manifesto oficial da imagem Nginx](https://github.com/docker-library/official-images/blob/master/library/nginx).
 
 O scaffold deve reconfirmar a existência das tags exatas antes de escrever os Dockerfiles. Uma atualização posterior exige mudança explícita deste documento e validação completa; não se deve substituir silenciosamente uma tag por alias flutuante.
+
+Depois que todos os `PackageReference` de M1 estiverem definidos, o bootstrap executa uma única vez `dotnet restore UserProfile.sln --use-lock-file`, revisa e versiona os `packages.lock.json` gerados por projeto. Somente depois disso restores recorrentes, Docker e CI usam `--locked-mode`. Assim, mudança do grafo NuGet ou do SDK exige atualização explícita dos arquivos de fixação, em vez de ser aceita silenciosamente.
 
 ## Estrutura lógica da solução
 
@@ -97,7 +99,7 @@ Os testes de frontend e as poucas jornadas E2E permanecem no workspace Angular, 
 - Componentes e rotas são standalone e compilados em strict mode.
 - Reactive Forms implementam as mesmas validações visíveis definidas no contrato.
 - Services encapsulam HTTP e estado simples por signals (`loading`, `data`, `error`); não haverá store global nem NgRx.
-- Um functional interceptor anexa o Bearer somente a chamadas protegidas quando existe token.
+- Um functional interceptor anexa o Bearer somente às URLs relativas protegidas `GET /api/profile`, `PUT /api/profile` e `PUT /api/profile/password` quando existe token. Login, cadastro, health, URLs absolutas e qualquer outro destino nunca recebem o token.
 - Um functional route guard bloqueia rotas protegidas quando a sessão está ausente ou expirada.
 - A API continua sendo a autoridade: presença ou conteúdo decodificado do token no browser não concede autorização.
 
@@ -112,12 +114,8 @@ Entidade única `User`:
 | `Email` | `string` | `TEXT NOT NULL` | Remover espaços externos e preservar a caixa restante para exibição. |
 | `NormalizedEmail` | `string` | `TEXT NOT NULL` | `Email.Trim().ToUpperInvariant()`; índice único. |
 | `PasswordHash` | `string` | `TEXT NOT NULL` | Produzido e verificado por `PasswordHasher<User>`; nunca retornado ou logado. |
-| `CreatedAtUtc` | `DateTime` | `TEXT NOT NULL` | UTC, definido somente na criação. |
-| `UpdatedAtUtc` | `DateTime` | `TEXT NOT NULL` | UTC, atualizado em mudanças de perfil ou senha. |
 
-Não haverá seed obrigatório. IDs, hash e timestamps não fazem parte dos DTOs públicos porque nenhum fluxo atual precisa deles.
-
-No cadastro, um único instante UTC obtido de `TimeProvider` inicializa `CreatedAtUtc` e `UpdatedAtUtc`. Alterações posteriores preservam `CreatedAtUtc` e atualizam apenas `UpdatedAtUtc`.
+Não haverá seed obrigatório. ID, hash e email normalizado não fazem parte dos DTOs públicos porque nenhum fluxo atual precisa expô-los. Também não haverá timestamps sem consumidor ou requisito de auditoria.
 
 ### Normalização e unicidade
 
@@ -141,11 +139,11 @@ O contrato normativo está em [`03-api-contract.yaml`](03-api-contract.yaml). A 
 
 | Operação | Autenticação | Sucesso | Erros esperados |
 |---|---|---|---|
-| `POST /api/auth/register` | Pública | `201` com mensagem, sem token | `400`, `409`, `500` |
-| `POST /api/auth/login` | Pública | `200` com JWT curto | `400`, `401` genérico, `500` |
-| `GET /api/profile` | Bearer | `200` com nome e email | `401`, `404`, `500` |
-| `PUT /api/profile` | Bearer | `200` com nome e email atualizados | `400`, `401`, `404`, `409`, `500` |
-| `PUT /api/profile/password` | Bearer | `200` com mensagem, sem novo token | `400`, `401`, `404`, `500` |
+| `POST /api/auth/register` | Pública | `201` com mensagem, sem token | `400`, `409`, `500`, `503` |
+| `POST /api/auth/login` | Pública | `200` com JWT curto | `400` genérico, `500`, `503` |
+| `GET /api/profile` | Bearer | `200` com nome e email | `401`, `404`, `500`, `503` |
+| `PUT /api/profile` | Bearer | `200` com nome e email atualizados | `400`, `401`, `404`, `409`, `500`, `503` |
+| `PUT /api/profile/password` | Bearer | `200` com mensagem, sem novo token | `400`, `401`, `404`, `500`, `503` |
 | `GET /health` | Pública | `200` | `503`, `500` |
 
 Não existe endpoint de dashboard: a tela usa `GET /api/profile`. Não existe endpoint de logout, refresh, perfil por ID ou qualquer operação fora do escopo.
@@ -168,10 +166,14 @@ Não existe endpoint de dashboard: a tela usa `GET /api/profile`. Não existe en
 - Erros usam `application/problem+json`.
 - Falhas de campos e regras de formulário usam `ValidationProblemDetails` com `errors` indexado pelo nome do campo.
 - Email duplicado usa `409 ProblemDetails`.
-- Login inválido usa `401 ProblemDetails` com a mensagem genérica `Invalid email or password.`.
-- Bearer ausente, inválido ou expirado usa `401 ProblemDetails`; o middleware deve ser configurado para manter o formato.
+- Login inválido usa `400 ValidationProblemDetails` com a mensagem genérica `Invalid email or password.` e não cria sessão. O endpoint público não anuncia challenge Bearer porque não aceita Bearer como credencial de login.
+- Toda resposta `401` dos recursos protegidos inclui obrigatoriamente `WWW-Authenticate: Bearer`; Bearer ausente, inválido ou expirado usa `401 ProblemDetails`, e o middleware deve manter cabeçalho e formato.
 - Senha atual incorreta em sessão válida usa `400 ValidationProblemDetails`, não é confundida com falha do JWT.
 - Exceções não tratadas são convertidas em `500 ProblemDetails` sem detalhes internos.
+- Erros gerados pelo pipeline sob `/api`, como JSON malformado, media type não suportado, rota inexistente ou método não permitido, também usam `application/problem+json`.
+- Se o Nginx não conseguir conectar à API ou atingir o timeout do upstream, converte apenas seus `502`/`504` de transporte em `503 ProblemDetails`; respostas já produzidas pela API são preservadas.
+
+O `409` público de cadastro necessariamente revela que o email normalizado já existe. Esse risco de enumeração é aceito nesta demonstração porque `AC-REG-05` e `AC-REG-06` exigem rejeição e feedback de erro observável; login continua usando corpo genérico e nenhum dado adicional do usuário é exposto.
 
 ## Autenticação e sessão
 
@@ -182,7 +184,7 @@ Não existe endpoint de dashboard: a tela usa `GET /api/profile`. Não existe en
 
 ### JWT
 
-- Bearer assinado com HMAC SHA-256 e chave de pelo menos 256 bits.
+- Bearer assinado com HMAC SHA-256 e chave de pelo menos 256 bits. Quando externa, a chave é Base64 válido que decodifica para ao menos 32 bytes aleatórios.
 - Duração: 15 minutos a partir da emissão; sem refresh token.
 - Claims mínimas: `sub` com o `Guid` do usuário, `jti` único, `iat` e `exp`.
 - Validação obrigatória de issuer, audience, assinatura e expiração, com tolerância de relógio de 30 segundos.
@@ -196,7 +198,7 @@ Após alteração de senha, o frontend remove o token e encerra a sessão. Token
 
 ### Chave de assinatura e Compose sem `.env`
 
-- Fora de `Development`, a ausência de configuração externa para a chave deve impedir o startup.
+- Fora de `Development`, chave ausente, Base64 inválido ou valor decodificado menor que 32 bytes impede o startup. Em qualquer ambiente, uma chave externa presente mas inválida falha de modo fechado.
 - No Compose de demonstração, em `Development`, a API gera em memória uma chave criptograficamente aleatória por processo quando nenhuma chave externa é fornecida.
 - A chave gerada não é persistida nem logada; reiniciar a API invalida sessões existentes.
 - Testes geram sua própria chave em runtime.
@@ -213,7 +215,7 @@ Essa regra concilia execução sem preparação manual com a proibição de vers
 | `/dashboard` | Guard | Consulta `/api/profile`, mostra boas-vindas com `name` e link para `/profile`. |
 | `/profile` | Guard | Consulta e altera nome/email; oferece formulário separado para senha. |
 
-Cada operação assíncrona expõe estado de carregamento, impede submissão duplicada e apresenta sucesso ou erro. O interceptor reage a `401` global somente quando a requisição levava Bearer; nesse caso limpa a sessão e conduz ao login. Assim, o `401` esperado do próprio login continua disponível para a mensagem genérica da tela.
+Cada operação assíncrona expõe estado de carregamento, impede submissão duplicada e apresenta sucesso ou erro. O interceptor reage a `401` global somente quando a requisição levava Bearer; nesse caso limpa a sessão e conduz ao login. O `400` esperado do próprio login permanece disponível para a mensagem genérica da tela.
 
 O token fica somente em `sessionStorage`. O estado de autenticação é um signal derivado da presença e do `exp` do token; decodificar o payload no cliente serve apenas à experiência de navegação.
 
@@ -223,8 +225,8 @@ O token fica somente em `sessionStorage`. O estado de autenticação é um signa
 - `web` é uma imagem multi-stage: Node compila o Angular e Nginx serve o resultado.
 - `api` é uma imagem multi-stage: SDK publica e runtime ASP.NET executa como usuário não-root; `/data` é preparado com permissão de escrita para esse usuário antes de receber o volume.
 - `web` publica `8080:8080`; `api` expõe `8080` apenas para a rede interna.
-- Nginx escuta em `8080`, encaminha `/api/` e `/health` para `http://api:8080` e serve a SPA nas demais rotas.
-- Health checks e `depends_on` evitam declarar o frontend pronto antes da API.
+- Nginx escuta em `8080`, encaminha `/api/` e `/health` para `http://api:8080`, converte falha de conexão/timeout do upstream em `503 application/problem+json` e serve a SPA nas demais rotas.
+- Existe um único health check do Compose no serviço `web`: `wget -q -O /dev/null http://127.0.0.1:8080/health`, usando o BusyBox presente na imagem Alpine. `web` depende de `api` com `condition: service_started`; como a probe atravessa Nginx, API e a consulta SQLite, `docker compose up --wait` só conclui quando a pilha inteira está saudável, sem instalar cliente HTTP na imagem da API.
 - Tags completas listadas neste documento serão copiadas literalmente; `latest`, `lts`, `stable` ou apenas major/minor são proibidos.
 
 No desenvolvimento local, o proxy do Angular CLI encaminha `/api` e `/health` para a API, mantendo URLs relativas. Não haverá configuração CORS permissiva para compensar URLs absolutas.
@@ -239,7 +241,7 @@ Configurações previstas:
 | `Jwt__Issuer` | Não | Valor padrão de demonstração substituível. |
 | `Jwt__Audience` | Não | Valor padrão de demonstração substituível. |
 | `Jwt__LifetimeMinutes` | Não | `15`; mudança exige revisão deste design. |
-| `Jwt__SigningKey` | Sim | Externa; fallback aleatório somente em `Development`. |
+| `Jwt__SigningKey` | Sim | Base64 de ao menos 32 bytes aleatórios; fallback aleatório somente quando ausente em `Development`. |
 
 Logs estruturados podem registrar rota, status, duração e um identificador de correlação gerado para a requisição, mas nunca corpo de requests de autenticação, token, senha, hash ou chave. Respostas `ProblemDetails` não incluem stack trace, SQL nem caminhos internos.
 
