@@ -1,0 +1,144 @@
+# 04 — Estratégia de testes
+
+**Status:** aprovada para implementação · **Data:** 2026-08-24 · **Contrato:** [`03-api-contract.yaml`](03-api-contract.yaml)
+
+## Objetivo
+
+Validar os comportamentos e riscos principais com a menor suíte capaz de fornecer evidência confiável. A integração HTTP real do backend é a base; testes de frontend cobrem comportamento do cliente; poucas jornadas E2E e a validação do Compose comprovam a entrega completa.
+
+## Princípios
+
+- Cada milestone entrega seus próprios testes; M5 não acumula testes que deveriam acompanhar M2–M4.
+- O backend é exercitado por HTTP com Controllers, middleware, autenticação, EF Core e SQLite reais.
+- EF Core InMemory, mocks de repositório e chamadas diretas a Controllers não substituem integração.
+- O mesmo cenário não é repetido em todas as camadas sem um risco específico que justifique.
+- Casos positivos, negativos, autorização e formato de erro têm a mesma importância.
+- Testes geram usuários, emails, senhas sintéticas e chaves JWT em runtime; não há seed nem credencial fixa versionada.
+- Testes não são removidos, ignorados ou afrouxados para obter sucesso artificial.
+
+## Níveis e responsabilidades
+
+| Nível | Ferramenta/abordagem planejada | Responsabilidade principal |
+|---|---|---|
+| Especificação | Parser/linter OpenAPI e checagens de rastreabilidade | Sintaxe, operações, segurança, schemas, IDs e ausência de escopo extra. |
+| Integração backend | `UserProfile.Api.IntegrationTests`, `WebApplicationFactory` e `HttpClient` | Pipeline HTTP real em processo, SQLite real, migrations, autenticação, persistência e ProblemDetails. |
+| Frontend focado | Runner padrão do Angular, TestBed, Reactive Forms e `HttpTestingController` | Validações, signals, estados de UI, services, guard, interceptor e navegação. |
+| E2E | Playwright, fixado na implementação | Poucas jornadas completas pelo Nginx e API reais. |
+| Operação | Docker Compose e verificações HTTP em checkout limpo | Build, origem única, health, volume, configuração e instruções do README. |
+
+`WebApplicationFactory` exercita o pipeline ASP.NET completo sem abrir socket externo. As jornadas E2E e a validação Docker cobrem o tráfego TCP real e o proxy Nginx.
+
+## Ambiente dos testes de integração
+
+- Cada fixture usa um arquivo SQLite exclusivo em diretório temporário.
+- A suíte aplica migrations ao banco do teste; pelo menos um teste parte de arquivo inexistente.
+- A factory substitui apenas configuração de conexão, chave JWT e relógio; não substitui Controllers, `DbContext`, hasher nem autenticação.
+- `TimeProvider` controlável permite testar `iat`/`exp` sem esperas reais.
+- A chave JWT do teste é gerada em memória para cada execução.
+- Usuários e emails recebem sufixos únicos; a senha sintética é gerada em runtime e reutilizada somente dentro do teste que a criou.
+- Cenários de indisponibilidade partem de startup saudável e mantêm um bloqueio exclusivo real sobre o arquivo SQLite, com timeout curto; não usam endpoint, Controller ou health check exclusivo de teste.
+- Arquivos temporários são removidos ao fim da fixture, inclusive em falha.
+- Testes que compartilham banco são serializados; fixtures independentes podem executar em paralelo.
+
+## Catálogo planejado — backend
+
+| ID | Cenário | Evidência principal |
+|---|---|---|
+| `BE-REG-001` | Cadastro válido retorna `201`, persiste hash verificável e timestamps UTC iniciais iguais e não retorna JWT. | `AC-REG-01` |
+| `BE-REG-002` | Nome ausente/curto, email ausente/inválido, senha curta, confirmação divergente ou propriedade JSON desconhecida retornam `400 ValidationProblemDetails`. | `AC-REG-02`–`04`, `API-ERROR-01` |
+| `BE-REG-003` | Emails com espaços externos ou caixa diferente colidem em `409`. | `AC-REG-05`, `PREM-EMAIL-01` |
+| `BE-REG-004` | O índice único existe e uma violação concorrente é mapeada para `409`, sem segundo usuário. | `AC-REG-05` |
+| `BE-LOGIN-001` | Credenciais válidas retornam Bearer curto com `sub`, `jti`, `iat` e `exp`, sem refresh token. | `AC-LOGIN-01`, `SEC-SESSION-01` |
+| `BE-LOGIN-002` | Email inexistente e senha incorreta retornam o mesmo `401 ProblemDetails`. | `AC-LOGIN-02`, `API-ERROR-01` |
+| `BE-LOGIN-003` | Login usa a mesma normalização de email adotada no cadastro. | `PREM-EMAIL-01` |
+| `BE-AUTH-001` | Ausência, assinatura adulterada, issuer/audience inválidos e expiração retornam `401`. | `AC-DASH-02`, `SEC-AUTH-01` |
+| `BE-AUTH-002` | Claims mínimas ausentes/malformadas retornam `401`; `sub` válido sem usuário retorna `404`; perfil existente é resolvido somente por `sub`. | `SEC-AUTH-01` |
+| `BE-PROF-001` | GET retorna somente nome/email do usuário indicado pelo `sub`. | `AC-DASH-01`, `AC-PROF-01` |
+| `BE-PROF-002` | Dois usuários consultam e alteram apenas o próprio perfil; `userId` extra no JSON retorna `400`, e query/header arbitrários não influenciam o `sub`. | `SEC-AUTH-01`, `AC-PROF-01` |
+| `BE-PROF-003` | PUT válido atualiza nome/email e `UpdatedAtUtc`, preservando `CreatedAtUtc`. | `AC-PROF-02`, `AC-PROF-05` |
+| `BE-PROF-004` | PUT aplica validações equivalentes ao cadastro. | `AC-PROF-03` |
+| `BE-PROF-005` | Email de outro usuário retorna `409`; manter o próprio email não conflita. | `AC-PROF-04` |
+| `BE-PASS-001` | Senha atual incorreta retorna `400` e não muda o hash. | `AC-PASS-02` |
+| `BE-PASS-002` | Nova senha curta ou confirmação divergente retorna `400`. | `AC-PASS-03` |
+| `BE-PASS-003` | Alteração válida retorna `200`; senha antiga falha e nova senha autentica. | `AC-PASS-04` |
+| `BE-DTO-001` | Nenhuma resposta expõe senha, hash, email normalizado ou ID do usuário. | `AC-PROF-01`, `SEC-SECRET-01` |
+| `BE-ERR-001` | Erros previstos usam `ProblemDetails`/`ValidationProblemDetails` e `application/problem+json`. | `API-ERROR-01` |
+| `BE-ERR-002` | Após startup saudável, cadastro contra SQLite bloqueado percorre o handler real e retorna `500` sem stack trace, SQL ou segredo. | `SEC-LOG-01`, `API-ERROR-01` |
+| `BE-DB-001` | Startup aplica migrations a banco vazio e cria o índice único. | `OPS-DOCKER-01`, ADR-0002 |
+| `BE-HEALTH-001` | `/health` retorna `200` após startup; bloqueio exclusivo posterior torna a consulta real ao SQLite indisponível e retorna `503`. Falha de migration é testada como falha de startup. | `OPS-DOCKER-01` |
+
+## Catálogo planejado — frontend
+
+| ID | Cenário | Evidência principal |
+|---|---|---|
+| `FE-REG-001` | Formulário exige quatro campos, valida mínimos/formato e igualdade das senhas. | `AC-REG-02`–`04` |
+| `FE-REG-002` | Loading bloqueia nova submissão; `201` leva ao login com sucesso; erro permanece visível sem criar sessão. | `AC-REG-01`, `AC-REG-06`, `UI-STATE-01` |
+| `FE-LOGIN-001` | Formulário e service tratam loading, `401` genérico e erro inesperado. | `AC-LOGIN-02`, `AC-LOGIN-03` |
+| `FE-LOGIN-002` | Sucesso grava token apenas em `sessionStorage` e navega ao dashboard. | `AC-LOGIN-01`, `SEC-SESSION-01` |
+| `FE-GUARD-001` | Guard permite sessão não expirada e bloqueia token ausente, malformado ou expirado. | `AC-DASH-02` |
+| `FE-INT-001` | Interceptor anexa Bearer à API protegida e não o anexa a login/cadastro. | `SEC-AUTH-01` |
+| `FE-INT-002` | `401` de request com Bearer limpa sessão; `401` do login continua disponível para a tela. | `AC-LOGIN-02`, `AC-DASH-02` |
+| `FE-DASH-001` | Dashboard busca perfil, mostra loading/erro, saúda pelo nome retornado e navega ao perfil. | `AC-DASH-01`, `AC-DASH-03`, `AC-DASH-04` |
+| `FE-PROF-001` | Perfil carrega nome/email com estados de loading/erro e valida edição com as regras do cadastro. | `AC-PROF-01`, `AC-PROF-03`, `UI-STATE-01` |
+| `FE-PROF-002` | Atualização mostra loading e feedback de sucesso/erro, incluindo `409`. | `AC-PROF-04`, `AC-PROF-05`, `UI-STATE-01` |
+| `FE-PASS-001` | Formulário separado exige senha atual, nova senha e confirmação. | `AC-PASS-01`, `AC-PASS-03` |
+| `FE-PASS-002` | Loading bloqueia submissão duplicada; sucesso exibe feedback e remove o JWT; senha atual incorreta mantém a sessão e mostra erro. | `AC-PASS-02`, `AC-PASS-04`, `UI-STATE-01` |
+
+Os testes de frontend não reimplementam criptografia, EF ou validação JWT. Services recebem respostas HTTP controladas; guard e interceptor são testados como funções no contexto de injeção Angular.
+
+## Jornadas E2E mínimas
+
+| ID | Jornada | Abrangência |
+|---|---|---|
+| `E2E-001` | Cadastrar → ver sucesso no login → autenticar → ver saudação → editar nome/email → recarregar e confirmar persistência. | Caminho feliz principal. |
+| `E2E-002` | Login inválido → login válido → alterar senha → confirmar sessão encerrada → senha antiga falha → nova senha autentica. | Erros, senha e sessão. |
+| `E2E-003` | Abrir rota protegida sem token; depois de autenticar, parar realmente o serviço `api` e recarregar o dashboard. | Guard, proxy e estado de indisponibilidade. |
+
+As jornadas usam a origem publicada pelo Nginx e não chamam a API diretamente para preparar estado. Dados são criados pelo cadastro, sem seed. `E2E-003` controla o serviço pelo Compose e observa a falha real do proxy; não intercepta nem simula a chamada no browser.
+
+## Validação de especificação e contrato
+
+| ID | Checagem |
+|---|---|
+| `SPEC-OAS-001` | YAML parseável e documento reconhecido como OpenAPI 3.0.3. |
+| `SPEC-OAS-002` | Seis `operationId` únicos, cinco operações de negócio e `/health`; nenhuma rota fora de escopo. |
+| `SPEC-OAS-003` | Operações de perfil têm Bearer, não definem `userId` e seus request bodies rejeitam propriedades extras; públicas declaram `security: []`. |
+| `SPEC-OAS-004` | Campos obrigatórios, mínimos, formatos e status coincidem com requisitos/design. |
+| `SPEC-OAS-005` | Erros referenciam ProblemDetails e respostas não contêm campos sensíveis. |
+| `SPEC-TRACE-001` | Cada requisito/critério aplicável possui linha em `06-traceability.md` e teste planejado. |
+
+Quando o código existir, CI deve comparar a documentação OpenAPI exposta pela API com o contrato versionado ou validar ambos pelo mesmo conjunto de testes de contrato. Divergência quebra o build.
+
+## Validação Docker e entrega
+
+| ID | Cenário | Evidência principal |
+|---|---|---|
+| `OPS-COMPOSE-001` | Em checkout limpo, `docker compose up --build --wait` fica saudável sem `.env` e sem SDKs no host. | `OPS-DOCKER-01`, `OPS-DOCKER-02` |
+| `OPS-ORIGIN-001` | SPA, `/api/*` e `/health` respondem por `http://localhost:8080`; API não publica outra porta. | ADR-0004 |
+| `OPS-PERSIST-001` | Criar usuário, recriar serviços sem remover volume e autenticar novamente. | `OPS-DOCKER-03` |
+| `OPS-TAGS-001` | Dockerfiles não contêm `latest` nem tags incompletas e usam as versões do design. | PREM-OPS-01 |
+| `OPS-SECRET-001` | Compose inicia sem segredo versionado; logs não contêm senha, hash, token ou chave. | `SEC-SECRET-01`, `SEC-LOG-01` |
+| `DOC-RUN-001` | Uma pessoa segue o README em ambiente limpo e reproduz comandos, URLs e cadastro de dados. | `DOC-RUN-01` |
+
+## Gates por milestone
+
+| Milestone | Gates mínimos |
+|---|---|
+| M1 | Build backend/frontend, `SPEC-OAS-*`, `BE-DB-001`, `BE-HEALTH-001`, pipeline base de ProblemDetails e smoke Compose. |
+| M2 | `BE-REG-*`, `FE-REG-*`, `BE-ERR-001/002`, assertion aplicável de `BE-DTO-001` e regressão dos gates M1. |
+| M3 | `BE-LOGIN-*`, `BE-AUTH-*`, `BE-PROF-001/002`, `FE-LOGIN-*`, `FE-GUARD-*`, `FE-INT-*`, `FE-DASH-*` e assertions aplicáveis de `BE-ERR-001`/`BE-DTO-001`. |
+| M4 | `BE-PROF-003/004/005`, `BE-PASS-*`, `FE-PROF-*`, `FE-PASS-*` e assertions aplicáveis de `BE-ERR-001`/`BE-DTO-001`. |
+| M5 | `E2E-*`, suíte acumulada completa, CI, auditorias de log/segredo/tags e build de produção. |
+| M6 | Reexecução de `OPS-*`, `DOC-RUN-001`, `SPEC-TRACE-001`, revisão manual e execução completa em checkout limpo. |
+
+## Política de cobertura
+
+Não será fixado percentual arbitrário. A cobertura é orientada à matriz e aos riscos: todos os critérios funcionais, autorização, unicidade, formato de erro e operação Docker precisam de evidência automatizada ou validação manual explicitamente registrada. Código trivial de configuração não recebe teste unitário isolado quando já é exercitado por integração.
+
+## Critério de conclusão da suíte
+
+- Todos os testes planejados para o milestone atual estão implementados e passam.
+- Não existem skips, exclusões ou retries ocultando falhas determinísticas.
+- Bancos, containers e processos temporários são limpos após a execução.
+- Falhas produzem evidência suficiente sem imprimir valores sensíveis.
+- A matriz de rastreabilidade reflete os IDs implementados e seu estado real.

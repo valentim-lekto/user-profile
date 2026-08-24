@@ -1,0 +1,603 @@
+openapi: 3.0.3
+info:
+  title: User Profile API
+  version: 1.0.0
+  description: >-
+    Contrato da API do desafio de cadastro, autenticação e perfil do usuário
+    atual. Todos os exemplos são fictícios e não contêm credenciais reais.
+servers:
+  - url: /
+    description: Mesma origem servida pelo Nginx
+tags:
+  - name: Auth
+    description: Cadastro e autenticação pública
+  - name: Profile
+    description: Operações do usuário identificado pelo claim sub
+  - name: Operations
+    description: Estado operacional da aplicação
+paths:
+  /api/auth/register:
+    post:
+      tags:
+        - Auth
+      operationId: registerUser
+      summary: Cadastra um usuário
+      description: >-
+        Cria uma conta sem autenticar automaticamente. Nome e email são
+        aparados antes da validação; a senha não é alterada. A confirmação
+        deve ser idêntica à senha. A unicidade do email ignora espaços
+        externos e diferenças de caixa.
+      security: []
+      x-functional-requirements:
+        - FR-REG-01
+        - FR-REG-02
+        - FR-REG-03
+        - FR-REG-04
+      x-acceptance-criteria:
+        - AC-REG-01
+        - AC-REG-02
+        - AC-REG-03
+        - AC-REG-04
+        - AC-REG-05
+        - AC-REG-06
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            examples:
+              synthetic:
+                summary: Dados inteiramente fictícios
+                value:
+                  name: Ana Example
+                  email: ana@example.test
+                  password: <generated-at-runtime>
+                  passwordConfirmation: <generated-at-runtime>
+      responses:
+        '201':
+          description: Usuário criado; nenhum token é emitido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              examples:
+                created:
+                  value:
+                    message: Registration completed successfully.
+        '400':
+          $ref: '#/components/responses/ValidationProblem'
+        '409':
+          $ref: '#/components/responses/EmailConflictProblem'
+        '500':
+          $ref: '#/components/responses/UnexpectedProblem'
+  /api/auth/login:
+    post:
+      tags:
+        - Auth
+      operationId: loginUser
+      summary: Autentica um usuário
+      description: >-
+        Busca o email pela mesma normalização usada na unicidade e verifica a
+        senha com PasswordHasher. Credenciais inválidas sempre recebem a mesma
+        mensagem, independentemente de qual campo não correspondeu.
+      security: []
+      x-functional-requirements:
+        - FR-LOGIN-01
+        - FR-LOGIN-02
+        - FR-LOGIN-03
+      x-acceptance-criteria:
+        - AC-LOGIN-01
+        - AC-LOGIN-02
+        - AC-LOGIN-03
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            examples:
+              synthetic:
+                summary: Dados inteiramente fictícios
+                value:
+                  email: ana@example.test
+                  password: <generated-at-runtime>
+      responses:
+        '200':
+          description: Credenciais válidas; retorna um JWT curto, sem refresh token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+              examples:
+                authenticated:
+                  value:
+                    accessToken: <JWT-issued-at-runtime>
+        '400':
+          $ref: '#/components/responses/ValidationProblem'
+        '401':
+          $ref: '#/components/responses/InvalidCredentialsProblem'
+        '500':
+          $ref: '#/components/responses/UnexpectedProblem'
+  /api/profile:
+    get:
+      tags:
+        - Profile
+      operationId: getCurrentProfile
+      summary: Consulta o perfil atual
+      description: >-
+        Resolve o usuário exclusivamente pelo claim sub do JWT validado. Não
+        aceita userId em nenhuma parte da requisição.
+      security:
+        - bearerAuth: []
+      x-functional-requirements:
+        - FR-AUTH-01
+        - FR-AUTH-02
+        - FR-DASH-01
+        - FR-PROF-01
+      x-acceptance-criteria:
+        - AC-DASH-01
+        - AC-DASH-02
+        - AC-DASH-04
+        - AC-PROF-01
+        - SEC-AUTH-01
+      responses:
+        '200':
+          description: Nome e email do usuário autenticado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponse'
+              examples:
+                profile:
+                  value:
+                    name: Ana Example
+                    email: ana@example.test
+        '401':
+          $ref: '#/components/responses/BearerUnauthorizedProblem'
+        '404':
+          $ref: '#/components/responses/CurrentUserNotFoundProblem'
+        '500':
+          $ref: '#/components/responses/UnexpectedProblem'
+    put:
+      tags:
+        - Profile
+      operationId: updateCurrentProfile
+      summary: Altera nome e email do perfil atual
+      description: >-
+        Atualiza apenas nome e email do usuário identificado pelo claim sub.
+        Aplica as mesmas regras do cadastro e não altera senha.
+      security:
+        - bearerAuth: []
+      x-functional-requirements:
+        - FR-AUTH-01
+        - FR-AUTH-02
+        - FR-PROF-02
+        - FR-PROF-03
+      x-acceptance-criteria:
+        - AC-PROF-02
+        - AC-PROF-03
+        - AC-PROF-04
+        - AC-PROF-05
+        - SEC-AUTH-01
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+            examples:
+              update:
+                value:
+                  name: Ana Updated
+                  email: ana.updated@example.test
+      responses:
+        '200':
+          description: Perfil atualizado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponse'
+              examples:
+                updated:
+                  value:
+                    name: Ana Updated
+                    email: ana.updated@example.test
+        '400':
+          $ref: '#/components/responses/ValidationProblem'
+        '401':
+          $ref: '#/components/responses/BearerUnauthorizedProblem'
+        '404':
+          $ref: '#/components/responses/CurrentUserNotFoundProblem'
+        '409':
+          $ref: '#/components/responses/EmailConflictProblem'
+        '500':
+          $ref: '#/components/responses/UnexpectedProblem'
+  /api/profile/password:
+    put:
+      tags:
+        - Profile
+      operationId: changeCurrentPassword
+      summary: Altera a senha do perfil atual
+      description: >-
+        Verifica a senha atual e altera a senha do usuário identificado pelo
+        claim sub. A nova senha não é aparada e deve ser idêntica à confirmação.
+        Nenhum token novo é emitido; após o sucesso, o frontend encerra a sessão.
+      security:
+        - bearerAuth: []
+      x-functional-requirements:
+        - FR-AUTH-01
+        - FR-AUTH-02
+        - FR-PASS-01
+        - FR-PASS-02
+        - FR-PASS-03
+      x-acceptance-criteria:
+        - AC-PASS-01
+        - AC-PASS-02
+        - AC-PASS-03
+        - AC-PASS-04
+        - SEC-AUTH-01
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+            examples:
+              synthetic:
+                summary: Placeholders; os testes geram valores em runtime
+                value:
+                  currentPassword: <generated-at-runtime>
+                  newPassword: <new-generated-at-runtime>
+                  newPasswordConfirmation: <new-generated-at-runtime>
+      responses:
+        '200':
+          description: Senha alterada; a resposta não contém token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              examples:
+                changed:
+                  value:
+                    message: Password changed successfully.
+        '400':
+          $ref: '#/components/responses/ValidationProblem'
+        '401':
+          $ref: '#/components/responses/BearerUnauthorizedProblem'
+        '404':
+          $ref: '#/components/responses/CurrentUserNotFoundProblem'
+        '500':
+          $ref: '#/components/responses/UnexpectedProblem'
+  /health:
+    get:
+      tags:
+        - Operations
+      operationId: getHealth
+      summary: Consulta a saúde da API e da persistência
+      description: >-
+        Retorna 503 quando o SQLite se torna inacessível após um startup
+        concluído. Falha ao aplicar migrations impede o startup e, portanto,
+        não produz uma resposta HTTP deste endpoint.
+      security: []
+      x-non-functional-requirements:
+        - NFR-OPS-01
+        - NFR-OPS-02
+        - NFR-DATA-01
+      x-acceptance-criteria:
+        - OPS-DOCKER-01
+        - OPS-DOCKER-02
+      responses:
+        '200':
+          description: API pronta e banco acessível.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                healthy:
+                  value:
+                    status: Healthy
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableProblem'
+        '500':
+          $ref: '#/components/responses/UnexpectedProblem'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >-
+        JWT curto emitido pelo login. O backend valida issuer, audience,
+        assinatura e expiração e obtém o usuário somente do claim sub.
+  schemas:
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - email
+        - password
+        - passwordConfirmation
+      properties:
+        name:
+          type: string
+          minLength: 3
+          description: Nome após remoção de espaços externos.
+          example: Ana Example
+        email:
+          type: string
+          format: email
+          minLength: 1
+          description: Email após remoção de espaços externos.
+          example: ana@example.test
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 6
+          description: Valor sintético nos exemplos; não é aparado.
+          example: <generated-at-runtime>
+        passwordConfirmation:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 6
+          description: Deve ser idêntica a password.
+          example: <generated-at-runtime>
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 1
+          example: ana@example.test
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 1
+          description: Placeholder; o valor de login não é versionado.
+          example: <generated-at-runtime>
+    LoginResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - accessToken
+      properties:
+        accessToken:
+          type: string
+          readOnly: true
+          description: JWT gerado em runtime; nunca deve ser logado.
+          example: <JWT-issued-at-runtime>
+    ProfileResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - email
+      properties:
+        name:
+          type: string
+          minLength: 3
+          example: Ana Example
+        email:
+          type: string
+          format: email
+          example: ana@example.test
+    UpdateProfileRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - email
+      properties:
+        name:
+          type: string
+          minLength: 3
+          description: Nome após remoção de espaços externos.
+          example: Ana Updated
+        email:
+          type: string
+          format: email
+          minLength: 1
+          description: Email após remoção de espaços externos.
+          example: ana.updated@example.test
+    ChangePasswordRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - currentPassword
+        - newPassword
+        - newPasswordConfirmation
+      properties:
+        currentPassword:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 1
+          example: <generated-at-runtime>
+        newPassword:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 6
+          example: <new-generated-at-runtime>
+        newPasswordConfirmation:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 6
+          description: Deve ser idêntica a newPassword.
+          example: <new-generated-at-runtime>
+    MessageResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          example: Operation completed successfully.
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - Healthy
+          example: Healthy
+    ProblemDetails:
+      type: object
+      required:
+        - title
+        - status
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          example: about:blank
+        title:
+          type: string
+          example: Request failed.
+        status:
+          type: integer
+          format: int32
+          minimum: 400
+          maximum: 599
+          example: 400
+        detail:
+          type: string
+          example: The request could not be processed.
+        instance:
+          type: string
+          format: uri-reference
+          example: /api/profile
+    ValidationProblemDetails:
+      allOf:
+        - $ref: '#/components/schemas/ProblemDetails'
+        - type: object
+          required:
+            - errors
+          properties:
+            errors:
+              type: object
+              description: Erros indexados pelo nome JSON do campo.
+              additionalProperties:
+                type: array
+                minItems: 1
+                items:
+                  type: string
+              example:
+                field:
+                  - The supplied value is invalid.
+  responses:
+    ValidationProblem:
+      description: Request inválido, incluindo confirmação divergente ou senha atual incorreta.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ValidationProblemDetails'
+          examples:
+            validation:
+              value:
+                type: about:blank
+                title: One or more validation errors occurred.
+                status: 400
+                detail: Check the errors object for details.
+                instance: /api/profile
+                errors:
+                  field:
+                    - The supplied value is invalid.
+    EmailConflictProblem:
+      description: O email normalizado já pertence a outro usuário.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          examples:
+            duplicateEmail:
+              value:
+                type: about:blank
+                title: Email already registered.
+                status: 409
+                detail: An account with this email already exists.
+                instance: /api/auth/register
+    InvalidCredentialsProblem:
+      description: Credenciais de login inválidas; nenhuma sessão é criada.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          examples:
+            invalidCredentials:
+              value:
+                type: about:blank
+                title: Authentication failed.
+                status: 401
+                detail: Invalid email or password.
+                instance: /api/auth/login
+    BearerUnauthorizedProblem:
+      description: Bearer ausente, inválido ou expirado.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          examples:
+            unauthorized:
+              value:
+                type: about:blank
+                title: Authentication required.
+                status: 401
+                detail: A valid Bearer token is required.
+                instance: /api/profile
+    CurrentUserNotFoundProblem:
+      description: O claim sub é válido, mas o usuário correspondente não existe.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          examples:
+            notFound:
+              value:
+                type: about:blank
+                title: Profile not found.
+                status: 404
+                detail: The current profile could not be found.
+                instance: /api/profile
+    ServiceUnavailableProblem:
+      description: A API ou a persistência não está pronta.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          examples:
+            unavailable:
+              value:
+                type: about:blank
+                title: Service unavailable.
+                status: 503
+                detail: The service is not ready.
+                instance: /health
+    UnexpectedProblem:
+      description: Falha inesperada sem exposição de detalhes internos.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          examples:
+            unexpected:
+              value:
+                type: about:blank
+                title: An unexpected error occurred.
+                status: 500
+                detail: The request could not be completed.

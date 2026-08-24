@@ -1,0 +1,255 @@
+# 02 — Design técnico
+
+**Status:** aprovado para implementação · **Data:** 2026-08-24 · **Fontes normativas:** [`00-challenge.md`](00-challenge.md), [`01-requirements.md`](01-requirements.md) e [`03-api-contract.yaml`](03-api-contract.yaml)
+
+## Objetivo
+
+Definir a menor arquitetura que atende ao desafio completo com fronteiras claras, segurança proporcional e execução reproduzível por Docker Compose. Este documento fecha as decisões que estavam pendentes em `01-requirements.md`; ele não implementa a aplicação.
+
+## Princípios
+
+- Um monólito modular implantado como uma única API, sem distribuição interna.
+- Organização por funcionalidades e fluxo direto; sem CQRS, MediatR, AutoMapper, generic repository ou camadas artificiais.
+- Contratos HTTP por DTOs; entidades de persistência nunca atravessam a borda da API.
+- Validação no frontend para feedback rápido e no backend como autoridade.
+- Testes de integração exercitam o pipeline HTTP e SQLite reais; mocks ficam restritos às bordas do frontend.
+- Uma única origem no Docker elimina CORS como preocupação da entrega.
+
+## Visão de execução
+
+```text
+Navegador
+   |
+   | http://localhost:8080
+   v
+Nginx / Angular estático
+   |-- / e rotas SPA --------> arquivos Angular
+   |-- /api/* e /health -----> UserProfile.Api:8080
+                                    |
+                                    v
+                              /data/user-profile.db
+                              volume Docker nomeado
+```
+
+Somente o Nginx publica porta no host. A API fica acessível apenas na rede do Compose. O Nginx encaminha `/api/*` e `/health`, preserva método, corpo e status e usa fallback para `index.html` somente nas rotas da SPA.
+
+## Versões verificadas e fixação
+
+Verificação realizada em 2026-08-24. Foram escolhidas versões estáveis e suportadas, sem previews. Dependências de aplicação usarão versões exatas e lockfiles; imagens nunca usarão `latest` nem aliases flutuantes.
+
+| Componente | Versão escolhida | Motivo e suporte | Fixação prevista |
+|---|---|---|---|
+| .NET / ASP.NET Core | .NET 10 LTS; runtime `10.0.11` | Linha LTS ativa até novembro de 2028. | TFM `net10.0`; pacotes Microsoft `10.0.11`. |
+| .NET SDK | `10.0.400` | SDK estável que inclui o runtime `10.0.11`. | `global.json` e `mcr.microsoft.com/dotnet/sdk:10.0.400-noble`. |
+| EF Core SQLite | `10.0.11` | Mesma linha e patch do runtime; EF Core 10 é LTS. | Pacotes EF Core Microsoft em `10.0.11`. |
+| Angular e Angular CLI | `22.1.3` | Release estável em suporte ativo; sem uso da linha `next`. | Dependências exatas e `package-lock.json`. |
+| Angular Material | `22.1.3` | Alinhada à linha do framework. | Dependência exata e `package-lock.json`. |
+| Node.js | `24.19.0` LTS | Compatível com Angular 22 (`^24.15.0`) e em LTS. | `node:24.19.0-bookworm-slim`. |
+| Nginx | `1.30.4` estável | Linha estável da imagem oficial. | `nginx:1.30.4-alpine3.24-slim`. |
+| Runtime da API | ASP.NET `10.0.11` | Mesma atualização de segurança da aplicação. | `mcr.microsoft.com/dotnet/aspnet:10.0.11-noble`. |
+
+Fontes oficiais consultadas:
+
+- [política de suporte do .NET](https://dotnet.microsoft.com/en-us/platform/support/policy/dotnet-core), [download do .NET 10](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) e [release do EF Core 10](https://learn.microsoft.com/en-us/ef/core/what-is-new/ef-core-10.0/whatsnew);
+- [tags oficiais do SDK .NET](https://github.com/dotnet/dotnet-docker/blob/main/README.sdk.md) e [tags oficiais do runtime ASP.NET](https://github.com/dotnet/dotnet-docker/blob/main/README.aspnet.md);
+- [política de releases do Angular](https://angular.dev/reference/releases) e [compatibilidade Angular–Node](https://angular.dev/reference/versions);
+- [releases suportadas do Node.js](https://nodejs.org/en/about/previous-releases), [manifesto oficial da imagem Node](https://github.com/docker-library/official-images/blob/master/library/node) e [manifesto oficial da imagem Nginx](https://github.com/docker-library/official-images/blob/master/library/nginx).
+
+O scaffold deve reconfirmar a existência das tags exatas antes de escrever os Dockerfiles. Uma atualização posterior exige mudança explícita deste documento e validação completa; não se deve substituir silenciosamente uma tag por alias flutuante.
+
+## Estrutura lógica da solução
+
+Estrutura planejada, ainda não criada:
+
+```text
+UserProfile.sln
+src/
+  backend/
+    UserProfile.Api/                  # único executável de backend
+      Features/
+        Auth/                         # cadastro e login
+        Profile/                      # consulta e alterações do usuário atual
+      Data/                           # User, DbContext e migrations
+      Security/                       # emissão/configuração JWT e normalização
+      Program.cs
+  frontend/
+    user-profile-web/                 # Angular standalone
+      src/app/
+        core/                         # sessão, guard e interceptor funcionais
+        features/                     # register, login, dashboard e profile
+tests/
+  UserProfile.Api.IntegrationTests/   # único projeto de integração do backend
+```
+
+Os testes de frontend e as poucas jornadas E2E permanecem no workspace Angular, evitando criar projetos ou pacotes independentes sem necessidade.
+
+### Backend
+
+- `AuthController` implementa cadastro e login.
+- `ProfileController` implementa consulta, atualização de nome/email e alteração de senha.
+- Controllers usam `UserProfileDbContext`, `IPasswordHasher<User>` e um emissor concreto de JWT por injeção de dependência.
+- Regras compartilhadas pequenas, como normalização de email e leitura segura do claim `sub`, ficam em funções/classes concretas e focadas.
+- Não haverá interfaces de fachada com uma única implementação, repositório sobre o EF Core ou mapeamento automático.
+- `GET /health` usa health checks do ASP.NET Core e verifica que o banco está acessível.
+
+### Frontend
+
+- Componentes e rotas são standalone e compilados em strict mode.
+- Reactive Forms implementam as mesmas validações visíveis definidas no contrato.
+- Services encapsulam HTTP e estado simples por signals (`loading`, `data`, `error`); não haverá store global nem NgRx.
+- Um functional interceptor anexa o Bearer somente a chamadas protegidas quando existe token.
+- Um functional route guard bloqueia rotas protegidas quando a sessão está ausente ou expirada.
+- A API continua sendo a autoridade: presença ou conteúdo decodificado do token no browser não concede autorização.
+
+## Modelo de dados
+
+Entidade única `User`:
+
+| Campo | Tipo C# planejado | Persistência SQLite | Regra |
+|---|---|---|---|
+| `Id` | `Guid` | `TEXT`, chave primária | Gerado pelo backend. |
+| `Name` | `string` | `TEXT NOT NULL` | Remover espaços externos; validar comprimento mínimo 3 após essa remoção. |
+| `Email` | `string` | `TEXT NOT NULL` | Remover espaços externos e preservar a caixa restante para exibição. |
+| `NormalizedEmail` | `string` | `TEXT NOT NULL` | `Email.Trim().ToUpperInvariant()`; índice único. |
+| `PasswordHash` | `string` | `TEXT NOT NULL` | Produzido e verificado por `PasswordHasher<User>`; nunca retornado ou logado. |
+| `CreatedAtUtc` | `DateTime` | `TEXT NOT NULL` | UTC, definido somente na criação. |
+| `UpdatedAtUtc` | `DateTime` | `TEXT NOT NULL` | UTC, atualizado em mudanças de perfil ou senha. |
+
+Não haverá seed obrigatório. IDs, hash e timestamps não fazem parte dos DTOs públicos porque nenhum fluxo atual precisa deles.
+
+No cadastro, um único instante UTC obtido de `TimeProvider` inicializa `CreatedAtUtc` e `UpdatedAtUtc`. Alterações posteriores preservam `CreatedAtUtc` e atualizam apenas `UpdatedAtUtc`.
+
+### Normalização e unicidade
+
+- Cadastro, login e alteração de email calculam `NormalizedEmail` da mesma forma.
+- `Email` armazena o valor aparado para exibição; `NormalizedEmail` existe apenas para busca e unicidade.
+- O índice único `UX_Users_NormalizedEmail` é a garantia autoritativa contra corrida.
+- Uma consulta prévia pode melhorar a mensagem, mas violação do índice também deve ser convertida em `409 Conflict`.
+- Na edição, o próprio email normalizado é permitido; somente outro usuário gera conflito.
+
+### Migrations
+
+A API aplica `Database.MigrateAsync()` antes de começar a atender requisições. Isso é aceitável apenas porque a entrega executa uma única instância de demonstração com SQLite. Falha de migration impede a prontidão e encerra o startup; não há tentativa de continuar com esquema parcial.
+
+Em uma implantação concorrente ou de produção, migrations seriam uma etapa separada. Esse cenário está fora de escopo.
+
+O health check consulta a tabela de histórico de migrations, não apenas abre uma conexão. Falha durante o startup mantém o serviço fora do ar; `503` representa uma perda de acesso ao SQLite depois de um startup bem-sucedido. O teste dessa transição usa bloqueio exclusivo do arquivo SQLite temporário e timeout curto, sem substituir o health check por um mock.
+
+## Contrato HTTP
+
+O contrato normativo está em [`03-api-contract.yaml`](03-api-contract.yaml). A API possui somente estas operações:
+
+| Operação | Autenticação | Sucesso | Erros esperados |
+|---|---|---|---|
+| `POST /api/auth/register` | Pública | `201` com mensagem, sem token | `400`, `409`, `500` |
+| `POST /api/auth/login` | Pública | `200` com JWT curto | `400`, `401` genérico, `500` |
+| `GET /api/profile` | Bearer | `200` com nome e email | `401`, `404`, `500` |
+| `PUT /api/profile` | Bearer | `200` com nome e email atualizados | `400`, `401`, `404`, `409`, `500` |
+| `PUT /api/profile/password` | Bearer | `200` com mensagem, sem novo token | `400`, `401`, `404`, `500` |
+| `GET /health` | Pública | `200` | `503`, `500` |
+
+Não existe endpoint de dashboard: a tela usa `GET /api/profile`. Não existe endpoint de logout, refresh, perfil por ID ou qualquer operação fora do escopo.
+
+### DTOs e validação
+
+- Requests usam nomes em inglês e incluem apenas os campos descritos no OpenAPI.
+- Cadastro: `name`, `email`, `password`, `passwordConfirmation`.
+- Login: `email`, `password`.
+- Perfil: `name`, `email`.
+- Senha: `currentPassword`, `newPassword`, `newPasswordConfirmation`.
+- Nome é validado após `Trim`; email após `Trim`; senha não é aparada nem normalizada.
+- A confirmação deve corresponder exatamente à senha correspondente.
+- DTOs de request rejeitam propriedades JSON não mapeadas com `400`; os schemas OpenAPI usam `additionalProperties: false`.
+- Nenhuma operação de perfil define `userId` em path, query, header ou body. Um `userId` extra no corpo é rejeitado, e valores arbitrários em query/header nunca participam da resolução de identidade.
+- Nenhuma resposta contém `PasswordHash`, senha, `NormalizedEmail` ou ID do usuário.
+
+### Erros
+
+- Erros usam `application/problem+json`.
+- Falhas de campos e regras de formulário usam `ValidationProblemDetails` com `errors` indexado pelo nome do campo.
+- Email duplicado usa `409 ProblemDetails`.
+- Login inválido usa `401 ProblemDetails` com a mensagem genérica `Invalid email or password.`.
+- Bearer ausente, inválido ou expirado usa `401 ProblemDetails`; o middleware deve ser configurado para manter o formato.
+- Senha atual incorreta em sessão válida usa `400 ValidationProblemDetails`, não é confundida com falha do JWT.
+- Exceções não tratadas são convertidas em `500 ProblemDetails` sem detalhes internos.
+
+## Autenticação e sessão
+
+### Senhas
+
+- `PasswordHasher<User>` do ASP.NET Core, no formato Identity V3 padrão, cria e verifica os hashes.
+- Senhas e hashes nunca entram em DTOs, logs, mensagens de exceção ou exemplos utilizáveis.
+
+### JWT
+
+- Bearer assinado com HMAC SHA-256 e chave de pelo menos 256 bits.
+- Duração: 15 minutos a partir da emissão; sem refresh token.
+- Claims mínimas: `sub` com o `Guid` do usuário, `jti` único, `iat` e `exp`.
+- Validação obrigatória de issuer, audience, assinatura e expiração, com tolerância de relógio de 30 segundos.
+- `MapInboundClaims` fica desabilitado para que o backend leia diretamente o claim chamado `sub`; `sub`, `jti`, `iat` ou `exp` ausente/malformado invalida o token com `401`.
+- Valores padrão não sensíveis da demonstração: issuer `UserProfile.Api` e audience `UserProfile.Web`; ambos permanecem configuráveis.
+- O backend nunca aceita identidade enviada pelo cliente; converte exclusivamente o claim `sub` validado para `Guid`.
+
+Um `sub` bem formado que já não corresponde a um usuário retorna `404`; um `sub` ausente ou inválido nunca chega à resolução de perfil e retorna `401`.
+
+Após alteração de senha, o frontend remove o token e encerra a sessão. Tokens já emitidos não são revogados no servidor e permanecem tecnicamente válidos até `exp`; essa consequência é aceita pelo token curto e pela ausência aprovada de refresh/revogação.
+
+### Chave de assinatura e Compose sem `.env`
+
+- Fora de `Development`, a ausência de configuração externa para a chave deve impedir o startup.
+- No Compose de demonstração, em `Development`, a API gera em memória uma chave criptograficamente aleatória por processo quando nenhuma chave externa é fornecida.
+- A chave gerada não é persistida nem logada; reiniciar a API invalida sessões existentes.
+- Testes geram sua própria chave em runtime.
+- Um futuro `.env.example`, sem valor real, documentará a substituição opcional; `docker compose up` não dependerá dele.
+
+Essa regra concilia execução sem preparação manual com a proibição de versionar segredos.
+
+## Fluxos do frontend
+
+| Rota | Proteção | Fonte de dados e comportamento |
+|---|---|---|
+| `/register` | Pública | Formulário reativo; `201` navega para `/login` com aviso de sucesso e sem criar sessão. |
+| `/login` | Pública | Formulário reativo; `200` grava o JWT em `sessionStorage` e navega para `/dashboard`. |
+| `/dashboard` | Guard | Consulta `/api/profile`, mostra boas-vindas com `name` e link para `/profile`. |
+| `/profile` | Guard | Consulta e altera nome/email; oferece formulário separado para senha. |
+
+Cada operação assíncrona expõe estado de carregamento, impede submissão duplicada e apresenta sucesso ou erro. O interceptor reage a `401` global somente quando a requisição levava Bearer; nesse caso limpa a sessão e conduz ao login. Assim, o `401` esperado do próprio login continua disponível para a mensagem genérica da tela.
+
+O token fica somente em `sessionStorage`. O estado de autenticação é um signal derivado da presença e do `exp` do token; decodificar o payload no cliente serve apenas à experiência de navegação.
+
+## Docker e rede
+
+- `compose.yaml` terá serviços `web` e `api` e um volume nomeado para `/data`; SQLite não cria um terceiro contêiner.
+- `web` é uma imagem multi-stage: Node compila o Angular e Nginx serve o resultado.
+- `api` é uma imagem multi-stage: SDK publica e runtime ASP.NET executa como usuário não-root; `/data` é preparado com permissão de escrita para esse usuário antes de receber o volume.
+- `web` publica `8080:8080`; `api` expõe `8080` apenas para a rede interna.
+- Nginx escuta em `8080`, encaminha `/api/` e `/health` para `http://api:8080` e serve a SPA nas demais rotas.
+- Health checks e `depends_on` evitam declarar o frontend pronto antes da API.
+- Tags completas listadas neste documento serão copiadas literalmente; `latest`, `lts`, `stable` ou apenas major/minor são proibidos.
+
+No desenvolvimento local, o proxy do Angular CLI encaminha `/api` e `/health` para a API, mantendo URLs relativas. Não haverá configuração CORS permissiva para compensar URLs absolutas.
+
+## Configuração e observabilidade
+
+Configurações previstas:
+
+| Chave | Sensível | Regra |
+|---|---|---|
+| `ConnectionStrings__Default` | Não | No Compose, aponta para `/data/user-profile.db`. |
+| `Jwt__Issuer` | Não | Valor padrão de demonstração substituível. |
+| `Jwt__Audience` | Não | Valor padrão de demonstração substituível. |
+| `Jwt__LifetimeMinutes` | Não | `15`; mudança exige revisão deste design. |
+| `Jwt__SigningKey` | Sim | Externa; fallback aleatório somente em `Development`. |
+
+Logs estruturados podem registrar rota, status, duração e um identificador de correlação gerado para a requisição, mas nunca corpo de requests de autenticação, token, senha, hash ou chave. Respostas `ProblemDetails` não incluem stack trace, SQL nem caminhos internos.
+
+## Decisões registradas
+
+- [`ADR-0001`](adr/0001-modular-monolith.md) — monólito modular e estrutura mínima.
+- [`ADR-0002`](adr/0002-sqlite-persistence.md) — SQLite, volume e migrations no startup.
+- [`ADR-0003`](adr/0003-jwt-authentication.md) — JWT curto, `sub`, sessão e chave.
+- [`ADR-0004`](adr/0004-nginx-same-origin.md) — Nginx e origem única.
+
+## Limites deliberados
+
+Não serão adicionados versionamento de API, refresh/revogação de token, Identity completo, roles, mensageria, cache distribuído, store global, abstração de repositório, múltiplas APIs ou contêiner de banco. A complexidade mantida — autenticação, índice único, proxy, migrations e testes ponta a ponta — existe porque critérios explícitos a exigem.
