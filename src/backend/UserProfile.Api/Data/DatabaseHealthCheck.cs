@@ -23,6 +23,7 @@ public sealed class DatabaseHealthCheck(IServiceScopeFactory scopeFactory) : IHe
 
             await using var command = dbContext.Database.GetDbConnection().CreateCommand();
             command.CommandText = "SELECT COUNT(*) FROM \"__EFMigrationsHistory\";";
+            command.CommandTimeout = 1;
 
             var appliedMigrationCount = Convert.ToInt32(
                 await command.ExecuteScalarAsync(cancellationToken));

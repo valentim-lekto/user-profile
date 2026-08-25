@@ -5,3 +5,10 @@ coverage
 .git
 .gitignore
 README.md
+.env
+.env.*
+!.env.example
+**/secrets.json
+**/*.pfx
+**/*.p12
+**/*.key

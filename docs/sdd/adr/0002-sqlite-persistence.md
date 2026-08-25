@@ -11,6 +11,10 @@ A entrega precisa persistir dados, iniciar apenas com Docker Compose e não exig
 - Usar EF Core 10 com o provider SQLite.
 - Persistir `/data/user-profile.db` em volume Docker nomeado.
 - Criar a entidade `User` e um índice único de banco em `NormalizedEmail`.
+- Manter `CreatedAtUtc` e `UpdatedAtUtc` como metadados internos: ambos são
+  inicializados no cadastro, `CreatedAtUtc` é preservado e `UpdatedAtUtc` muda em
+  alterações persistidas. Esta é uma decisão interna de design, não requisito do
+  enunciado nem campo do contrato HTTP.
 - Versionar migrations e aplicá-las no startup antes de a API ficar pronta.
 - Usar um arquivo SQLite isolado por fixture nos testes de integração; EF InMemory não substitui esses testes.
 
@@ -36,4 +40,4 @@ A entrega precisa persistir dados, iniciar apenas com Docker Compose e não exig
 
 ## Rastreabilidade
 
-`PREM-DATA-01`, `NFR-DATA-01`, `OPS-DOCKER-01`, `OPS-DOCKER-03`.
+`PREM-DATA-01`, `PREM-DATA-02`, `NFR-DATA-01`, `OPS-DOCKER-01`, `OPS-DOCKER-03`.

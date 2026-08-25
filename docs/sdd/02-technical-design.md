@@ -92,7 +92,9 @@ tests/
   e2e/                                # reservado às jornadas de M5
 ```
 
-Os testes de frontend e as poucas jornadas E2E permanecem no workspace Angular, evitando criar projetos ou pacotes independentes sem necessidade.
+Os testes focados de frontend permanecem no workspace Angular. As poucas jornadas
+Playwright ficam em `tests/e2e`, como indicado na árvore, sem criar outro projeto
+de aplicação.
 
 ### Backend
 
@@ -126,7 +128,11 @@ Entidade única `User`:
 | `CreatedAtUtc` | `DateTime` | `TEXT NOT NULL` | Instante UTC definido na criação. |
 | `UpdatedAtUtc` | `DateTime` | `TEXT NOT NULL` | Instante UTC atualizado a cada alteração persistida. |
 
-Não haverá seed obrigatório. ID, hash, email normalizado e timestamps são internos e não fazem parte dos DTOs públicos; sua presença no modelo atende à arquitetura aprovada sem ampliar o contrato HTTP.
+Não haverá seed obrigatório. ID, hash, email normalizado e timestamps são internos
+e não fazem parte dos DTOs públicos. Os timestamps são uma decisão interna do
+design registrada originalmente em `b184432` e formalizada no ADR-0002, não um
+requisito do enunciado; seu ciclo de vida será implementado e testado nas fatias
+M2 e M4 sem ampliar o contrato HTTP.
 
 ### Normalização e unicidade
 
@@ -142,7 +148,15 @@ A API aplica `Database.MigrateAsync()` antes de começar a atender requisições
 
 Em uma implantação concorrente ou de produção, migrations seriam uma etapa separada. Esse cenário está fora de escopo.
 
-O health check consulta a tabela de histórico de migrations, não apenas abre uma conexão. Falha durante o startup mantém o serviço fora do ar; `503` representa uma perda de acesso ao SQLite depois de um startup bem-sucedido. O teste dessa transição usa bloqueio exclusivo do arquivo SQLite temporário e timeout curto, sem substituir o health check por um mock.
+O health check consulta a tabela de histórico de migrations, não apenas abre uma
+conexão. O comando dessa consulta usa timeout explícito de 1 segundo, independente
+do timeout geral da conexão, para não manter threads ocupadas depois dos limites
+de 2 segundos da probe do Compose e 5 segundos do Nginx. Falha durante o startup
+mantém o serviço fora do ar; `503` representa uma perda de acesso ao SQLite depois
+de um startup bem-sucedido. O teste dessa transição usa bloqueio exclusivo do
+arquivo SQLite temporário, conserva o timeout padrão de 30 segundos na conexão da
+API e exige resposta em menos de 5 segundos, sem substituir o health check por um
+mock.
 
 ## Contrato HTTP
 

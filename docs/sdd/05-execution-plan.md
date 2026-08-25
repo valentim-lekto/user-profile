@@ -33,14 +33,14 @@ Somente um milestone pode estar em andamento. O próximo começa após o anterio
 
 ### M1 — Walking skeleton e Docker
 
-**Estado:** concluído em 2026-08-25
+**Estado:** implementação concluída em 2026-08-25; revalidação independente com volume Docker padrão bloqueada por falta de espaço na VM
 
 Entregas:
 
 - criar solution, `UserProfile.Api` com Controllers e o único projeto de integração;
 - criar Angular standalone/strict com routing, Reactive Forms e Angular Material;
 - fixar SDK com `rollForward: disable`, pacotes, bootstrap único dos `packages.lock.json` via `--use-lock-file`, `package-lock.json` e todas as tags Docker aprovadas; após versionar os locks, todo restore usa `--locked-mode`;
-- implementar estrutura mínima por funcionalidades, `User` com todos os sete campos aprovados, `DbContext`, configuração, migration inicial com timestamps/índice único e aplicação de migrations no startup;
+- implementar estrutura mínima por funcionalidades, `User` com os sete campos definidos internamente no ADR-0002, `DbContext`, configuração, migration inicial com timestamps/índice único e aplicação de migrations no startup;
 - disponibilizar `/health` com checagem SQLite e Swagger/OpenAPI no backend;
 - criar Dockerfiles multi-stage, Nginx same-origin encaminhando `/api`, `/swagger` e `/health`, com conversão explícita de `502/504` do upstream para `503 ProblemDetails`, volume e `compose.yaml` sem dependência de `.env`; a única probe do Compose roda no `web` com `wget -q -O /dev/null http://127.0.0.1:8080/health`, e `web` depende de `api` como `service_started`;
 - criar `.env.example` opcional, sem valor utilizável, sem tornar sua cópia pré-requisito do Compose;
@@ -160,21 +160,24 @@ Gates observáveis:
 - `2026-08-24` — `revisão independente concluída` — commit `b184432` auditado; 0 High, 15 Medium e 6 Low corrigidos; contrato, IDs, links, segredos e diff revalidados em [`review-log.md`](review-log.md); M1–M6 permanecem pendentes.
 - `2026-08-24` — `M1 iniciado` — estrutura de testes alinhada a `tests/backend`, proxy Swagger e `.env.example` antecipado por instrução explícita; implementação e evidências ainda pendentes.
 - `2026-08-25` — `M1 concluído` — walking skeleton backend/frontend, migration SQLite, testes, imagens multi-stage e origem única validados após auditoria final; M2–M6 permanecem pendentes e nenhum endpoint de negócio foi criado.
+- `2026-08-25` — `revisão independente de M1 concluída` — commit `8db5592` auditado; 1 High, 12 Medium e 11 Low confirmados. O High e 11 Medium foram corrigidos; 1 Medium operacional está bloqueado pela VM Docker sem espaço; 8 Low triviais foram corrigidos e 3 Low adiados com justificativa em [`review-log.md`](review-log.md).
 
 ## Evidências de M1
 
 | Gate | Execução observada | Resultado |
 |---|---|---|
-| Backend | SDK `10.0.400`: `dotnet restore UserProfile.sln --locked-mode`, `dotnet build UserProfile.sln --no-restore` e `dotnet test UserProfile.sln --no-build` | Restore locked aprovado; build com 0 warnings/0 erros; 6/6 integrações aprovadas, incluindo modelo/snapshot sem mudanças pendentes, migration com timestamps/índice único, health `200/503`, Swagger restrito a `/health` com schema obrigatório, falha de startup e `404 ProblemDetails`. |
+| Backend | SDK `10.0.400`: `dotnet restore UserProfile.sln --locked-mode`, `dotnet build UserProfile.sln --no-restore` e `dotnet test UserProfile.sln --no-restore --no-build --verbosity normal` | A revisão independente constatou que o comando original retornava sucesso sem descobrir testes. Depois de marcar o projeto de integração como projeto de teste, o restore locked passou, o build terminou com 0 warnings/0 erros e o VSTest descobriu e aprovou 6/6 integrações: schema SQLite exato, health `200/503` com limite de duração, contrato OpenAPI runtime de `/health`, falha de startup e `404 ProblemDetails`. |
 | Frontend | Node `24.19.0`: `npm ci`, `npm run lint`, `npm test` e `npm run build` | Lint aprovado; 2/2 testes aprovados; bundle de produção com 265,02 kB bruto. |
 | Dependências frontend | `npm audit --package-lock-only --audit-level=low` | 0 vulnerabilidades após atualizar Vitest de `4.0.8` para `4.1.11` por `GHSA-5xrq-8626-4rwp`. |
-| Contrato | `ruby scripts/validate-openapi.rb docs/sdd/03-api-contract.yaml` | OpenAPI válido: 6 operações e 42 referências locais verificadas. |
-| Compose | `docker compose config --quiet` e `docker compose up --build --detach --wait --wait-timeout 300` sem `.env` | `api` e `web` construídos com tags exatas; probe do `web` saudável atravessando API e SQLite. |
+| Contrato | `ruby scripts/validate-openapi.rb docs/sdd/03-api-contract.yaml` e mutação negativa do `operationId` em cópia temporária | `SPEC-OAS-001`–`005` aprovados para 6 operações e 42 referências locais; a cópia inválida foi rejeitada como esperado. |
+| Compose | `docker compose config --quiet`; tentativas padrão; `env COMPOSE_PROJECT_NAME=user-profile-m1-review-verified COMPOSE_FILE=compose.yaml:/private/tmp/user-profile-m1-review-verified.override.yaml M1_REVIEW_DATA_DIR=/private/tmp/user-profile-m1-review-verified-data.fbw7w5 scripts/validate-m1-compose.sh` sem `.env` | Configuração base aprovada. Tags, imagens, usuários, portas, SPA, health, Swagger, `404`, conversão `502/504` → `503` e teardown foram aprovados pelo script final em projeto isolado; somente o backing do volume nomeado foi desviado para o host. A repetição com volume Docker padrão continua bloqueada pela VM cheia. |
 | Origem única | `curl` em `/`, rota SPA, `/health`, `/swagger/index.html`, `/swagger/v1/swagger.json` e `/api/not-implemented` | SPA/fallback, health e Swagger responderam pela porta 8080; rota API inexistente preservou `404 application/problem+json`; API sem binding de host. |
 | Falha do upstream | `docker compose stop api` e `curl http://localhost:8080/health` | Nginx retornou `503 application/problem+json` com corpo ProblemDetails; `nginx -T` confirmou mapeamento explícito de `502` e `504`. |
 | Cleanup | `docker compose down` sem `-v` | Contêineres/rede deste projeto removidos e volume `user-profile-sdd-challenge_user-profile-data` preservado. |
 
 O primeiro startup do Compose encontrou `SQLite Error 13` porque a VM Docker compartilhada estava sem espaço. Foram removidos somente três volumes temporários criados durante esta validação (`user-profile-m1-node-modules`, `user-profile-m1-node-modules-clean` e `user-profile-m1-nuget`). Na repetição final após corrigir os timestamps, o disco voltou a ficar cheio: o volume vazio/stale deste próprio projeto foi recriado, uma imagem backend anterior e dois registros exatos do cache de `dotnet publish UserProfile.Api` foram removidos. Nenhum recurso de outro projeto foi apagado. Com 150 MB livres, o Compose reconstruiu, ambos os serviços ficaram saudáveis, os smokes passaram e o teardown final preservou o novo volume correto. O hash do commit local é informado no handoff da etapa, pois um commit não pode registrar o próprio hash em seu conteúdo.
+
+Na revisão independente posterior, a VM voltou a ficar sem espaço e volumes Docker normais falharam antes da migration. `docker compose config` continuou aprovado e o smoke final completo passou em projeto isolado, usando o mesmo volume nomeado com armazenamento temporariamente apoiado no host. Essa adaptação e o cleanup pontual estão detalhados em [`review-log.md`](review-log.md); o volume principal não foi alterado e a execução padrão deve ser repetida após manutenção do disco da VM.
 
 Ao iniciar um milestone, alterar somente seu estado para `em andamento`. Ao concluir, registrar data, comandos, evidências, desvios e hash do commit antes de iniciar o próximo.
 
@@ -202,15 +205,13 @@ Comandos recorrentes posteriores:
 ```sh
 dotnet restore UserProfile.sln --locked-mode
 dotnet build UserProfile.sln --no-restore
-dotnet test UserProfile.sln --no-build
+dotnet test UserProfile.sln --no-restore --no-build --verbosity normal
 npm ci --prefix src/frontend/user-profile-web
 npm run lint --prefix src/frontend/user-profile-web
 npm run build --prefix src/frontend/user-profile-web
 npm test --prefix src/frontend/user-profile-web
-docker compose config --quiet
-docker compose up --build --wait
-curl --fail http://localhost:8080/health
-docker compose down
+ruby scripts/validate-openapi.rb docs/sdd/03-api-contract.yaml
+scripts/validate-m1-compose.sh
 ```
 
 Os nomes de scripts npm devem ser confirmados no scaffold e então congelados. Mudança de comando exige atualização deste plano e do README antes do código dependente.
@@ -256,9 +257,10 @@ Os nomes de scripts npm devem ser confirmados no scaffold e então congelados. M
 - `2026-08-24` — Definida normalização `Trim().ToUpperInvariant()` para cadastro, login e edição; email aparado preserva caixa para exibição.
 - `2026-08-24` — Fixados `200` para login/updates, `201` para cadastro, `400` para validação, senha atual e credenciais de login inválidas, `401` com challenge Bearer para recursos protegidos, `409` para email e `503` para health/proxy.
 - `2026-08-24` — Definida origem única em `http://localhost:8080`, com API interna e Nginx encaminhando `/api`, `/swagger` e `/health`.
-- `2026-08-25` — Auditoria final de M1 restaurou `CreatedAtUtc`/`UpdatedAtUtc`, removidos indevidamente em revisão anterior apesar da arquitetura aprovada, e exigiu prova do schema antes do commit.
+- `2026-08-25` — M1 manteve `CreatedAtUtc`/`UpdatedAtUtc` como decisão interna agora formalizada no ADR-0002; a revisão independente restaurou o histórico que antes recomendara sua remoção e programou as provas de ciclo de vida em M2/M4.
+- `2026-08-25` — A revisão independente descobriu que o comando backend original não executava testes; `IsTestProject`, contrato/runtime OpenAPI, schema real, timeout de health, ignores Docker, smoke Compose e rastreabilidade foram corrigidos antes do novo commit.
 - `2026-08-25` — M1 manteve apenas o shell Angular e `/health`; a complexidade retida limita-se a migrations, SQLite real, ProblemDetails e proxy exigidos pelos critérios.
 
 ## Resultado final
 
-M1 concluído com evidência executada e infraestrutura encerrada preservando o volume nomeado. M2–M6 permanecem pendentes; cadastro, login, JWT, dashboard, edição de perfil/senha, E2E e CI não foram implementados.
+M1 permanece implementado e suas correções passaram nas suítes backend/frontend, contrato e runtime isolado. A revalidação exata do volume Docker padrão está bloqueada pela falta de espaço da VM e não é declarada concluída nesta revisão. M2–M6 permanecem pendentes; cadastro, login, JWT, dashboard, edição de perfil/senha, E2E e CI não foram implementados.

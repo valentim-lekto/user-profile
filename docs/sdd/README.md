@@ -23,11 +23,11 @@ Este diretório reúne os artefatos versionados do processo Spec-Driven Developm
 | [`01-requirements.md`](01-requirements.md) | Definir escopo, atores, casos de uso, requisitos, critérios, premissas, exclusões e Definition of Done. | Concluído nesta etapa. |
 | [`02-technical-design.md`](02-technical-design.md) | Definir arquitetura, modelo de dados, segurança, frontend, operação e versões fixadas. | M1 implementado e validado; fatias M2–M6 pendentes. |
 | [`03-api-contract.yaml`](03-api-contract.yaml) | Definir requests, responses, schemas, autenticação e erros da API. | Contrato validado; runtime M1 expõe somente `/health`, como planejado. |
-| [`04-test-strategy.md`](04-test-strategy.md) | Definir integração, frontend, E2E, Docker e gates. | Gates M1 executados; catálogos M2–M6 pendentes. |
-| [`05-execution-plan.md`](05-execution-plan.md) | Organizar a implementação incremental em M1–M6. | M1 concluído; M2–M6 pendentes. |
+| [`04-test-strategy.md`](04-test-strategy.md) | Definir integração, frontend, E2E, Docker e gates. | Gates M1 de código/contrato e runtime isolado executados; volume Docker padrão bloqueado pelo espaço da VM; catálogos M2–M6 pendentes. |
+| [`05-execution-plan.md`](05-execution-plan.md) | Organizar a implementação incremental em M1–M6. | M1 implementado; revalidação operacional padrão bloqueada; M2–M6 pendentes. |
 | [`06-traceability.md`](06-traceability.md) | Relacionar requisito, critério, design, milestone, teste e estado. | Evidências M1 registradas; atualização contínua. |
-| [`review-log.md`](review-log.md) | Registrar revisão independente, achados, decisões, comandos e riscos. | Atualizado nesta etapa. |
-| [`ai-usage.md`](ai-usage.md) | Definir e registrar de forma resumida o uso responsável de IA. | Design, revisão e implementação M1 registrados. |
+| [`review-log.md`](review-log.md) | Registrar revisão independente, achados, decisões, comandos e riscos. | Revisão independente de M1 e correções registradas. |
+| [`ai-usage.md`](ai-usage.md) | Definir e registrar de forma resumida o uso responsável de IA. | Design, implementação e revisões até M1 registrados. |
 
 ## Governança
 
@@ -50,7 +50,7 @@ Novas decisões relevantes devem criar ou substituir ADR; registrar apenas uma p
 | Item | Estado |
 |---|---|
 | Código, dependências, Dockerfiles e Compose | Walking skeleton M1 concluído; funcionalidades M2–M6 pendentes. |
-| Testes automatizados e evidências observadas | Integração backend, shell frontend, contrato e Docker M1 aprovados; suítes funcionais/E2E pendentes. |
+| Testes automatizados e evidências observadas | Integração backend, shell frontend, contrato e runtime Docker isolado M1 aprovados; volume padrão bloqueado pelo ambiente e suítes funcionais/E2E pendentes. |
 | README de execução e validação na raiz | Planejado para M6. |
 | Atualização de estados da matriz e do plano | Obrigatória em cada milestone. |
 | ADRs adicionais | Criar somente se surgir nova decisão relevante. |

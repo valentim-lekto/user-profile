@@ -28,7 +28,8 @@ public sealed class StartupTests
                 using var response = await client.GetAsync("/health");
             });
 
-            Assert.Contains("already exists", exception.ToString(), StringComparison.OrdinalIgnoreCase);
+            var sqliteException = Assert.IsType<SqliteException>(exception.GetBaseException());
+            Assert.Equal(1, sqliteException.SqliteErrorCode);
         }
         finally
         {

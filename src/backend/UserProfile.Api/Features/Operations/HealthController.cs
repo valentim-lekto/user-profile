@@ -7,7 +7,8 @@ namespace UserProfile.Api.Features.Operations;
 [Route("health")]
 public sealed class HealthController(HealthCheckService healthCheckService) : ControllerBase
 {
-    [HttpGet]
+    [HttpGet(Name = "getHealth")]
+    [Tags("Operations")]
     [ProducesResponseType<HealthResponse>(StatusCodes.Status200OK, "application/json")]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError, "application/problem+json")]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable, "application/problem+json")]
@@ -17,7 +18,7 @@ public sealed class HealthController(HealthCheckService healthCheckService) : Co
 
         if (report.Status == HealthStatus.Healthy)
         {
-            return Ok(new HealthResponse("Healthy"));
+            return Ok(new HealthResponse(HealthState.Healthy));
         }
 
         return Problem(

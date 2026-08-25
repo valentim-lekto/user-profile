@@ -149,14 +149,14 @@ Foram confirmados 0 achados High, 15 Medium e 6 Low.
 - **Critérios:** `AI-EXPLAIN-01`.
 - **Decisão:** corrigido com `DOC-EXPLAIN-001` e gate M6.
 
-#### `REV-DESIGN-016` — Low — remoção de timestamps contrariava a arquitetura aprovada
+#### `REV-DESIGN-016` — Low — timestamps sem requisito ou consumidor
 
 - **Localização:** `02-technical-design.md:115-120`, `04-test-strategy.md:47,58`, `05-execution-plan.md:98`.
-- **Evidência:** a arquitetura fornecida explicitamente exige `CreatedAtUtc`/`UpdatedAtUtc`; não os expor nos DTOs não autoriza removê-los do modelo persistido.
-- **Impacto:** design, schema e implementação divergiriam de uma decisão aprovada.
-- **Correção mínima:** manter os campos internos, sem ampliar o contrato HTTP, e provar suas colunas na migration inicial.
-- **Critérios:** `PREM-DATA-02`, `DOC-TRACE-01`.
-- **Decisão:** registro corrigido na auditoria final de M1; entidade, migration, teste, plano e matriz preservam os timestamps aprovados.
+- **Evidência:** `CreatedAtUtc`/`UpdatedAtUtc` não eram retornados nem ligados a critério, mas adicionavam colunas, relógio e asserts.
+- **Impacto:** estado e manutenção fora do escopo funcional.
+- **Correção mínima:** remover os campos e suas provas planejadas.
+- **Critérios:** `PREM-ARCH-03`, `DOC-TRACE-01`.
+- **Decisão:** corrigido no modelo, testes, plano e matriz; nenhuma complexidade substituta foi adicionada. A decisão foi supersedida em M1 por `REV-M1-010`, que registra sua nova proveniência como decisão interna do ADR-0002 sem reescrever este histórico.
 
 #### `REV-DESIGN-017` — Low — lock .NET não estava operacionalmente fechado
 
@@ -245,9 +245,269 @@ Foram confirmados 0 achados High, 15 Medium e 6 Low.
 - Nenhum comportamento da aplicação pode ser executado nesta etapa porque o repositório continua sem código; builds, testes funcionais e Docker permanecem gates de M1–M6.
 - Versões e tags exatas envelhecem e devem ser reconfirmadas em M1, como já exige o design.
 
-## 2026-08-25 — Auditoria final de M1
+## 2026-08-25 — Revisão independente de M1
 
-- **Escopo:** código, testes, Docker e atualizações SDD do walking skeleton, sem revisar funcionalidades de M2–M6 como implementadas.
-- **Achado bloqueante:** `User` e a migration omitiam `CreatedAtUtc`/`UpdatedAtUtc`, e o design havia removido esses campos contrariando a arquitetura explicitamente aprovada.
-- **Correção:** premissa e design restaurados antes do código; entidade, configuração, migration, snapshot e teste SQLite atualizados. O teste também exige ausência de mudanças pendentes entre modelo e snapshot.
-- **Resultado:** nenhum outro bloqueador M1; não há endpoint de negócio, segredo/tag flutuante ou porta pública adicional. Restore/build/test, frontend, OpenAPI, Compose, smokes same-origin e teardown foram aprovados antes do commit.
+- **Etapa revisada:** M1 — walking skeleton executável.
+- **Commit revisado:** `8db5592f2cb925004edb7cceb368995bcb2f2de4` (`b7de2fc716e2c4054f1d781faa4dda3fc58a66a3` como base).
+- **Escopo:** diff integral de 65 arquivos; SDD/ADRs; solution, API, EF Core/migration, integrações, Angular, locks, Dockerfiles, Nginx, Compose, scripts e histórico recente. Funcionalidades M2–M6 não foram tratadas como implementadas.
+- **Critérios examinados:** gates M1 `TECH-*`, `BE-DB-001`, `BE-HEALTH-001`, `BE-OAS-001`, `SPEC-OAS-001`–`005`, `OPS-COMPOSE-001`, `OPS-ORIGIN-001`, `OPS-TAGS-001`, `OPS-SECRET-001`, `API-ERROR-01`, `SEC-SECRET-01`, `DOC-SDD-01`, `DOC-TRACE-01`, `TEST-FLOW-01` e premissas relacionadas.
+
+As localizações de `REV-M1-001`–`019` referem-se ao commit revisado, antes das correções; `REV-M1-020`–`024` foram encontrados na segunda revisão do diff corretivo. No total, foram confirmados 1 achado High, 12 Medium e 11 Low.
+
+### Achados confirmados e decisões
+
+#### `REV-M1-001` — High — suíte backend retornava sucesso sem executar testes
+
+- **Localização:** `tests/backend/UserProfile.Api.IntegrationTests/UserProfile.Api.IntegrationTests.csproj:1-22`.
+- **Evidência:** o projeto não declarava `IsTestProject`; no SDK exato, `dotnet test UserProfile.sln --no-restore --no-build --verbosity normal` saía com código zero após apenas o target VSTest da solution, sem assembly, descoberta, contagem ou resultado de teste.
+- **Impacto:** os 6/6 testes registrados como evidência de M1 nunca haviam sido executados, invalidando o gate e a Definition of Done.
+- **Correção mínima:** marcar explicitamente o projeto, repetir build/test e exigir no SDD evidência de descoberta/contagem.
+- **Critérios:** `TECH-BACKEND-001`, `NFR-TEST-01`, gates M1 e Definition of Done.
+- **Decisão:** corrigido com `IsTestProject=true`; o mesmo comando passou a descobrir um assembly e aprovar 6/6 testes.
+
+#### `REV-M1-002` — Medium — validador OpenAPI não implementava os checks declarados
+
+- **Localização:** `scripts/validate-openapi.rb:9-39`, `04-test-strategy.md:106-110,133`.
+- **Evidência:** o script original verificava versão, paths/IDs, security e referências, mas não request/response schemas, `additionalProperties`, `userId`, regras de campos, status, ProblemDetails, challenge Bearer, login `400`, `503` nem campos sensíveis.
+- **Impacto:** regressões de segurança e contrato passavam embora `SPEC-OAS-003`–`005` estivessem marcados como aprovados.
+- **Correção mínima:** validar diretamente todas as invariantes nomeadas e provar o caminho negativo com contrato mutado.
+- **Critérios:** `SPEC-OAS-001`–`005`, `SEC-AUTH-01`, `API-ERROR-01`, `DOC-TRACE-01`.
+- **Decisão:** corrigido no script; a mutação temporária de `getHealth` foi rejeitada. Um linter externo adicional foi rejeitado por não acrescentar uma invariante concreta e introduzir dependência nova nesta etapa.
+
+#### `REV-M1-003` — Medium — OpenAPI runtime de health divergia do contrato normativo
+
+- **Localização:** `HealthController.cs:10-13`, `HealthResponse.cs:3`, `HealthTests.cs:143-156`, `03-api-contract.yaml:280-312,456-466`.
+- **Evidência:** o Swagger gerado usava tag `Health`, omitia `operationId`, publicava `status` como string livre e trazia info diferente; o teste verificava apenas `/health` e o campo obrigatório.
+- **Impacto:** documentação/clientes runtime divergiam do contrato enquanto M1 aparecia concluído.
+- **Correção mínima:** declarar metadata/info/enum normativos e ampliar o teste do documento exposto.
+- **Critérios:** `BE-OAS-001`, `SPEC-OAS-002`, `SPEC-OAS-004`, `DOC-TRACE-01`.
+- **Decisão:** corrigido com nome/tag explícitos, `HealthState` serializado como string, info Swagger e asserts de info, respostas e enum.
+
+#### `REV-M1-004` — Medium — teste do schema não comprovava os sete campos declarados
+
+- **Localização:** `HealthTests.cs:35-75`, `06-traceability.md:65`.
+- **Evidência:** o teste consultava apenas timestamps e índice; `HasPendingModelChanges` compara modelo e snapshot, não o schema realmente aplicado.
+- **Impacto:** migration sem campos essenciais ainda poderia passar enquanto `PREM-DATA-02` constava como comprovado.
+- **Correção mínima:** consultar `pragma_table_info('Users')` e exigir conjunto exato, tipos, nulabilidade e chave primária.
+- **Critérios:** `BE-DB-001`, `PREM-DATA-02`, `DOC-TRACE-01`.
+- **Decisão:** corrigido com verificação das sete colunas reais e manutenção da prova do índice único.
+
+#### `REV-M1-005` — Medium — timeout de health não representava o runtime do Compose
+
+- **Localização:** `compose.yaml:12`, `DatabaseHealthCheck.cs:17-28`, `ApiFactory.cs:27-28`.
+- **Evidência:** o Compose omitia `Default Timeout`, cujo padrão é 30 segundos; o teste forçava um segundo. A resposta podia exceder os limites do Nginx apesar do teste passar, conforme a [documentação do Microsoft.Data.Sqlite](https://learn.microsoft.com/en-us/dotnet/standard/data/sqlite/connection-strings).
+- **Impacto:** locks SQLite poderiam ocupar requests além do limite operacional e a prova não reproduzia a configuração entregue.
+- **Correção mínima:** limitar somente o comando do health e manter o teste com connection default de 30 segundos, afirmando duração observável.
+- **Critérios:** `BE-HEALTH-001`, `OPS-DOCKER-01`, `API-ERROR-01`.
+- **Decisão:** corrigido com `CommandTimeout=1`; lock real produziu `503 ProblemDetails` em aproximadamente 1,5 segundo e abaixo de cinco segundos.
+
+#### `REV-M1-006` — Medium — contexto Docker podia incluir segredos locais ignorados pelo Git
+
+- **Localização:** `.dockerignore:4-6`, `.gitignore:34-43`, Dockerfile backend `COPY` do diretório da API.
+- **Evidência:** `appsettings.*.local.json`, `secrets.json`, `*.pfx`, `*.p12` e `*.key` eram ignorados pelo Git, mas não pelo contexto Docker.
+- **Impacto:** credenciais locais poderiam entrar em cache/camada e tornar builds dependentes da máquina.
+- **Correção mínima:** replicar os padrões sensíveis nos `.dockerignore`, sem alterar a estrutura dos Dockerfiles.
+- **Critérios:** `SEC-SECRET-01`, `NFR-CONFIG-01`, `OPS-DOCKER-02`.
+- **Decisão:** corrigido nos contextos raiz/backend e frontend; nenhuma credencial real foi encontrada.
+
+#### `REV-M1-007` — Medium — gates Compose/Nginx não tinham smoke versionado
+
+- **Localização:** `04-test-strategy.md:121-125`, `05-execution-plan.md:47,172-174`, diretório `scripts/`.
+- **Evidência:** origem única, porta interna, tags, `404` e `502/504` → `503` apareciam somente em narrativa de comandos manuais.
+- **Impacto:** regressões operacionais não quebrariam uma verificação repetível, contrariando o gate M1.
+- **Correção mínima:** um script único com config/build/wait, smokes HTTP, inspeções e teardown sem `-v`.
+- **Critérios:** `OPS-COMPOSE-001`, `OPS-ORIGIN-001`, `OPS-TAGS-001`, `API-ERROR-01`.
+- **Decisão:** corrigido com `scripts/validate-m1-compose.sh`; o script final passou integralmente.
+
+#### `REV-M1-008` — Medium — registro anterior da auditoria M1 era incompleto
+
+- **Localização:** `review-log.md:248-253`.
+- **Evidência:** quatro bullets omitiam commit/base, arquivos/critérios, IDs/severidades, evidências, decisões individualizadas, comandos/resultados e riscos.
+- **Impacto:** a aprovação não era reproduzível nem auditável a partir do artefato obrigatório.
+- **Correção mínima:** substituir a seção por este registro completo.
+- **Critérios:** `DOC-SDD-01`, `DOC-TRACE-01`, `AI-SDD-01`, Definition of Done.
+- **Decisão:** corrigido nesta seção.
+
+#### `REV-M1-009` — Medium — histórico da revisão de design foi reescrito
+
+- **Localização:** `review-log.md:13,152-159`, comparado ao mesmo arquivo em `b7de2fc`.
+- **Evidência:** `REV-DESIGN-016` originalmente recomendava remover timestamps sem consumidor; M1 reutilizou o ID para afirmar o oposto e dizer que a arquitetura os exigia.
+- **Impacto:** o audit trail deixou de registrar a decisão realmente tomada e ocultou sua posterior reversão.
+- **Correção mínima:** restaurar o texto original e registrar a supersessão em novo achado M1.
+- **Critérios:** `AI-SDD-01`, `DOC-TRACE-01`.
+- **Decisão:** corrigido; `REV-DESIGN-016` foi restaurado e aponta para `REV-M1-010` como decisão posterior.
+
+#### `REV-M1-010` — Medium — timestamps eram tratados como premissa aprovada sem proveniência nem teste de ciclo de vida
+
+- **Localização:** `00-challenge.md:67-92`, `01-requirements.md:155-165`, `02-technical-design.md:119-127`, `04-test-strategy.md:47,59,65,70`, `06-traceability.md:65`.
+- **Evidência:** o challenge não exige timestamps; eles surgiram no design de `b184432`, foram removidos em `b7de2fc` e retornaram em M1 como arquitetura “aprovada”. Os testes planejados não afirmavam inicialização, preservação ou avanço.
+- **Impacto:** escopo interno era apresentado como requisito externo e implementações futuras poderiam persistir valores incorretos com gates verdes.
+- **Correção mínima:** reclassificar como decisão interna, formalizá-la no ADR-0002 e planejar asserts de ciclo de vida em M2/M4.
+- **Critérios:** `PREM-DATA-02`, `BE-REG-001`, `BE-PROF-003`, `BE-PASS-003`, `DOC-TRACE-01`.
+- **Decisão:** corrigido no requisito, design, ADR, estratégia e matriz; a parcela M1 agora é explicitamente parcial.
+
+#### `REV-M1-011` — Medium — `TEST-FLOW-01` recebia progresso sem cobrir fluxo funcional
+
+- **Localização:** `01-requirements.md:150`, `06-traceability.md:49,85`.
+- **Evidência:** os testes M1 cobriam infraestrutura/shell, enquanto o critério exige cadastro, login, proteção, dashboard, perfil e senha.
+- **Impacto:** a matriz sugeria evidência funcional que só poderá existir em M2–M4.
+- **Correção mínima:** manter `TEST-FLOW-01` pendente e separar os gates infra comprovados.
+- **Critérios:** `NFR-TEST-01`, `TEST-FLOW-01`, `DOC-TRACE-01`.
+- **Decisão:** corrigido na matriz.
+
+#### `REV-M1-012` — Medium — testes concluídos não estavam ligados a arquivos/métodos/comandos
+
+- **Localização:** `06-traceability.md:40-85`, testes backend/frontend e scripts.
+- **Evidência:** a matriz mantinha somente “Teste planejado”; nenhum vínculo permitia conferir qual dos 6+2 testes provava cada gate M1.
+- **Impacto:** contagens não ofereciam rastreabilidade executável entre critério, implementação e evidência.
+- **Correção mínima:** mapear cada ID M1 para método/arquivo/comando estável sem poluir produção com comentários.
+- **Critérios:** `DOC-TRACE-01`, `NFR-TRACE-01`.
+- **Decisão:** corrigido pela tabela “Evidência executável de M1” em `06-traceability.md`.
+
+#### `REV-M1-013` — Low — design indicava duas localizações para E2E
+
+- **Localização:** `02-technical-design.md:89-95`, `tests/e2e/README.md`.
+- **Evidência:** a árvore/checkout usam `tests/e2e`, mas o texto dizia que as jornadas ficariam no workspace Angular.
+- **Impacto:** M5 poderia duplicar configuração/dependências Playwright.
+- **Correção mínima:** escolher `tests/e2e` e alinhar o texto.
+- **Critérios:** `PREM-ARCH-03`, `DOC-TRACE-01`.
+- **Decisão:** corrigido por ser trivial e documental.
+
+#### `REV-M1-014` — Low — “restart saudável” não tinha evidência
+
+- **Localização:** `06-traceability.md:44`, `05-execution-plan.md:172-177`.
+- **Evidência:** havia `up`/`down`, mas nenhum ciclo de recriação no mesmo volume registrado.
+- **Impacto:** `OPS-DOCKER-03` ficava superestimado.
+- **Correção mínima:** remover a alegação e manter persistência/recriação pendente.
+- **Critérios:** `OPS-DOCKER-03`, `DOC-TRACE-01`.
+- **Decisão:** corrigido por ser trivial; o volume é apenas configurado/preservado em M1.
+
+#### `REV-M1-015` — Low — allowlist de scripts npm não era fechada
+
+- **Localização:** `package.json:14-18`, lockfile e Dockerfile frontend.
+- **Evidência:** `strict-allow-scripts` não está habilitado e um install script transitivo permanece fora da lista.
+- **Impacto:** a configuração aparenta bloquear scripts não revisados, mas o npm apenas avisa.
+- **Correção mínima:** decidir cada script e validar `strict-allow-scripts` nas plataformas suportadas.
+- **Critérios:** `TECH-FRONTEND-01`, `NFR-SEC-01`.
+- **Decisão:** adiado para M5; ativar enforcement sem testar dependências opcionais por plataforma não é mudança trivial de M1.
+
+#### `REV-M1-016` — Low — fallback SPA responde HTML para asset inexistente
+
+- **Localização:** `src/frontend/user-profile-web/nginx.conf:38-40`, ADR-0004.
+- **Evidência:** `try_files $uri $uri/ /index.html` também transforma `/arquivo-inexistente.js` em `200 text/html`.
+- **Impacto:** assets/chunks ausentes geram erro de MIME em vez de `404` operacional.
+- **Correção mínima:** separar paths com extensão/ativos e adicionar smoke específico.
+- **Critérios:** `OPS-ORIGIN-001`, ADR-0004.
+- **Decisão:** adiado para M5; altera roteamento de deploy e requer teste de assets, portanto não é correção trivial do skeleton.
+
+#### `REV-M1-017` — Low — collector de cobertura ainda não tem consumidor
+
+- **Localização:** csproj de integração e lock NuGet.
+- **Evidência:** `coverlet.collector` não é usado por comando/gate atual.
+- **Impacto:** pequena superfície de dependência sem benefício imediato.
+- **Correção mínima:** remover ou usá-lo quando M5 definir cobertura/CI.
+- **Critérios:** `TECH-BACKEND-01`, `PREM-ARCH-03`.
+- **Decisão:** adiado para M5; remover agora exige regenerar locks e anteciparia a decisão de cobertura.
+
+#### `REV-M1-018` — Low — assert OpenAPI dependia da ordem das responses
+
+- **Localização:** `HealthTests.cs:179-181` após a correção Medium do teste.
+- **Evidência:** propriedades JSON/OpenAPI não têm ordem semântica, mas o assert comparava a enumeração diretamente.
+- **Impacto:** versão futura do gerador poderia causar falso negativo sem drift de contrato.
+- **Correção mínima:** ordenar as chaves antes da comparação.
+- **Critérios:** `BE-OAS-001`, `DOC-TRACE-01`.
+- **Decisão:** corrigido por ser trivial; suíte completa repetida.
+
+#### `REV-M1-019` — Low — falha de migration era identificada por texto incidental
+
+- **Localização:** `StartupTests.cs:25-31`.
+- **Evidência:** o teste buscava a substring inglesa `already exists` em uma exceção genérica.
+- **Impacto:** mensagem/wrapping do provider poderia causar falso negativo ou aceitar a falha errada.
+- **Correção mínima:** afirmar `SqliteException` na causa raiz e seu código SQLite.
+- **Critérios:** `BE-HEALTH-001`, `OPS-DOCKER-01`.
+- **Decisão:** corrigido por ser trivial; o teste agora exige `SqliteErrorCode=1`.
+
+#### `REV-M1-020` — Medium — gate Compose exato não pôde ser revalidado após as correções
+
+- **Localização:** `04-test-strategy.md`, `05-execution-plan.md`, `06-traceability.md`, `README.md` e ambiente Docker da revisão.
+- **Evidência:** tanto o volume padrão preexistente quanto um volume Docker padrão novo falharam antes da migration com `SQLite Error 10/13` (`disk I/O error`/`database or disk is full`). O script final passou quando o mesmo volume nomeado foi apoiado em diretório temporário do host, mas isso não é a configuração exata exigida por `OPS-COMPOSE-001`.
+- **Impacto:** marcar a revalidação independente como integralmente concluída criaria evidência superior ao que o ambiente permitiu observar.
+- **Correção mínima:** liberar espaço na VM Docker e repetir `scripts/validate-m1-compose.sh` sem `COMPOSE_FILE`/override.
+- **Critérios:** `OPS-COMPOSE-001`, `OPS-DOCKER-01`, `DOC-TRACE-01`.
+- **Decisão:** bloqueado por estado externo; plano, estratégia, matriz, índice e riscos foram qualificados como parciais. Nenhum volume ou recurso de outro projeto foi removido para forçar o gate.
+
+#### `REV-M1-021` — Low — tabela executável omitia a sexta integração backend
+
+- **Localização:** tabela “Evidência executável de M1” em `06-traceability.md`.
+- **Evidência:** `BE-HEALTH-001` listava os dois métodos de health, mas não `StartupFailsWhenInitialMigrationCannotApply`.
+- **Impacto:** a cadeia da falha de migration não era conferível embora a suíte declarasse seis testes.
+- **Correção mínima:** incluir o método de `StartupTests.cs` na mesma linha.
+- **Critérios:** `BE-HEALTH-001`, `OPS-DOCKER-01`, `DOC-TRACE-01`.
+- **Decisão:** corrigido por ser trivial.
+
+#### `REV-M1-022` — Low — parcela M1 de `OPS-SECRET-001` não tinha comando/escopo
+
+- **Localização:** `06-traceability.md`, `review-log.md` e `04-test-strategy.md`.
+- **Evidência:** havia alegação de pesquisa de segredos, mas a tabela executável não distinguia padrões/repositório/contexto da auditoria de logs futura.
+- **Impacto:** a evidência de ausência de segredo não era reproduzível pelo SDD.
+- **Correção mínima:** registrar comando, famílias de padrões, inspeção dos Docker ignores e o limite M5 para logs funcionais.
+- **Critérios:** `OPS-SECRET-001`, `SEC-SECRET-01`, `SEC-LOG-01`, `DOC-TRACE-01`.
+- **Decisão:** corrigido por ser documental e trivial.
+
+#### `REV-M1-023` — Low — ADR-0002 não referenciava a premissa de timestamps
+
+- **Localização:** `adr/0002-sqlite-persistence.md`, seção Rastreabilidade.
+- **Evidência:** o ADR formalizava o ciclo de vida, mas omitia `PREM-DATA-02`.
+- **Impacto:** a decisão indicada como fonte pela matriz não era autocontida.
+- **Correção mínima:** adicionar a premissa à seção de rastreabilidade.
+- **Critérios:** `PREM-DATA-02`, `DOC-SDD-01`, `DOC-TRACE-01`.
+- **Decisão:** corrigido por ser trivial.
+
+#### `REV-M1-024` — Low — premissa de topologia continuava ligada a `TEST-FLOW-01`
+
+- **Localização:** linha `PREM-ARCH-02` de `06-traceability.md`.
+- **Evidência:** um executável/um projeto de integração era ligado ao critério de fluxos funcionais, apesar de esses fluxos permanecerem pendentes.
+- **Impacto:** mantinha uma associação semântica falsa após a correção de `REV-M1-011`.
+- **Correção mínima:** ligar a topologia a `TECH-BACKEND-01` e reservar `TEST-FLOW-01` aos fluxos.
+- **Critérios:** `TECH-BACKEND-01`, `TEST-FLOW-01`, `DOC-TRACE-01`.
+- **Decisão:** corrigido por ser trivial.
+
+Consolidação: o High e 11 Medium foram corrigidos; `REV-M1-020` é o único Medium bloqueado, por estado externo explícito. Oito Low triviais foram corrigidos e `REV-M1-015`–`017` permanecem adiados.
+
+### Candidatos rejeitados e riscos aceitos
+
+- Nenhuma falha JWT/`sub`, senha ou autorização foi classificada: esses fluxos não existem em M1 e permanecem obrigatórios em M3–M4.
+- Health transitivo, migrations no startup, Nginx same-origin e builds multi-stage foram mantidos porque atendem gates explícitos; não foi adicionada abstração nova.
+- `409` por email duplicado continua decisão consciente dos critérios de cadastro, não defeito introduzido pelo skeleton.
+
+### Comandos e resultados
+
+| Comando/check | Resultado |
+|---|---|
+| `pwd`, `git status --short --branch`, `git log --oneline -5` | Raiz correta; `main` inicialmente limpo; M1/commit/base identificados. |
+| `git diff b7de2fc 8db5592`, leitura integral de SDD/ADRs/código/testes/locks/configuração | Diff integral de 65 arquivos examinado por eixos backend, frontend/operação e rastreabilidade. |
+| `git diff --check b7de2fc 8db5592` | Aprovado no commit revisado. |
+| Teste backend original no SDK `10.0.400` | Exit 0, mas nenhum assembly/teste descoberto; confirmou `REV-M1-001`. |
+| `dotnet restore ... --locked-mode`, `dotnet build ... --no-restore`, `dotnet test ... --no-restore --no-build --verbosity normal` em `mcr.microsoft.com/dotnet/sdk:10.0.400-noble` | Restore dos dois projetos aprovado; build com 0 warnings/0 erros; 1 arquivo descoberto; 6/6 testes aprovados. |
+| Frontend em cópia temporária com `node:24.19.0-bookworm-slim`: `npm ci`, lint, test e build | Node `24.19.0`/npm `11.17.0`; 0 vulnerabilidades; lint aprovado; 2/2 testes; bundle 265,02 kB bruto. |
+| `npm audit --package-lock-only --audit-level=low` | 0 vulnerabilidades. |
+| `ruby scripts/validate-openapi.rb docs/sdd/03-api-contract.yaml` | `SPEC-OAS-001`–`005`, 6 operações e 42 referências locais aprovados. |
+| Contrato copiado para `/private/tmp` com `operationId` mutado | Rejeitado com `Unexpected operationId for GET /health`, como esperado. |
+| `sh -n scripts/validate-m1-compose.sh`, `docker compose config --quiet` | Sintaxe e Compose base aprovados. |
+| `scripts/validate-m1-compose.sh` com Compose/volume padrão | O volume preexistente falhou com SQLite `disk I/O error`; projeto isolado com volume padrão novo falhou com `database or disk is full`. Gate exato bloqueado pelo ambiente. |
+| `env COMPOSE_PROJECT_NAME=user-profile-m1-review-verified COMPOSE_FILE=compose.yaml:/private/tmp/user-profile-m1-review-verified.override.yaml M1_REVIEW_DATA_DIR=/private/tmp/user-profile-m1-review-verified-data.fbw7w5 scripts/validate-m1-compose.sh` | Exit 0: script final aprovou tags/imagens, API interna/não-root, SPA/fallback, health, Swagger, `404`, Nginx `502/504` e `503` real; somente o backing do volume nomeado foi direcionado ao host e o teardown o preservou. |
+| Pesquisa de segredos, locks/URLs/integridade e `npm audit` | Nenhum segredo real, registry privado ou vulnerabilidade conhecida encontrado. |
+| `git diff --check`, revisão integral do diff corretivo e links/IDs SDD | Aprovados na validação final registrada no commit de revisão. |
+
+### Limitações ambientais e cleanup
+
+- A VM Docker compartilhada ficou sem espaço: tanto o volume normal preexistente quanto um volume normal novo falharam com SQLite `disk I/O error`/`database or disk is full`. O `compose.yaml` base foi validado separadamente e o smoke final usou o mesmo volume nomeado em projeto isolado, com dados apoiados em diretório temporário do host; toda a superfície runtime passou.
+- Foram removidos somente volumes/bancos dos projetos temporários `user-profile-m1-review*`, uma imagem dangling sem tag/contêiner deste repositório e um cache reclaimable antigo de `dotnet publish` identificado por ID. O volume principal e recursos de outros projetos não foram alterados.
+- A cópia frontend, overrides e dados temporários foram removidos após os testes.
+
+### Riscos restantes
+
+- `REV-M1-015`–`017` permanecem Low e adiados para M5 com justificativa; não bloqueiam a implementação M1.
+- A execução com volume Docker padrão deve ser repetida após liberar espaço na VM; o erro observado é ambiental, mas o volume principal local pode exigir manutenção pelo responsável.
+- Ciclo de vida de timestamps será provado nos fluxos de M2/M4; persistência após recriação permanece pendente até haver usuário em M2/M6.
+- Cadastro, autenticação/JWT, dashboard, perfil, senha, E2E, CI e README final continuam corretamente pendentes em M2–M6.

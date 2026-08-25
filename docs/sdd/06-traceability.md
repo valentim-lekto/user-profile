@@ -41,12 +41,12 @@
 |---|---|---|---|---|---|
 | `NFR-TECH-01` | `TECH-BACKEND-01` | .NET 10, Controllers, EF Core SQLite 10, JWT e lock NuGet; ADR-0001 | M1–M3 | `TECH-BACKEND-001`, build e suíte `BE-*` | Parcial M1 comprovada: SDK/runtime/EF/Controllers/locks/build aprovados; JWT permanece em M3. |
 | `NFR-TECH-02` | `TECH-FRONTEND-01` | Angular standalone/strict, Material, Reactive Forms, signals e lock npm | M1–M4 | `TECH-FRONTEND-001`, build e suíte `FE-*` | Parcial M1 comprovada: standalone/strict/Material/forms package, lock, lint, 2 testes e build aprovados; telas/signals pendentes. |
-| `NFR-DATA-01` | `OPS-DOCKER-01`, `OPS-DOCKER-03` | SQLite, migrations e volume; ADR-0002 | M1, M6 | `BE-DB-001`, `OPS-PERSIST-001` | Parcial M1 comprovada: migration/índice/volume e restart saudável; persistência de usuário será validada após M2 e em M6. |
-| `NFR-OPS-01` | `OPS-DOCKER-01` | `compose.yaml`, Nginx com `503 ProblemDetails`, API e volume; `/health` e `/swagger` | M1, M6 | `OPS-COMPOSE-001`, `OPS-ORIGIN-001` | M1 concluído: Compose saudável, mesma origem, health/Swagger e `503` real comprovados; revalidação final em M6. |
+| `NFR-DATA-01` | `OPS-DOCKER-01`, `OPS-DOCKER-03` | SQLite, migrations e volume; ADR-0002 | M1, M6 | `BE-DB-001`, `OPS-PERSIST-001` | Parcial M1 comprovada: schema/migration/índice existem e o volume é configurado e preservado no teardown; persistência após recriação permanece pendente até haver usuário em M2 e será revalidada em M6. |
+| `NFR-OPS-01` | `OPS-DOCKER-01` | `compose.yaml`, Nginx com `503 ProblemDetails`, API e volume; `/health` e `/swagger` | M1, M6 | `OPS-COMPOSE-001`, `OPS-ORIGIN-001` | Parcial M1: configuração base e runtime isolado comprovaram mesma origem, health/Swagger e `503`; a revalidação independente com volume Docker padrão está bloqueada até liberar espaço na VM, além da revalidação final de M6. |
 | `NFR-OPS-02` | `OPS-DOCKER-02` | Origem única, builds multi-stage e tags completas; ADR-0004 | M1, M5, M6 | `OPS-COMPOSE-001`, `OPS-TAGS-001`, `DOC-RUN-001` | Parcial M1 comprovada: multi-stage, tags exatas e somente `web:8080`; CI/validação final pendentes. |
 | `NFR-CONFIG-01` | `SEC-SECRET-01`, `OPS-DOCKER-01` | Base e `.env.example` opcional em M1; chave validada em M3; auditoria em M5 | M1, M3, M5 | `BE-CONFIG-001`, `OPS-SECRET-001`, revisão de configuração | Parcial M1 comprovada: Compose sem `.env` e exemplo sem valor utilizável; configuração JWT pendente em M3. |
 | `NFR-SEC-01` | `SEC-AUTH-01`, `SEC-SESSION-01`, `SEC-SECRET-01`, `SEC-LOG-01` | ADR-0003, DTOs, logging, allowlist do interceptor e `sessionStorage` | M2–M5 | `BE-AUTH-*`, `BE-CONFIG-001`, `BE-PASS-004`, `BE-DTO-001`, `FE-INT-001`, `OPS-SECRET-001` | Parcial de base M1: logging JSON e nenhum segredo versionado; autenticação/sessão pendentes. |
-| `NFR-TEST-01` | `TEST-FLOW-01` | Estratégia com integração principal, frontend, E2E e Compose | M1–M6 | Gates de `04-test-strategy.md` | Parcial M1 comprovada: 6 integrações, 2 testes frontend, contrato e Docker aprovados; catálogos futuros pendentes. |
+| `NFR-TEST-01` | `TEST-FLOW-01` | Estratégia com integração principal, frontend, E2E e Compose | M1–M6 | Gates de `04-test-strategy.md` | Infraestrutura e gates operacionais de M1 comprovados, exceto a revalidação com volume Docker padrão bloqueada pelo ambiente; `TEST-FLOW-01` permanece pendente porque cadastro, login, proteção, dashboard, perfil e senha pertencem a M2–M4. |
 | `NFR-DOC-01` | `DOC-RUN-01` | README raiz futuro; índice SDD atual | M6 | `DOC-RUN-001` | Pendente de implementação/README. |
 | `NFR-SDD-01` | `DOC-SDD-01`, `DOC-TRACE-01` | `00`–`06`, OpenAPI, plano, testes e ADRs | M1–M6 | `SPEC-TRACE-001`, revisão do índice | Parcial: baseline e evidências M1 atualizadas; continuidade obrigatória. |
 | `NFR-SDD-02` | `DOC-SDD-01` | ADR-0001 a ADR-0004 | Design e contínuo | Revisão de decisões relevantes | Atendido nesta etapa; revisão contínua. |
@@ -59,10 +59,10 @@
 | Requisito/premissa | Critério de aceite | Design / endpoint / tela | Milestone | Teste planejado | Estado |
 |---|---|---|---|---|---|
 | `PREM-ARCH-01` | `DOC-SDD-01` | Monólito modular; ADR-0001 | M1 | Inspeção da solution e build | M1 comprovado: uma API modular direta e build aprovado. |
-| `PREM-ARCH-02` | `TEST-FLOW-01` | Um `UserProfile.Api` e um `tests/backend/UserProfile.Api.IntegrationTests` | M1 | Inspeção da solution | M1 comprovado: exatamente um executável e um projeto de integração na solution. |
+| `PREM-ARCH-02` | `TECH-BACKEND-01` | Um `UserProfile.Api` e um `tests/backend/UserProfile.Api.IntegrationTests` | M1 | Inspeção da solution | M1 comprovado: exatamente um executável e um projeto de integração na solution. |
 | `PREM-ARCH-03` | `DOC-TRACE-01` | Features `Auth`/`Profile`; sem patterns proibidos | M1–M6 | Revisão de diff por milestone | Parcial M1: apenas feature operacional criada, sem abstrações proibidas; Auth/Profile seguem seus milestones. |
 | `PREM-DATA-01` | `OPS-DOCKER-01`, `OPS-DOCKER-03` | EF Core SQLite, migrations e volume; ADR-0002 | M1, M6 | `BE-DB-001`, `OPS-PERSIST-001` | Parcial M1 comprovada: EF/SQLite/migration/volume; jornada de persistência de usuário pendente. |
-| `PREM-DATA-02` | `DOC-TRACE-01` | Entidade/migration `User`, timestamps e índice `UX_Users_NormalizedEmail` | M1 | `BE-DB-001` | M1 comprovado: migration e teste do schema validam os sete campos e o índice único aprovados. |
+| `PREM-DATA-02` | `DOC-TRACE-01` | Decisão interna do ADR-0002: entidade/migration `User`, timestamps e índice `UX_Users_NormalizedEmail` | M1–M4 | `BE-DB-001`, `BE-REG-001`, `BE-PROF-003`, `BE-PASS-003` | Parcial M1 comprovada: migration e teste validam os sete campos e o índice único. Inicialização, preservação e avanço dos timestamps serão comprovados nos fluxos M2/M4; não são requisito original do challenge. |
 | `PREM-FE-01` | `UI-STATE-01` | Angular standalone/strict, Reactive Forms, Material | M1–M4 | Build e suíte `FE-*` | Parcial M1 comprovada: shell standalone strict com Material e forms disponível; formulários funcionais pendentes. |
 | `PREM-LANG-01` | `DOC-SDD-01` | Código/IDs em inglês; documentação em português | Todos | Revisão de diff | Design concluído; verificação contínua. |
 | `PREM-EMAIL-01` | `AC-REG-05`, `AC-PROF-04` | `Trim().ToUpperInvariant()` nos três fluxos | M2–M4 | `BE-REG-003/004`, `BE-PROF-005` | Design concluído; código/teste pendentes. |
@@ -76,10 +76,24 @@
 | `PREM-SEED-01` | `DOC-RUN-01` | Dados criados pelo cadastro e por factories de teste | M2, M5, M6 | `E2E-001`, `DOC-RUN-001` | Design concluído; código/teste pendentes. |
 | `PREM-OPS-01` | `OPS-DOCKER-01` | Compose inicia sem criar ou copiar `.env` | M1, M5–M6 | `OPS-COMPOSE-001`, `OPS-SECRET-001` | M1 comprovado sem `.env`; auditoria/validação final permanecem em M5–M6. |
 
+## Evidência executável de M1
+
+| ID | Arquivo, método ou comando | Parcela comprovada |
+|---|---|---|
+| `BE-DB-001` | `tests/backend/UserProfile.Api.IntegrationTests/HealthTests.cs` — `StartupCreatesMigrationHistoryAndUniqueNormalizedEmailIndex` | Migration aplicada, modelo sem drift, sete colunas reais e índice único. |
+| `BE-HEALTH-001` | `HealthTests.cs` — `HealthReturnsHealthyAfterStartupMigration` e `HealthReturnsProblemDetailsWhenDatabaseBecomesUnavailable`; `StartupTests.cs` — `StartupFailsWhenInitialMigrationCannotApply` | `200 Healthy`; lock real produz `503 ProblemDetails` em menos de cinco segundos com timeout do comando em um segundo; migration impossível falha no startup. |
+| `BE-OAS-001` | `HealthTests.cs` — `SwaggerContainsOnlyTheImplementedHealthOperationAndRequiredSchema` | Documento runtime contém somente `/health` com info, tag, `operationId`, respostas e enum normativos. |
+| `BE-ERR-001` (parcial M1) | `HealthTests.cs` — `UnknownApiRouteReturnsProblemDetails` | Rota `/api` inexistente retorna `404 application/problem+json`; matriz funcional completa permanece em M2–M5. |
+| `TECH-BACKEND-001` | `dotnet restore UserProfile.sln --locked-mode`; `dotnet build UserProfile.sln --no-restore`; `dotnet test UserProfile.sln --no-restore --no-build --verbosity normal` com SDK `10.0.400` | Restore locked, build sem warnings/erros e seis integrações efetivamente descobertas e aprovadas. |
+| `TECH-FRONTEND-001` | `src/frontend/user-profile-web/src/app/app.spec.ts`; `npm ci`; `npm run lint`; `npm test`; `npm run build` com Node `24.19.0` | Shell standalone criado/renderizado; lock, lint, dois testes e bundle de produção aprovados. |
+| `SPEC-OAS-001`–`005` | `ruby scripts/validate-openapi.rb docs/sdd/03-api-contract.yaml` e mutação negativa temporária | Seis operações, requests/responses, status, segurança, ProblemDetails, campos sensíveis e 42 referências locais; contrato inválido é rejeitado. |
+| `OPS-COMPOSE-001`, `OPS-ORIGIN-001`, `OPS-TAGS-001` | `scripts/validate-m1-compose.sh` | Configuração base aprovada; imagens/tags, portas/usuários, SPA, health, Swagger, `404`, falha de upstream em `503` e preservação do volume aprovados no runtime isolado com backing no host. A repetição com volume Docker padrão está bloqueada pelo espaço da VM. |
+| `OPS-SECRET-001` (parcial M1) | `rg --files-with-matches --hidden --glob '!.git/**'` para padrões AWS/GitHub/OpenAI/JWT/private-key e `JWT_SIGNING_KEY_BASE64` não vazio; inspeção dos `.dockerignore`; check de `.env.example` no smoke | Nenhum segredo real encontrado no repositório ou contexto; exemplo sem valor utilizável. Auditoria de logs com fluxos funcionais permanece em M5. |
+
 ## Cobertura após M1
 
 - Todos os 19 requisitos funcionais estão ligados a operação/tela, milestone e teste planejado.
 - Todos os 14 requisitos não funcionais possuem decisão/evidência planejada.
 - Todas as 17 premissas identificadas possuem ponto de verificação.
 - Todos os 40 critérios de aceite/qualidade de `01-requirements.md` aparecem nesta matriz.
-- A parcela M1 registra 6 integrações backend, 2 testes frontend, validação estrutural do OpenAPI e smokes Docker reais; linhas funcionais de M2–M4 continuam sem código.
+- A parcela M1 registra 6 integrações backend efetivamente descobertas, 2 testes frontend, validação normativa do OpenAPI e smoke Docker versionado aprovado no runtime isolado; a repetição com volume Docker padrão está bloqueada e as linhas funcionais de M2–M4 continuam sem código.

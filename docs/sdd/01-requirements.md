@@ -155,6 +155,8 @@ IDs publicados não devem ser renumerados nem reutilizados para outro comportame
 ## Premissas aprovadas
 
 Estas premissas refinam a solução, mas não são requisitos originais do desafio.
+`PREM-DATA-02` preserva o ID publicado, porém é uma decisão interna de design
+introduzida em `b184432` e agora formalizada no ADR-0002; não veio do enunciado.
 
 | ID | Premissa |
 |---|---|
@@ -162,7 +164,7 @@ Estas premissas refinam a solução, mas não são requisitos originais do desaf
 | `PREM-ARCH-02` | Haverá um único projeto executável de backend e um projeto de integração. |
 | `PREM-ARCH-03` | A organização será por funcionalidades, sem CQRS, MediatR, AutoMapper, generic repository ou múltiplas camadas artificiais. |
 | `PREM-DATA-01` | Será usado SQLite, com migrations do EF Core e volume Docker. |
-| `PREM-DATA-02` | `User` persistirá `Id`, `Name`, `Email`, `NormalizedEmail`, `PasswordHash`, `CreatedAtUtc` e `UpdatedAtUtc`; o índice de `NormalizedEmail` será único. |
+| `PREM-DATA-02` | Como decisão interna de design, `User` persistirá `Id`, `Name`, `Email`, `NormalizedEmail`, `PasswordHash`, `CreatedAtUtc` e `UpdatedAtUtc`; o índice de `NormalizedEmail` será único. |
 | `PREM-FE-01` | O Angular será standalone, em strict mode, com Reactive Forms e Angular Material. |
 | `PREM-LANG-01` | Identificadores e código serão escritos em inglês; README e documentos SDD, em português. |
 | `PREM-EMAIL-01` | A unicidade de email ignora espaços externos e diferenças de caixa. |

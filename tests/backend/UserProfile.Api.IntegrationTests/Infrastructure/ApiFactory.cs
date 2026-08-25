@@ -25,7 +25,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:Default"] =
-                    $"Data Source={DatabasePath};Default Timeout=1;Pooling=False"
+                    $"Data Source={DatabasePath};Default Timeout=30;Pooling=False"
             });
         });
     }

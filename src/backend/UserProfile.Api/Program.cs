@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Microsoft.OpenApi;
 using UserProfile.Api.Configuration;
 using UserProfile.Api.Data;
 
@@ -36,8 +37,14 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "User Profile API",
+        Version = "1.0.0"
+    });
     options.SupportNonNullableReferenceTypes();
     options.NonNullableReferenceTypesAsRequired();
+    options.UseInlineDefinitionsForEnums();
 });
 builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>("sqlite");

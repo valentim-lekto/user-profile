@@ -44,7 +44,7 @@ Validar os comportamentos e riscos principais com a menor suíte capaz de fornec
 
 | ID | Cenário | Evidência principal |
 |---|---|---|
-| `BE-REG-001` | Cadastro válido retorna `201`, persiste hash verificável e não retorna JWT. | `AC-REG-01` |
+| `BE-REG-001` | Cadastro válido retorna `201`, persiste hash verificável, inicializa `CreatedAtUtc`/`UpdatedAtUtc` com o mesmo instante UTC não default e não retorna JWT. | `AC-REG-01`, `PREM-DATA-02` |
 | `BE-REG-002` | Cada campo obrigatório ausente, nome curto, email inválido, senha curta, confirmação divergente ou propriedade JSON desconhecida retorna `400 ValidationProblemDetails`, e nenhum usuário é persistido. | `AC-REG-02`–`04`, `API-ERROR-01` |
 | `BE-REG-003` | Emails com espaços externos ou caixa diferente colidem em `409`. | `AC-REG-05`, `PREM-EMAIL-01` |
 | `BE-REG-004` | O índice único existe e uma violação concorrente é mapeada para `409`, sem segundo usuário. | `AC-REG-05` |
@@ -56,19 +56,20 @@ Validar os comportamentos e riscos principais com a menor suíte capaz de fornec
 | `BE-CONFIG-001` | Chave externa Base64 de ao menos 32 bytes permite startup; ausência fora de `Development`, Base64 inválido ou valor curto falha; ausência em `Development` usa fallback aleatório; nenhum cenário registra a chave. | `SEC-AUTH-01`, `SEC-SECRET-01` |
 | `BE-PROF-001` | GET retorna somente nome/email do usuário indicado pelo `sub`. | `AC-DASH-01`, `AC-PROF-01` |
 | `BE-PROF-002` | Dois usuários consultam apenas o próprio perfil; query/header arbitrários não influenciam o `sub` usado pelo GET. | `SEC-AUTH-01`, `AC-PROF-01` |
-| `BE-PROF-003` | PUT válido atualiza e persiste nome/email do usuário atual. | `AC-PROF-02`, `AC-PROF-05` |
+| `BE-PROF-003` | PUT válido atualiza e persiste nome/email do usuário atual, preserva `CreatedAtUtc` e avança `UpdatedAtUtc`. | `AC-PROF-02`, `AC-PROF-05`, `PREM-DATA-02` |
 | `BE-PROF-004` | PUT aplica validações equivalentes ao cadastro. | `AC-PROF-03` |
 | `BE-PROF-005` | Email de outro usuário retorna `409`; manter o próprio email não conflita. | `AC-PROF-04` |
 | `BE-PROF-006` | Dois usuários alteram somente o próprio perfil; `userId` extra no JSON retorna `400`, e query/header arbitrários não influenciam o `sub` usado pelo PUT. | `SEC-AUTH-01`, `AC-PROF-01`, `AC-PROF-02` |
 | `BE-PASS-001` | Senha atual incorreta retorna `400` e não muda o hash. | `AC-PASS-02` |
 | `BE-PASS-002` | Nova senha ausente/curta ou confirmação ausente/divergente retorna `400`; o hash não muda, a senha antiga continua autenticando e a nova não autentica. | `AC-PASS-03` |
-| `BE-PASS-003` | Alteração válida retorna `200`; senha antiga falha e nova senha autentica. | `AC-PASS-04` |
+| `BE-PASS-003` | Alteração válida retorna `200`, preserva `CreatedAtUtc`, avança `UpdatedAtUtc`; senha antiga falha e nova senha autentica. | `AC-PASS-04`, `PREM-DATA-02` |
 | `BE-PASS-004` | O endpoint de senha rejeita Bearer ausente/inválido; com dois usuários altera somente a senha indicada pelo `sub`, e rejeita `userId` extra no JSON. | `AC-DASH-02`, `SEC-AUTH-01` |
 | `BE-DTO-001` | Nenhuma resposta expõe senha, hash, email normalizado ou ID do usuário. | `AC-PROF-01`, `SEC-SECRET-01` |
 | `BE-ERR-001` | Erros previstos e gerados pelo pipeline, incluindo JSON malformado, media type não suportado, rota `/api` inexistente e método não permitido, usam `ProblemDetails`/`ValidationProblemDetails` e `application/problem+json`. | `API-ERROR-01` |
 | `BE-ERR-002` | Após startup saudável, cadastro contra SQLite bloqueado percorre o handler real e retorna `500` sem stack trace, SQL ou segredo. | `SEC-LOG-01`, `API-ERROR-01` |
-| `BE-DB-001` | Startup aplica migrations a banco vazio, cria o índice único, persiste `CreatedAtUtc`/`UpdatedAtUtc` obrigatórios e não deixa mudança pendente entre modelo e snapshot. | `OPS-DOCKER-01`, `PREM-DATA-02`, ADR-0002 |
-| `BE-HEALTH-001` | `/health` retorna `200` após startup; bloqueio exclusivo posterior torna a consulta real ao SQLite indisponível e retorna `503 application/problem+json` conforme o schema. Falha de migration é testada como falha de startup. | `OPS-DOCKER-01`, `API-ERROR-01` |
+| `BE-DB-001` | Startup aplica migrations a banco vazio; o schema real contém exatamente os sete campos definidos no ADR-0002 com tipo/nulabilidade/chave esperados, cria o índice único e não deixa mudança pendente entre modelo e snapshot. | `OPS-DOCKER-01`, `PREM-DATA-02`, ADR-0002 |
+| `BE-HEALTH-001` | `/health` retorna `200` após startup; com timeout padrão de 30 segundos na conexão da API, bloqueio exclusivo posterior retorna `503 application/problem+json` em menos de 5 segundos. Falha de migration é testada como falha de startup. | `OPS-DOCKER-01`, `API-ERROR-01` |
+| `BE-OAS-001` | O OpenAPI gerado em runtime contém somente `/health` em M1 e coincide com o contrato normativo para `operationId`, tag, respostas e enum `Healthy`. | `DOC-SDD-01`, `DOC-TRACE-01`, `SPEC-OAS-002`, `SPEC-OAS-004` |
 
 ## Catálogo planejado — frontend
 
@@ -110,7 +111,13 @@ As jornadas usam a origem publicada pelo Nginx e não chamam a API diretamente p
 | `SPEC-OAS-005` | Erros referenciam ProblemDetails; todo `401` de operação protegida declara `WWW-Authenticate` como obrigatório; login inválido usa `400`; indisponibilidade declara `503`; respostas não contêm campos sensíveis. |
 | `SPEC-TRACE-001` | Cada requisito/critério aplicável possui linha em `06-traceability.md` e teste planejado. |
 
-Quando o código existir, CI deve comparar a documentação OpenAPI exposta pela API com o contrato versionado ou validar ambos pelo mesmo conjunto de testes de contrato. Divergência quebra o build.
+`scripts/validate-openapi.rb` executa `SPEC-OAS-001`–`005` sobre o contrato
+versionado, incluindo métodos extras, schemas, status, segurança, `userId`,
+ProblemDetails e campos sensíveis. O teste `BE-OAS-001` cobre a parcela já
+implementada do documento exposto em runtime. Quando as operações funcionais
+existirem, CI deve comparar a documentação exposta com o contrato versionado ou
+validar ambos pelo mesmo conjunto de testes de contrato. Divergência quebra o
+build.
 
 ## Validação Docker e entrega
 
@@ -118,8 +125,8 @@ Quando o código existir, CI deve comparar a documentação OpenAPI exposta pela
 |---|---|---|
 | `TECH-BACKEND-001` | Solution/projetos e lock NuGet usam ASP.NET Core/C#, EF Core SQLite e JWT nas versões fixadas; restore locked e build passam. | `TECH-BACKEND-01` |
 | `TECH-FRONTEND-001` | `package.json`/lockfile usam Angular standalone/strict, Reactive Forms e Material nas versões fixadas; `npm ci` e build passam. | `TECH-FRONTEND-01` |
-| `OPS-COMPOSE-001` | Em checkout limpo, `docker compose up --build --wait` fica saudável sem `.env` e sem SDKs no host; a única probe do Compose roda no `web` e atravessa Nginx, API e SQLite. | `OPS-DOCKER-01`, `OPS-DOCKER-02` |
-| `OPS-ORIGIN-001` | SPA, `/api/*`, `/swagger/*` e `/health` respondem por `http://localhost:8080`; API não publica outra porta; upstream parado é convertido em `503 ProblemDetails`; inspeção da configuração comprova interceptação explícita tanto de `502` quanto de `504`. | `API-ERROR-01`, ADR-0004 |
+| `OPS-COMPOSE-001` | `scripts/validate-m1-compose.sh` valida a configuração e, em checkout limpo, executa `docker compose up --build --wait` sem `.env` nem SDKs no host; a única probe do Compose roda no `web` e atravessa Nginx, API e SQLite. A revalidação independente exata com volume Docker padrão permanece bloqueada até liberar espaço na VM; o runtime foi validado com o mesmo volume nomeado apoiado temporariamente no host. | `OPS-DOCKER-01`, `OPS-DOCKER-02` |
+| `OPS-ORIGIN-001` | O mesmo smoke verifica SPA, `/api/*`, `/swagger/*` e `/health` por `http://localhost:8080`, ausência de porta pública da API, `404 ProblemDetails`, upstream parado convertido em `503 ProblemDetails` e mapeamento explícito de `502`/`504`. | `API-ERROR-01`, ADR-0004 |
 | `OPS-PERSIST-001` | Criar usuário, recriar serviços sem remover volume e autenticar novamente. | `OPS-DOCKER-03` |
 | `OPS-TAGS-001` | Dockerfiles não contêm `latest` nem tags incompletas e usam as versões do design. | `OPS-DOCKER-02` |
 | `OPS-SECRET-001` | Compose inicia sem segredo versionado; `.env.example` é opcional e não contém valor utilizável; logs não contêm senha, hash, token ou chave. | `SEC-SECRET-01`, `SEC-LOG-01` |
@@ -130,7 +137,7 @@ Quando o código existir, CI deve comparar a documentação OpenAPI exposta pela
 
 | Milestone | Gates mínimos |
 |---|---|
-| M1 | Build backend/frontend, `TECH-FRONTEND-001`, parte aplicável de `TECH-BACKEND-001`, `SPEC-OAS-*`, `BE-DB-001`, `BE-HEALTH-001`, `OPS-COMPOSE-001`, `OPS-ORIGIN-001`, `OPS-TAGS-001`, `.env.example` sem segredo, ProblemDetails runtime, Swagger e smoke Compose. |
+| M1 | Build backend/frontend; `dotnet test` deve descobrir e aprovar exatamente os testes M1, não apenas retornar exit code zero; `TECH-FRONTEND-001`, parte aplicável de `TECH-BACKEND-001`, `SPEC-OAS-*`, `BE-DB-001`, `BE-HEALTH-001`, `BE-OAS-001`, `OPS-COMPOSE-001`, `OPS-ORIGIN-001`, `OPS-TAGS-001`, `.env.example` sem segredo, ProblemDetails runtime, Swagger e smoke Compose. |
 | M2 | `BE-REG-*`, `FE-REG-*`, `BE-ERR-001/002`, assertion aplicável de `BE-DTO-001` e regressão dos gates M1. |
 | M3 | `BE-LOGIN-*`, `BE-AUTH-*`, `BE-CONFIG-001`, `BE-PROF-001/002`, `TECH-BACKEND-001`, parte de `.env.example`/logs de `OPS-SECRET-001`, `FE-LOGIN-*`, `FE-GUARD-*`, `FE-INT-*`, `FE-DASH-*` e assertions aplicáveis de `BE-ERR-001`/`BE-DTO-001`. |
 | M4 | `BE-PROF-003/004/005/006`, `BE-PASS-*`, `FE-PROF-*`, `FE-PASS-*` e assertions aplicáveis de `BE-ERR-001`/`BE-DTO-001`. |

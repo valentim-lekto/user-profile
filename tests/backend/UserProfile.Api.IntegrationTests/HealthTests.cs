@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
@@ -63,15 +64,35 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
             """;
         Assert.Equal("NormalizedEmail", await columnCommand.ExecuteScalarAsync());
 
-        await using var timestampCommand = connection.CreateCommand();
-        timestampCommand.CommandText = """
-            SELECT COUNT(*)
-            FROM pragma_table_info('Users')
-            WHERE name IN ('CreatedAtUtc', 'UpdatedAtUtc')
-              AND type = 'TEXT'
-              AND "notnull" = 1;
-            """;
-        Assert.Equal(2L, Convert.ToInt64(await timestampCommand.ExecuteScalarAsync()));
+        var expectedColumns = new Dictionary<string, (string Type, long NotNull, long PrimaryKey)>
+        {
+            ["Id"] = ("TEXT", 1, 1),
+            ["Name"] = ("TEXT", 1, 0),
+            ["Email"] = ("TEXT", 1, 0),
+            ["NormalizedEmail"] = ("TEXT", 1, 0),
+            ["PasswordHash"] = ("TEXT", 1, 0),
+            ["CreatedAtUtc"] = ("TEXT", 1, 0),
+            ["UpdatedAtUtc"] = ("TEXT", 1, 0)
+        };
+
+        await using var columnsCommand = connection.CreateCommand();
+        columnsCommand.CommandText = "SELECT name, type, \"notnull\", pk FROM pragma_table_info('Users');";
+
+        var actualColumns = new Dictionary<string, (string Type, long NotNull, long PrimaryKey)>();
+        await using var columns = await columnsCommand.ExecuteReaderAsync();
+        while (await columns.ReadAsync())
+        {
+            actualColumns.Add(
+                columns.GetString(0),
+                (columns.GetString(1), columns.GetInt64(2), columns.GetInt64(3)));
+        }
+
+        Assert.Equal(expectedColumns.Count, actualColumns.Count);
+        foreach (var expectedColumn in expectedColumns)
+        {
+            Assert.True(actualColumns.TryGetValue(expectedColumn.Key, out var actualColumn));
+            Assert.Equal(expectedColumn.Value, actualColumn);
+        }
     }
 
     [Fact]
@@ -104,9 +125,11 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
         await lockCommand.ExecuteNonQueryAsync();
 
         HttpResponseMessage? unavailableResponse = null;
+        var stopwatch = Stopwatch.StartNew();
         try
         {
             unavailableResponse = await client.GetAsync("/health");
+            stopwatch.Stop();
         }
         finally
         {
@@ -129,6 +152,9 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
             Assert.Equal("Service Unavailable", body.RootElement.GetProperty("title").GetString());
             Assert.Equal("The service is not ready.", body.RootElement.GetProperty("detail").GetString());
             Assert.Equal("/health", body.RootElement.GetProperty("instance").GetString());
+            Assert.True(
+                stopwatch.Elapsed < TimeSpan.FromSeconds(5),
+                $"Health check took {stopwatch.Elapsed} despite its one-second command timeout.");
         }
     }
 
@@ -145,7 +171,18 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var path = Assert.Single(paths.EnumerateObject());
 
         Assert.Equal("/health", path.Name);
-        Assert.True(path.Value.TryGetProperty("get", out _));
+        var operation = path.Value.GetProperty("get");
+        Assert.Equal("getHealth", operation.GetProperty("operationId").GetString());
+        Assert.Equal(
+            ["Operations"],
+            operation.GetProperty("tags").EnumerateArray().Select(tag => tag.GetString()));
+        Assert.Equal(
+            ["200", "500", "503"],
+            operation.GetProperty("responses").EnumerateObject().Select(response => response.Name).Order());
+
+        var info = document.RootElement.GetProperty("info");
+        Assert.Equal("User Profile API", info.GetProperty("title").GetString());
+        Assert.Equal("1.0.0", info.GetProperty("version").GetString());
 
         var healthSchema = document.RootElement
             .GetProperty("components")
@@ -154,6 +191,11 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Contains(
             healthSchema.GetProperty("required").EnumerateArray(),
             property => property.GetString() == "status");
+        var statusSchema = healthSchema.GetProperty("properties").GetProperty("status");
+        Assert.Equal("string", statusSchema.GetProperty("type").GetString());
+        Assert.Equal(
+            ["Healthy"],
+            statusSchema.GetProperty("enum").EnumerateArray().Select(value => value.GetString()));
     }
 
     [Fact]
