@@ -49,6 +49,6 @@ secrets.json
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
-data/
+/data/
 *.log
 tmp/

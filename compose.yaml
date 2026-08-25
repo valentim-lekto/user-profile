@@ -1,0 +1,42 @@
+name: user-profile-sdd-challenge
+
+services:
+  api:
+    image: user-profile-api:0.1.0
+    build:
+      context: .
+      dockerfile: src/backend/UserProfile.Api/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ConnectionStrings__Default: Data Source=/data/user-profile.db
+    expose:
+      - "8080"
+    volumes:
+      - user-profile-data:/data
+
+  web:
+    image: user-profile-web:0.1.0
+    build:
+      context: src/frontend/user-profile-web
+      dockerfile: Dockerfile
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - -q
+        - -O
+        - /dev/null
+        - http://127.0.0.1:8080/health
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 5s
+
+volumes:
+  user-profile-data:

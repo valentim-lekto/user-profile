@@ -1,0 +1,19 @@
+:root {
+  color-scheme: light;
+  font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  background: var(--mat-sys-surface);
+  color: var(--mat-sys-on-surface);
+  margin: 0;
+}
+
+* {
+  box-sizing: border-box;
+}

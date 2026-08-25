@@ -149,14 +149,14 @@ Foram confirmados 0 achados High, 15 Medium e 6 Low.
 - **Critérios:** `AI-EXPLAIN-01`.
 - **Decisão:** corrigido com `DOC-EXPLAIN-001` e gate M6.
 
-#### `REV-DESIGN-016` — Low — timestamps sem requisito ou consumidor
+#### `REV-DESIGN-016` — Low — remoção de timestamps contrariava a arquitetura aprovada
 
 - **Localização:** `02-technical-design.md:115-120`, `04-test-strategy.md:47,58`, `05-execution-plan.md:98`.
-- **Evidência:** `CreatedAtUtc`/`UpdatedAtUtc` não eram retornados nem ligados a critério, mas adicionavam colunas, relógio e asserts.
-- **Impacto:** estado e manutenção fora do escopo funcional.
-- **Correção mínima:** remover os campos e suas provas planejadas.
-- **Critérios:** `PREM-ARCH-03`, `DOC-TRACE-01`.
-- **Decisão:** corrigido no modelo, testes, plano e matriz; nenhuma complexidade substituta foi adicionada.
+- **Evidência:** a arquitetura fornecida explicitamente exige `CreatedAtUtc`/`UpdatedAtUtc`; não os expor nos DTOs não autoriza removê-los do modelo persistido.
+- **Impacto:** design, schema e implementação divergiriam de uma decisão aprovada.
+- **Correção mínima:** manter os campos internos, sem ampliar o contrato HTTP, e provar suas colunas na migration inicial.
+- **Critérios:** `PREM-DATA-02`, `DOC-TRACE-01`.
+- **Decisão:** registro corrigido na auditoria final de M1; entidade, migration, teste, plano e matriz preservam os timestamps aprovados.
 
 #### `REV-DESIGN-017` — Low — lock .NET não estava operacionalmente fechado
 
@@ -244,3 +244,10 @@ Foram confirmados 0 achados High, 15 Medium e 6 Low.
 - A enumeração por email duplicado no cadastro permanece como consequência consciente dos critérios de feedback existentes.
 - Nenhum comportamento da aplicação pode ser executado nesta etapa porque o repositório continua sem código; builds, testes funcionais e Docker permanecem gates de M1–M6.
 - Versões e tags exatas envelhecem e devem ser reconfirmadas em M1, como já exige o design.
+
+## 2026-08-25 — Auditoria final de M1
+
+- **Escopo:** código, testes, Docker e atualizações SDD do walking skeleton, sem revisar funcionalidades de M2–M6 como implementadas.
+- **Achado bloqueante:** `User` e a migration omitiam `CreatedAtUtc`/`UpdatedAtUtc`, e o design havia removido esses campos contrariando a arquitetura explicitamente aprovada.
+- **Correção:** premissa e design restaurados antes do código; entidade, configuração, migration, snapshot e teste SQLite atualizados. O teste também exige ausência de mudanças pendentes entre modelo e snapshot.
+- **Resultado:** nenhum outro bloqueador M1; não há endpoint de negócio, segredo/tag flutuante ou porta pública adicional. Restore/build/test, frontend, OpenAPI, Compose, smokes same-origin e teardown foram aprovados antes do commit.

@@ -1,0 +1,32 @@
+.skip-link {
+  background: var(--mat-sys-primary);
+  color: var(--mat-sys-on-primary);
+  left: 1rem;
+  padding: 0.75rem 1rem;
+  position: fixed;
+  top: -5rem;
+  z-index: 10;
+
+  &:focus {
+    top: 1rem;
+  }
+}
+
+.app-toolbar {
+  box-shadow: 0 1px 4px rgb(0 0 0 / 18%);
+  font-weight: 600;
+}
+
+.app-content {
+  margin: 0 auto;
+  max-width: 64rem;
+  padding: clamp(1.5rem, 4vw, 4rem) 1rem;
+}
+
+mat-card {
+  max-width: 38rem;
+}
+
+mat-card-content {
+  padding-top: 1rem;
+}

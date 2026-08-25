@@ -44,7 +44,20 @@ Não armazenar conversas completas nem transcrições integrais de prompts e res
 - **Entradas:** repositório limpo, histórico/diff completo, todos os artefatos SDD e fontes oficiais das versões e das semânticas HTTP/Nginx.
 - **Apoio da IA:** leituras independentes em paralelo de contrato/segurança, rastreabilidade/testes e arquitetura/operação; consolidação baseada em evidência direta.
 - **Resultado:** nenhum High; 15 achados Medium e 6 Low confirmados e corrigidos; candidatos não confirmados e riscos aceitos registrados separadamente.
-- **Decisões influenciadas:** contrato `503 ProblemDetails` no proxy, `400` genérico no login e challenge Bearer obrigatório somente em recursos protegidos, health check Compose pelo `web`, scaffold/locks executáveis, allowlist do interceptor, validação fechada da chave, separação dos gates M3/M4, provas negativas sem mutação, critérios de stack e remoção de timestamps sem consumidor.
+- **Decisões influenciadas:** contrato `503 ProblemDetails` no proxy, `400` genérico no login e challenge Bearer obrigatório somente em recursos protegidos, health check Compose pelo `web`, scaffold/locks executáveis, allowlist do interceptor, validação fechada da chave, separação dos gates M3/M4, provas negativas sem mutação e critérios de stack. A recomendação daquela revisão de remover timestamps foi posteriormente corrigida por contrariar a arquitetura aprovada.
 - **Artefatos:** requisitos, design, OpenAPI, estratégia, plano, matriz, ADR-0003/0004, índice SDD e `review-log.md`.
 - **Validação:** parse/lint OpenAPI, checagem de IDs/links/rastreabilidade, pesquisa de segredos, revisão do diff e `git diff --check`; resultados detalhados em `review-log.md`.
 - **Limitação:** a revisão comprova a coerência documental; código, builds, testes funcionais, E2E e Compose ainda não existem e continuam pendentes nos milestones.
+
+### 2026-08-25 — Implementação e validação de M1
+
+- **Objetivo:** entregar somente o walking skeleton executável, persistência SQLite, shell Angular e origem única Docker previstos em M1, sem antecipar cadastro, login, JWT ou perfil.
+- **Entradas:** `AGENTS.md`, documentos `00`–`06`, contrato OpenAPI, ADRs e instruções explícitas da etapa.
+- **Apoio da IA:** scaffold proporcional, implementação direta de configuração/health/migration, derivação dos testes mínimos, configuração do shell/Material/Nginx, auditorias independentes de escopo e execução dos gates observáveis.
+- **Decisões influenciadas:** manter somente `Program`/Controllers/EF Core concretos; health consultar a tabela real de migrations; testar indisponibilidade com lock exclusivo; usar um único healthcheck no `web`; preservar erros da API e converter apenas `502/504` do Nginx; tornar `strict`/`strictTemplates` explícitos; restringir o ignore de `/data/` para não ocultar `Data/` em macOS.
+- **Segurança de dependências:** o build revelou `GHSA-5xrq-8626-4rwp` em Vitest `4.0.8`; foi aplicado o patch `4.1.11`, o lock foi regenerado com Node `24.19.0`/npm `11.17.0` e `npm audit` terminou com 0 vulnerabilidades.
+- **Artefatos:** solution e projetos .NET, entidade/DbContext/migration, testes de integração, workspace Angular, Dockerfiles, Nginx, `compose.yaml`, `.env.example`, validador OpenAPI e atualizações SDD.
+- **Validação:** restore locked e build backend sem warnings; 6/6 integrações, incluindo schema Swagger obrigatório e ausência de drift EF; lint, 2/2 testes e build Angular; OpenAPI válido; Compose saudável sem `.env`; smokes de SPA/health/Swagger; `404` preservado; upstream parado convertido em `503 ProblemDetails`; API sem porta pública; cleanup sem remover o volume.
+- **Tratamento do ambiente:** a VM Docker compartilhada ficou sem espaço em dois startups. Foram removidos somente caches/uma imagem produzidos nesta execução e volumes vazios deste projeto; recursos e dados de outros projetos não foram alterados. O teardown final preservou o volume recriado com o schema correto.
+- **Limitação:** M2–M6 continuam pendentes. O shell não contém telas funcionais, a API expõe apenas `/health` e não há autenticação, jornadas E2E ou CI nesta etapa.
+- **Auditoria final:** uma revisão independente bloqueou o commit ao detectar a ausência de `CreatedAtUtc`/`UpdatedAtUtc`; SDD, entidade, migration e teste do schema foram corrigidos antes de repetir os gates afetados.

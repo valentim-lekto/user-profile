@@ -67,7 +67,7 @@ Validar os comportamentos e riscos principais com a menor suíte capaz de fornec
 | `BE-DTO-001` | Nenhuma resposta expõe senha, hash, email normalizado ou ID do usuário. | `AC-PROF-01`, `SEC-SECRET-01` |
 | `BE-ERR-001` | Erros previstos e gerados pelo pipeline, incluindo JSON malformado, media type não suportado, rota `/api` inexistente e método não permitido, usam `ProblemDetails`/`ValidationProblemDetails` e `application/problem+json`. | `API-ERROR-01` |
 | `BE-ERR-002` | Após startup saudável, cadastro contra SQLite bloqueado percorre o handler real e retorna `500` sem stack trace, SQL ou segredo. | `SEC-LOG-01`, `API-ERROR-01` |
-| `BE-DB-001` | Startup aplica migrations a banco vazio e cria o índice único. | `OPS-DOCKER-01`, ADR-0002 |
+| `BE-DB-001` | Startup aplica migrations a banco vazio, cria o índice único, persiste `CreatedAtUtc`/`UpdatedAtUtc` obrigatórios e não deixa mudança pendente entre modelo e snapshot. | `OPS-DOCKER-01`, `PREM-DATA-02`, ADR-0002 |
 | `BE-HEALTH-001` | `/health` retorna `200` após startup; bloqueio exclusivo posterior torna a consulta real ao SQLite indisponível e retorna `503 application/problem+json` conforme o schema. Falha de migration é testada como falha de startup. | `OPS-DOCKER-01`, `API-ERROR-01` |
 
 ## Catálogo planejado — frontend
@@ -119,7 +119,7 @@ Quando o código existir, CI deve comparar a documentação OpenAPI exposta pela
 | `TECH-BACKEND-001` | Solution/projetos e lock NuGet usam ASP.NET Core/C#, EF Core SQLite e JWT nas versões fixadas; restore locked e build passam. | `TECH-BACKEND-01` |
 | `TECH-FRONTEND-001` | `package.json`/lockfile usam Angular standalone/strict, Reactive Forms e Material nas versões fixadas; `npm ci` e build passam. | `TECH-FRONTEND-01` |
 | `OPS-COMPOSE-001` | Em checkout limpo, `docker compose up --build --wait` fica saudável sem `.env` e sem SDKs no host; a única probe do Compose roda no `web` e atravessa Nginx, API e SQLite. | `OPS-DOCKER-01`, `OPS-DOCKER-02` |
-| `OPS-ORIGIN-001` | SPA, `/api/*` e `/health` respondem por `http://localhost:8080`; API não publica outra porta; upstream parado é convertido em `503 ProblemDetails`; inspeção da configuração comprova interceptação explícita tanto de `502` quanto de `504`. | `API-ERROR-01`, ADR-0004 |
+| `OPS-ORIGIN-001` | SPA, `/api/*`, `/swagger/*` e `/health` respondem por `http://localhost:8080`; API não publica outra porta; upstream parado é convertido em `503 ProblemDetails`; inspeção da configuração comprova interceptação explícita tanto de `502` quanto de `504`. | `API-ERROR-01`, ADR-0004 |
 | `OPS-PERSIST-001` | Criar usuário, recriar serviços sem remover volume e autenticar novamente. | `OPS-DOCKER-03` |
 | `OPS-TAGS-001` | Dockerfiles não contêm `latest` nem tags incompletas e usam as versões do design. | `OPS-DOCKER-02` |
 | `OPS-SECRET-001` | Compose inicia sem segredo versionado; `.env.example` é opcional e não contém valor utilizável; logs não contêm senha, hash, token ou chave. | `SEC-SECRET-01`, `SEC-LOG-01` |
@@ -130,7 +130,7 @@ Quando o código existir, CI deve comparar a documentação OpenAPI exposta pela
 
 | Milestone | Gates mínimos |
 |---|---|
-| M1 | Build backend/frontend, `TECH-FRONTEND-001`, parte aplicável de `TECH-BACKEND-001`, `SPEC-OAS-*`, `BE-DB-001`, `BE-HEALTH-001`, `OPS-COMPOSE-001`, `OPS-ORIGIN-001`, `OPS-TAGS-001`, ProblemDetails runtime e smoke Compose. |
+| M1 | Build backend/frontend, `TECH-FRONTEND-001`, parte aplicável de `TECH-BACKEND-001`, `SPEC-OAS-*`, `BE-DB-001`, `BE-HEALTH-001`, `OPS-COMPOSE-001`, `OPS-ORIGIN-001`, `OPS-TAGS-001`, `.env.example` sem segredo, ProblemDetails runtime, Swagger e smoke Compose. |
 | M2 | `BE-REG-*`, `FE-REG-*`, `BE-ERR-001/002`, assertion aplicável de `BE-DTO-001` e regressão dos gates M1. |
 | M3 | `BE-LOGIN-*`, `BE-AUTH-*`, `BE-CONFIG-001`, `BE-PROF-001/002`, `TECH-BACKEND-001`, parte de `.env.example`/logs de `OPS-SECRET-001`, `FE-LOGIN-*`, `FE-GUARD-*`, `FE-INT-*`, `FE-DASH-*` e assertions aplicáveis de `BE-ERR-001`/`BE-DTO-001`. |
 | M4 | `BE-PROF-003/004/005/006`, `BE-PASS-*`, `FE-PROF-*`, `FE-PASS-*` e assertions aplicáveis de `BE-ERR-001`/`BE-DTO-001`. |

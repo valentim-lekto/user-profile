@@ -24,14 +24,15 @@ Navegador
    v
 Nginx / Angular estático
    |-- / e rotas SPA --------> arquivos Angular
-   |-- /api/* e /health -----> UserProfile.Api:8080
+   |-- /api/*, /swagger/*
+   |   e /health ------------> UserProfile.Api:8080
                                     |
                                     v
                               /data/user-profile.db
                               volume Docker nomeado
 ```
 
-Somente o Nginx publica porta no host. A API fica acessível apenas na rede do Compose. O Nginx encaminha `/api/*` e `/health`, preserva método, corpo e status e usa fallback para `index.html` somente nas rotas da SPA.
+Somente o Nginx publica porta no host. A API fica acessível apenas na rede do Compose. O Nginx encaminha `/api/*`, `/swagger/*` e `/health`, preserva método, corpo e status e usa fallback para `index.html` somente nas rotas da SPA.
 
 ## Versões verificadas e fixação
 
@@ -42,8 +43,11 @@ Verificação realizada em 2026-08-24. Foram escolhidas versões estáveis e sup
 | .NET / ASP.NET Core | .NET 10 LTS; runtime `10.0.11` | Linha LTS ativa até novembro de 2028. | TFM `net10.0`; pacotes Microsoft `10.0.11`. |
 | .NET SDK | `10.0.400` | SDK estável que inclui o runtime `10.0.11`. | `global.json` com `rollForward: disable` e `mcr.microsoft.com/dotnet/sdk:10.0.400-noble`. |
 | EF Core SQLite | `10.0.11` | Mesma linha e patch do runtime; EF Core 10 é LTS. | Pacotes EF Core Microsoft em `10.0.11` e `packages.lock.json` versionado por projeto. |
+| Swagger UI | Swashbuckle.AspNetCore `10.2.3` | Release estável compatível com `net10.0`. | `PackageReference` exato e lock NuGet. |
 | Angular e Angular CLI | `22.1.3` | Release estável em suporte ativo; sem uso da linha `next`. | Dependências exatas e `package-lock.json`. |
 | Angular Material | `22.1.3` | Alinhada à linha do framework. | Dependência exata e `package-lock.json`. |
+| Angular ESLint | `22.1.0` | Linha estável alinhada ao Angular 22. | Dependência de desenvolvimento exata e `package-lock.json`. |
+| Vitest | `4.1.11` | Patch estável fora da faixa afetada por `GHSA-5xrq-8626-4rwp`. | Dependência de desenvolvimento exata e `package-lock.json`. |
 | Node.js | `24.19.0` LTS | Compatível com Angular 22 (`^24.15.0`) e em LTS. | `node:24.19.0-bookworm-slim`. |
 | Nginx | `1.30.4` estável | Linha estável da imagem oficial. | `nginx:1.30.4-alpine3.24-slim`. |
 | Runtime da API | ASP.NET `10.0.11` | Mesma atualização de segurança da aplicação. | `mcr.microsoft.com/dotnet/aspnet:10.0.11-noble`. |
@@ -52,16 +56,19 @@ Fontes oficiais consultadas:
 
 - [política de suporte do .NET](https://dotnet.microsoft.com/en-us/platform/support/policy/dotnet-core), [download do .NET 10](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) e [release do EF Core 10](https://learn.microsoft.com/en-us/ef/core/what-is-new/ef-core-10.0/whatsnew);
 - [tags oficiais do SDK .NET](https://github.com/dotnet/dotnet-docker/blob/main/README.sdk.md) e [tags oficiais do runtime ASP.NET](https://github.com/dotnet/dotnet-docker/blob/main/README.aspnet.md);
+- [pacote oficial do Swashbuckle.AspNetCore](https://www.nuget.org/packages/Swashbuckle.AspNetCore);
 - [política de releases do Angular](https://angular.dev/reference/releases) e [compatibilidade Angular–Node](https://angular.dev/reference/versions);
+- [pacotes oficiais do Angular ESLint](https://www.npmjs.com/org/angular-eslint);
+- [advisory oficial do Vitest](https://github.com/advisories/GHSA-5xrq-8626-4rwp);
 - [releases suportadas do Node.js](https://nodejs.org/en/about/previous-releases), [manifesto oficial da imagem Node](https://github.com/docker-library/official-images/blob/master/library/node) e [manifesto oficial da imagem Nginx](https://github.com/docker-library/official-images/blob/master/library/nginx).
 
-O scaffold deve reconfirmar a existência das tags exatas antes de escrever os Dockerfiles. Uma atualização posterior exige mudança explícita deste documento e validação completa; não se deve substituir silenciosamente uma tag por alias flutuante.
+O scaffold de M1 reconfirmou as tags exatas ao construir as imagens. Uma atualização posterior exige mudança explícita deste documento e validação completa; não se deve substituir silenciosamente uma tag por alias flutuante.
 
 Depois que todos os `PackageReference` de M1 estiverem definidos, o bootstrap executa uma única vez `dotnet restore UserProfile.sln --use-lock-file`, revisa e versiona os `packages.lock.json` gerados por projeto. Somente depois disso restores recorrentes, Docker e CI usam `--locked-mode`. Assim, mudança do grafo NuGet ou do SDK exige atualização explícita dos arquivos de fixação, em vez de ser aceita silenciosamente.
 
 ## Estrutura lógica da solução
 
-Estrutura planejada, ainda não criada:
+Estrutura incremental adotada. M1 materializou a solution, `Data`, a operação de health, o workspace Angular e os diretórios de testes; pastas das funcionalidades futuras serão criadas somente no milestone que as implementar:
 
 ```text
 UserProfile.sln
@@ -80,7 +87,9 @@ src/
         core/                         # sessão, guard e interceptor funcionais
         features/                     # register, login, dashboard e profile
 tests/
-  UserProfile.Api.IntegrationTests/   # único projeto de integração do backend
+  backend/
+    UserProfile.Api.IntegrationTests/ # único projeto de integração do backend
+  e2e/                                # reservado às jornadas de M5
 ```
 
 Os testes de frontend e as poucas jornadas E2E permanecem no workspace Angular, evitando criar projetos ou pacotes independentes sem necessidade.
@@ -114,8 +123,10 @@ Entidade única `User`:
 | `Email` | `string` | `TEXT NOT NULL` | Remover espaços externos e preservar a caixa restante para exibição. |
 | `NormalizedEmail` | `string` | `TEXT NOT NULL` | `Email.Trim().ToUpperInvariant()`; índice único. |
 | `PasswordHash` | `string` | `TEXT NOT NULL` | Produzido e verificado por `PasswordHasher<User>`; nunca retornado ou logado. |
+| `CreatedAtUtc` | `DateTime` | `TEXT NOT NULL` | Instante UTC definido na criação. |
+| `UpdatedAtUtc` | `DateTime` | `TEXT NOT NULL` | Instante UTC atualizado a cada alteração persistida. |
 
-Não haverá seed obrigatório. ID, hash e email normalizado não fazem parte dos DTOs públicos porque nenhum fluxo atual precisa expô-los. Também não haverá timestamps sem consumidor ou requisito de auditoria.
+Não haverá seed obrigatório. ID, hash, email normalizado e timestamps são internos e não fazem parte dos DTOs públicos; sua presença no modelo atende à arquitetura aprovada sem ampliar o contrato HTTP.
 
 ### Normalização e unicidade
 
@@ -202,7 +213,7 @@ Após alteração de senha, o frontend remove o token e encerra a sessão. Token
 - No Compose de demonstração, em `Development`, a API gera em memória uma chave criptograficamente aleatória por processo quando nenhuma chave externa é fornecida.
 - A chave gerada não é persistida nem logada; reiniciar a API invalida sessões existentes.
 - Testes geram sua própria chave em runtime.
-- Um futuro `.env.example`, sem valor real, documentará a substituição opcional; `docker compose up` não dependerá dele.
+- Um `.env.example` versionado em M1, sem valor real utilizável, documenta substituições opcionais; `docker compose up` não depende de sua cópia.
 
 Essa regra concilia execução sem preparação manual com a proibição de versionar segredos.
 
@@ -225,11 +236,11 @@ O token fica somente em `sessionStorage`. O estado de autenticação é um signa
 - `web` é uma imagem multi-stage: Node compila o Angular e Nginx serve o resultado.
 - `api` é uma imagem multi-stage: SDK publica e runtime ASP.NET executa como usuário não-root; `/data` é preparado com permissão de escrita para esse usuário antes de receber o volume.
 - `web` publica `8080:8080`; `api` expõe `8080` apenas para a rede interna.
-- Nginx escuta em `8080`, encaminha `/api/` e `/health` para `http://api:8080`, converte falha de conexão/timeout do upstream em `503 application/problem+json` e serve a SPA nas demais rotas.
+- Nginx escuta em `8080`, encaminha `/api/`, `/swagger/` e `/health` para `http://api:8080`, converte falha de conexão/timeout do upstream em `503 application/problem+json` e serve a SPA nas demais rotas.
 - Existe um único health check do Compose no serviço `web`: `wget -q -O /dev/null http://127.0.0.1:8080/health`, usando o BusyBox presente na imagem Alpine. `web` depende de `api` com `condition: service_started`; como a probe atravessa Nginx, API e a consulta SQLite, `docker compose up --wait` só conclui quando a pilha inteira está saudável, sem instalar cliente HTTP na imagem da API.
 - Tags completas listadas neste documento serão copiadas literalmente; `latest`, `lts`, `stable` ou apenas major/minor são proibidos.
 
-No desenvolvimento local, o proxy do Angular CLI encaminha `/api` e `/health` para a API, mantendo URLs relativas. Não haverá configuração CORS permissiva para compensar URLs absolutas.
+No desenvolvimento local, o proxy do Angular CLI encaminha `/api`, `/swagger` e `/health` para a API, mantendo URLs relativas. Não haverá configuração CORS permissiva para compensar URLs absolutas.
 
 ## Configuração e observabilidade
 
