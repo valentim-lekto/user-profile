@@ -3,6 +3,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using UserProfile.Api.Data;
@@ -63,7 +64,7 @@ public sealed class ProfileController(
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError, "application/problem+json")]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable, "application/problem+json")]
     public async Task<ActionResult<ProfileResponse>> UpdateCurrent(
-        UpdateProfileRequest request,
+        [FromBody, BindRequired] UpdateProfileRequest request,
         CancellationToken cancellationToken)
     {
         if (!TryGetCurrentUserId(out var userId))
@@ -118,7 +119,7 @@ public sealed class ProfileController(
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError, "application/problem+json")]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable, "application/problem+json")]
     public async Task<ActionResult<MessageResponse>> ChangeCurrentPassword(
-        ChangePasswordRequest request,
+        [FromBody, BindRequired] ChangePasswordRequest request,
         CancellationToken cancellationToken)
     {
         if (!TryGetCurrentUserId(out var userId))

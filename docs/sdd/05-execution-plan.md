@@ -173,6 +173,7 @@ Gates observáveis:
 - `2026-08-26` — `revisão independente de M3 concluída` — o commit `b1f2468` foi auditado; 1 High, 5 Medium e 4 Low foram confirmados e corrigidos. Concorrência entre sessões, `401` tardio, Swagger runtime, logs, wiring real do Angular, bordas, estabilidade e rastreabilidade foram revalidados com 69 integrações backend, 45 testes frontend e smoke isolado; detalhes em [`review-log.md`](review-log.md).
 - `2026-08-26` — `M4 iniciado` — critérios e contrato foram revalidados antes do código; atomicidade das operações inválidas, payload cadastral sem campos de senha e atualização do dashboard por nova consulta passaram a ter gates explícitos. Implementação e evidências ainda estão pendentes.
 - `2026-08-26` — `M4 concluído` — os PUTs protegidos de perfil/senha e os dois formulários separados foram aprovados com 99 integrações backend, 55 testes frontend, OpenAPI normativo/runtime, smoke Compose acumulado e UI real. M5–M6, E2E completos, CI e documentação final permanecem pendentes.
+- `2026-08-26` — `revisão independente de M4 concluída` — 0 High, 4 Medium e 1 Low foram corrigidos; isolamento de sessão tardia, bloqueio dos formulários, wiring DOM, associações do Swagger runtime e bordas inclusivas passaram em 101 integrações backend e 56 testes frontend, além do smoke acumulado.
 
 ## Evidências de M1
 
@@ -222,8 +223,8 @@ O SDK/Node do host não correspondiam exatamente às versões fixadas; por isso,
 
 | Gate | Execução observada | Resultado |
 |---|---|---|
-| Backend | Imagem `mcr.microsoft.com/dotnet/sdk:10.0.400-noble`: restore locked, build e teste da solution com warnings como erros | Restore locked aprovado; build com 0 warnings/0 erros; 99/99 integrações aprovadas, sem falhas ou skips. Os cenários cobrem atualização válida, validações, conflito normalizado/race do índice, isolamento por `sub`, overposting, timestamps, senha atual/confirmação inválidas sem mutação, troca válida e autenticação exclusiva com a nova senha. |
-| Frontend | Imagem `node:24.19.0-bookworm-slim`: `npm ci`, `npm run lint`, `npm test` e `npm run build` | Instalação com 0 vulnerabilidades, lint aprovado, 55/55 testes aprovados sem skips e build sem warnings (317,36 kB bruto; 87,67 kB estimado). A suíte prova carregamento, validadores, payload somente com nome/email, loading/duplo submit, estados de sucesso/erro e encerramento de sessão após trocar a senha. |
+| Backend | Imagem `mcr.microsoft.com/dotnet/sdk:10.0.400-noble`: restore locked, build e teste da solution com warnings como erros | Restore locked aprovado; build com 0 warnings/0 erros; 101/101 integrações aprovadas, sem falhas ou skips. Os cenários cobrem atualização válida, bordas inclusivas de email/senha atual, validações, conflito normalizado/race do índice, isolamento por `sub`, overposting, timestamps, senha atual/confirmação inválidas sem mutação, troca válida, autenticação exclusiva com a nova senha e associações request/response do Swagger runtime. |
+| Frontend | Imagem `node:24.19.0-bookworm-slim`: `npm ci`, `npm run lint`, `npm test` e `npm run build` | Instalação com 0 vulnerabilidades, lint aprovado, 56/56 testes aprovados sem skips e build sem warnings (317,36 kB bruto; 87,58 kB estimado). A suíte prova wiring DOM, carregamento, validadores, payload somente com nome/email, bloqueio integral/duplo submit, estados de sucesso/erro e isolamento de uma sessão nova diante do sucesso tardio da troca de senha. |
 | Contrato | `ruby scripts/validate-openapi.rb docs/sdd/03-api-contract.yaml`; Swagger runtime na suíte backend | OpenAPI normativo aprovado para seis operações e 53 referências locais; o contrato runtime dos dois PUTs, schemas, autenticação Bearer, responses e `ProblemDetails` também passou. |
 | Compose, persistência e segurança | `docker compose config --quiet`; `scripts/validate-m1-compose.sh` em projeto/volume efêmeros | Configuração aprovada. O smoke acumulado M1+M2+M3+M4 validou os dois PUTs, autorização por `sub`, conflitos/validações sem alteração parcial, senha antiga rejeitada e nova aceita, persistência após recriação, logs sem credenciais/marcadores, `413/415/503` e cleanup integral dos recursos efêmeros. |
 | UI real | `http://localhost:8080` no Compose padrão | Login, dashboard, navegação ao perfil, carregamento dos dados, atualização cadastral e novo nome após retornar ao dashboard foram observados; confirmação de senha divergente apresentou mensagem acessível e o console permaneceu sem warnings/erros. A submissão final da troca de senha no navegador não foi executada, pois o mesmo comportamento já foi coberto pelas suítes e pelo smoke automatizado. |
@@ -266,7 +267,7 @@ ruby scripts/validate-openapi.rb docs/sdd/03-api-contract.yaml
 scripts/validate-m1-compose.sh
 ```
 
-`scripts/validate-m1-compose.sh` é o smoke versionado acumulado M1+M2+M3+M4. M4 confirmou 99 integrações backend e 55 testes frontend com os comandos acima, nas imagens fixadas quando necessário.
+`scripts/validate-m1-compose.sh` é o smoke versionado acumulado M1+M2+M3+M4. Após a revisão independente, M4 confirmou 101 integrações backend e 56 testes frontend com os comandos acima, nas imagens fixadas quando necessário.
 
 Os nomes de scripts npm devem ser confirmados no scaffold e então congelados. Mudança de comando exige atualização deste plano e do README antes do código dependente.
 
@@ -325,4 +326,4 @@ Os nomes de scripts npm devem ser confirmados no scaffold e então congelados. M
 
 ## Resultado final
 
-M1–M4 estão implementados e validados. M4 aprovou 99 integrações backend, 55 testes frontend, OpenAPI normativo/runtime, smoke acumulado e UI real para edição cadastral; os PUTs usam somente `sub`, preservam dados em falhas, mantêm senha e hash fora de respostas/logs e encerram a sessão do frontend após a troca válida. M5–M6 permanecem pendentes: jornadas E2E completas, CI, acabamento e validação/documentação finais.
+M1–M4 estão implementados e validados. Após a revisão independente, M4 aprovou 101 integrações backend, 56 testes frontend, OpenAPI normativo/runtime, smoke acumulado e UI real para edição cadastral; os PUTs usam somente `sub`, preservam dados em falhas, mantêm senha e hash fora de respostas/logs e encerram somente a sessão que iniciou a troca válida. M5–M6 permanecem pendentes: jornadas E2E completas, CI, acabamento e validação/documentação finais.

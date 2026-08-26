@@ -825,3 +825,93 @@ Consolidação: 1 High, 5 Medium e 4 Low confirmados e corrigidos; nenhum achado
 - `sessionStorage` continua acessível a JavaScript, como documentado no ADR; prevenção de XSS e auditoria acumulada de dependências/segredos permanecem essenciais.
 - Loading e erro do dashboard são comprovados automaticamente; a inspeção real desta revisão cobriu o fluxo feliz. Jornadas E2E completas e CI permanecem em M5.
 - M4–M6 continuam pendentes: edição de perfil/senha, CI, README raiz, walkthrough e validação final.
+
+## 2026-08-26 — Revisão independente de M4
+
+- **Etapa identificada:** M4 — visualização/edição dos dados cadastrais e alteração de senha.
+- **Commit revisado:** `7803b3db488964f010d5ee6a7d97ca2938ee42bf` (`feat(profile): implement profile and password updates`).
+- **Base do diff:** `b627291d3d718df283272c1f1f52fa358cf58810`; os 28 arquivos do commit foram examinados no diff integral, além do estado atual, histórico, SDD/ADRs, código, testes e configuração operacional.
+- **Estado inicial:** branch `main` limpa; baseline de 99/99 integrações backend, lint, 55/55 testes frontend e build aprovados nos runtimes fixados. O OpenAPI normativo, `docker compose config` e as verificações estáticas também passavam.
+- **Critérios examinados:** `AC-PROF-*`, `AC-PASS-*`, `UI-STATE-01`, `API-ERROR-01`, `SEC-AUTH-01`, `SEC-SESSION-01`, `SEC-SECRET-01`, `SEC-LOG-01`, `PREM-INPUT-01`, `PREM-DATA-02`, `BE-PROF-*`, `BE-PASS-*`, `BE-OAS-001`, `FE-PROF-*`, `FE-PASS-*`, `SPEC-OAS-*`, `OPS-*`, `TEST-FLOW-01` e `DOC-TRACE-01`.
+
+### Achados confirmados e decisões
+
+#### `REV-M4-001` — Medium — sucesso tardio da troca de senha encerrava uma sessão posterior
+
+- **Localização:** `src/frontend/user-profile-web/src/app/features/profile/profile.ts`, fluxo `submitPassword`.
+- **Evidência:** depois do `await`, qualquer resposta de sucesso executava `clearSession()` e navegava para `/login`. Uma request iniciada com o token A removia o token B caso o usuário autenticasse outra sessão antes da resposta.
+- **Impacto:** logout e redirecionamento indevidos de uma sessão autenticada mais recente, repetindo a classe de corrida já tratada para `401` em M3.
+- **Correção mínima:** capturar o token usado ao iniciar a operação e limpar/navegar somente se ele ainda for o token corrente; provar A→B antes do `flush`.
+- **Critérios:** `AC-PASS-04`, `SEC-SESSION-01`, `FE-PASS-002`, `DOC-TRACE-01`.
+- **Decisão:** corrigido reutilizando `AuthService.getValidAccessToken`/`isCurrentAccessToken`, sem store, generation counter ou cancelamento global.
+
+#### `REV-M4-002` — Medium — specs dos formulários contornavam o wiring da UI real
+
+- **Localização:** `profile.spec.ts` versus `(ngSubmit)`/`formControlName` de `profile.html`.
+- **Evidência:** os fluxos principais alteravam `FormControl`s e chamavam `submitProfile()`/`submitPassword()` diretamente. Remover os bindings de submit manteria a antiga suíte verde e deixaria os botões sem efeito; mensagens locais também eram exercitadas majoritariamente no model.
+- **Impacto:** regressões de binding, submit ou feedback renderizado poderiam inutilizar ambos os formulários sem quebrar os 55 testes existentes.
+- **Correção mínima:** preencher inputs e submeter os dois formulários pelo DOM em cenários válidos e inválidos, afirmando requests, feedback, sessão e navegação.
+- **Critérios:** `FE-PROF-001/002`, `FE-PASS-001/002`, `TEST-FLOW-01`, `DOC-TRACE-01`.
+- **Decisão:** corrigido nos testes existentes; os fluxos reais clicam os botões renderizados e agora comprovam o payload cadastral, a troca de senha e as mensagens locais sem duplicar suítes.
+
+#### `REV-M4-003` — Medium — edição durante loading podia perder dados ou associar erro ao valor errado
+
+- **Localização:** inputs dos dois formulários em `profile.html` e awaits de `submitProfile`/`submitPassword` em `profile.ts`.
+- **Evidência:** somente os botões eram desabilitados. Após enviar A, o usuário podia digitar B; o sucesso cadastral restaurava A sobre B e uma falha de A aparecia ao lado do valor B.
+- **Impacto:** perda observável de edição não enviada e feedback atribuído a dados que não originaram a resposta.
+- **Correção mínima:** desabilitar o `FormGroup` correspondente durante a request e reabilitá-lo mesmo diante de exceção; afirmar controles DOM desabilitados durante o loading.
+- **Critérios:** `UI-STATE-01`, `AC-PROF-05`, `AC-PASS-02`, `AC-PASS-04`.
+- **Decisão:** corrigido com `disable`/`enable` em `try/finally` nos dois fluxos, com regressões de reabilitação após erro e sem mecanismo adicional de versões de formulário.
+
+#### `REV-M4-004` — Medium — gate/runtime do Swagger não vinculava integralmente operações e schemas
+
+- **Localização:** `HealthTests.SwaggerContainsOnlyTheImplementedOperationsAndRequiredSchemas` e parâmetros dos dois PUTs em `ProfileController`.
+- **Evidência:** os testes verificavam operationId/status/security e componentes isolados, mas não os `$ref`/media types de request e resposta por operação. Ao adicionar os asserts, o primeiro teste vermelho também mostrou que o Swagger runtime omitia `requestBody.required` nos PUTs.
+- **Impacto:** drift entre o contrato normativo e a API publicada podia chegar com gate verde; clientes poderiam interpretar o body obrigatório como opcional.
+- **Correção mínima:** exigir body obrigatório e os schemas/media types de `200`, validação e demais ProblemDetails por PUT; materializar a obrigatoriedade no metadata MVC.
+- **Critérios:** `BE-OAS-001`, `SPEC-OAS-002`, `SPEC-OAS-004`, `SPEC-OAS-005`, `DOC-TRACE-01`.
+- **Decisão:** corrigido com asserts por operação e `[FromBody, BindRequired]`; o teste runtime passou para `UpdateProfileRequest`/`ProfileResponse` e `ChangePasswordRequest`/`MessageResponse`.
+
+#### `REV-M4-005` — Low — algumas bordas inclusivas dos novos PUTs não tinham prova positiva
+
+- **Localização:** `ProfileUpdateTests.cs` e validadores exercitados em `profile.spec.ts`.
+- **Evidência:** havia rejeição de email 321 e senha atual 129, mas não sucesso explícito do PUT com email ASCII de 320 nem conta cuja senha atual tivesse 128; o frontend também não afirmava senha atual 128 como válida.
+- **Impacto:** uma regressão off-by-one poderia rejeitar entradas normativamente válidas sem quebrar os gates.
+- **Correção mínima:** adicionar sucesso backend nas duas bordas e assert frontend de 128 antes da rejeição de 129.
+- **Critérios:** `AC-PROF-03`, `PREM-INPUT-01`, `BE-PROF-004`, `BE-PASS-001`, `FE-PASS-001`.
+- **Decisão:** corrigido por ser localizado e de baixo risco; duas integrações foram acrescentadas e o teste frontend existente foi ampliado.
+
+Consolidação: 0 High, 4 Medium e 1 Low confirmados e corrigidos; nenhum achado desta revisão ficou aberto ou bloqueado.
+
+### Candidatos rejeitados e decisões conscientes
+
+- Identidade, overposting e atomicidade não originaram achado: os dois PUTs continuam derivando o usuário exclusivamente de `sub`, rejeitam `userId` e preservam integralmente a entidade nos cenários inválidos/conflitantes.
+- Revogação server-side de JWTs já emitidos após troca de senha permanece fora do produto: o token curto continua tecnicamente válido até `exp`, conforme ADR e design aprovados.
+- E2E completo, CI, README raiz e acabamento permanecem em M5/M6; a ausência deles não foi reclassificada como defeito de M4.
+- Não foi criado cancelamento de request, store de formulário ou contador de geração: bloqueio do `FormGroup` e igualdade do token resolvem os riscos observados com menor superfície.
+
+### Comandos e resultados
+
+| Comando/check | Resultado |
+|---|---|
+| `pwd`, `git status --short --branch`, `git log --oneline -5`, `git show --stat`, `git diff 7803b3d^ 7803b3d` | Raiz correta; `main` inicialmente limpa; commit/base/escopo M4 identificados e diff integral de 28 arquivos revisado. |
+| Leitura integral de `AGENTS.md`, SDD/ADRs/review-log e código/testes/configuração relacionados | Arquitetura, segurança, backend, frontend, testes, OpenAPI e Docker avaliados antes de qualquer alteração. |
+| Baseline na imagem .NET `10.0.400-noble` | Restore locked, build com 0 warnings/0 erros e 99/99 integrações aprovadas antes das correções. |
+| Baseline na imagem Node `24.19.0-bookworm-slim` | 494 pacotes/0 vulnerabilidades, lint, 55/55 testes e build aprovados antes das correções. |
+| Primeira execução dos testes corretivos focados | Frontend: 5 passaram e 3 falharam exatamente no bloqueio dos dois formulários e na sessão tardia. Backend: as duas novas bordas passaram e o gate Swagger falhou na ausência de `requestBody.required`. |
+| Repetição focada após implementação | 8/8 testes de `profile.spec.ts` e 3/3 integrações selecionadas aprovados. |
+| Imagem .NET `10.0.400-noble`: restore locked, build e suíte completa | Build com 0 warnings/0 erros; 101/101 integrações aprovadas, sem falhas ou skips. |
+| Imagem Node `24.19.0-bookworm-slim`: `npm ci`, lint, teste e build | 0 vulnerabilidades; lint aprovado; 56/56 testes sem skips; build de 317,36 kB bruto/87,58 kB estimado. |
+| `ruby scripts/validate-openapi.rb docs/sdd/03-api-contract.yaml`; `sh -n scripts/validate-m1-compose.sh`; `docker compose config --quiet` | `SPEC-OAS-001`–`005` aprovados para seis operações/53 referências; shell e configuração Compose aprovados. |
+| `scripts/validate-m1-compose.sh` | Exit 0: same-origin, cadastro/login, ambos os PUTs, autorização, atomicidade, senha antiga/nova, persistência, logs seguros, `413/415/503` e cleanup aprovados. |
+| Checagem read-only de links Markdown e IDs de requisitos/critérios | 17 arquivos Markdown sem link local quebrado; os 91 IDs definidos em requisitos/critérios aparecem na matriz. |
+| Re-revisão independente do patch por backend/contrato, frontend/concorrência e SDD/operação | Backend encerrou sem achados; fragilidades de clique/reabilitação nos testes e superestimação/rastreio nos documentos foram corrigidas; a confirmação final dos três eixos encerrou sem achados acionáveis. |
+| `git diff --check`, buscas de skips/segredos e revisão final do patch | Aprovados; nenhum teste foi removido/enfraquecido, nenhum segredo foi encontrado e o patch permaneceu restrito à revisão de M4. |
+
+### Cleanup e riscos restantes
+
+- Duas primeiras execuções focadas foram interrompidas somente em seus contêineres efêmeros porque copiavam `node_modules` sob contenção de I/O; a repetição seletiva produziu os resultados autoritativos acima. Nenhum arquivo do checkout ou recurso de outro projeto foi removido.
+- O smoke removeu somente seu projeto, volume e rede efêmeros; as imagens versionadas reconstruídas permanecem reutilizáveis.
+- A UI real de edição cadastral já pertence à evidência original de M4; esta revisão acrescentou interação DOM automatizada e repetiu o smoke. A jornada E2E completa da troca de senha continua explicitamente em M5.
+- JWTs antigos continuam válidos no servidor até `exp`; no cliente, respostas tardias não podem remover uma sessão posterior.
+- M5–M6 continuam pendentes. Não há High/Medium aberto nesta revisão.

@@ -15,6 +15,8 @@ import { AuthService } from '../../core/auth/auth.service';
 import { trimmedEmail, trimmedLength } from '../auth/register/register.validators';
 import {
   ChangePasswordRequest,
+  MessageResponse,
+  Profile as ProfileResponse,
   ProfileProblemDetails,
   ProfileService,
   UpdateProfileRequest,
@@ -113,10 +115,16 @@ export class Profile implements OnInit {
     }
 
     const value = this.profileForm.getRawValue();
-    const profile = await this.profiles.update({
-      name: value.name.trim(),
-      email: value.email.trim(),
-    });
+    let profile: ProfileResponse | null;
+    this.profileForm.disable({ emitEvent: false });
+    try {
+      profile = await this.profiles.update({
+        name: value.name.trim(),
+        email: value.email.trim(),
+      });
+    } finally {
+      this.profileForm.enable({ emitEvent: false });
+    }
 
     if (profile) {
       this.profileForm.reset({ name: profile.name, email: profile.email });
@@ -139,12 +147,21 @@ export class Profile implements OnInit {
       return;
     }
 
-    const changed = await this.profiles.changePassword(this.passwordForm.getRawValue());
+    const accessToken = this.auth.getValidAccessToken();
+    let changed: MessageResponse | null;
+    this.passwordForm.disable({ emitEvent: false });
+    try {
+      changed = await this.profiles.changePassword(this.passwordForm.getRawValue());
+    } finally {
+      this.passwordForm.enable({ emitEvent: false });
+    }
 
     if (changed) {
       this.passwordForm.reset();
-      this.auth.clearSession();
-      await this.router.navigate(['/login'], { state: { passwordChanged: true } });
+      if (accessToken && this.auth.isCurrentAccessToken(accessToken)) {
+        this.auth.clearSession();
+        await this.router.navigate(['/login'], { state: { passwordChanged: true } });
+      }
       return;
     }
 

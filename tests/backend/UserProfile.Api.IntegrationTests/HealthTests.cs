@@ -250,6 +250,21 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
             updateProfileOperation.GetProperty("security").EnumerateArray());
         Assert.Empty(updateProfileSecurity.GetProperty("bearerAuth").EnumerateArray());
         AssertBearerChallengeHeader(updateProfileOperation);
+        AssertRequestSchema(updateProfileOperation, "UpdateProfileRequest");
+        AssertResponseSchema(updateProfileOperation, "200", "application/json", "ProfileResponse");
+        AssertResponseSchema(
+            updateProfileOperation,
+            "400",
+            "application/problem+json",
+            "ValidationProblemDetails");
+        foreach (var status in new[] { "401", "404", "409", "413", "415", "500", "503" })
+        {
+            AssertResponseSchema(
+                updateProfileOperation,
+                status,
+                "application/problem+json",
+                "ProblemDetails");
+        }
 
         var changePasswordOperation = paths
             .GetProperty("/api/profile/password")
@@ -268,6 +283,25 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
             changePasswordOperation.GetProperty("security").EnumerateArray());
         Assert.Empty(changePasswordSecurity.GetProperty("bearerAuth").EnumerateArray());
         AssertBearerChallengeHeader(changePasswordOperation);
+        AssertRequestSchema(changePasswordOperation, "ChangePasswordRequest");
+        AssertResponseSchema(
+            changePasswordOperation,
+            "200",
+            "application/json",
+            "MessageResponse");
+        AssertResponseSchema(
+            changePasswordOperation,
+            "400",
+            "application/problem+json",
+            "ValidationProblemDetails");
+        foreach (var status in new[] { "401", "404", "413", "415", "500", "503" })
+        {
+            AssertResponseSchema(
+                changePasswordOperation,
+                status,
+                "application/problem+json",
+                "ProblemDetails");
+        }
 
         var info = document.RootElement.GetProperty("info");
         Assert.Equal("User Profile API", info.GetProperty("title").GetString());
@@ -486,6 +520,32 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var schema = header.GetProperty("schema");
         Assert.Equal("string", schema.GetProperty("type").GetString());
         Assert.Equal("^Bearer(?: .*)?$", schema.GetProperty("pattern").GetString());
+    }
+
+    private static void AssertRequestSchema(JsonElement operation, string schemaName)
+    {
+        var requestBody = operation.GetProperty("requestBody");
+        Assert.True(requestBody.GetProperty("required").GetBoolean());
+        var schema = requestBody
+            .GetProperty("content")
+            .GetProperty("application/json")
+            .GetProperty("schema");
+        Assert.Equal($"#/components/schemas/{schemaName}", schema.GetProperty("$ref").GetString());
+    }
+
+    private static void AssertResponseSchema(
+        JsonElement operation,
+        string status,
+        string mediaType,
+        string schemaName)
+    {
+        var schema = operation
+            .GetProperty("responses")
+            .GetProperty(status)
+            .GetProperty("content")
+            .GetProperty(mediaType)
+            .GetProperty("schema");
+        Assert.Equal($"#/components/schemas/{schemaName}", schema.GetProperty("$ref").GetString());
     }
 
     private static void AssertPasswordSchema(JsonElement schema, int minimumLength)

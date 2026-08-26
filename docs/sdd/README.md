@@ -50,7 +50,7 @@ Novas decisões relevantes devem criar ou substituir ADR; registrar apenas uma p
 | Item | Estado |
 |---|---|
 | Código, dependências, Dockerfiles e Compose | Walking skeleton M1, cadastro M2, login/autorização/dashboard M3 e perfil/senha M4 concluídos; M5–M6 pendentes. |
-| Testes automatizados e evidências observadas | 99 integrações backend e 55 testes frontend aprovados sem skips, além de OpenAPI normativo/runtime, smoke Compose acumulado e UI real; E2E completo e CI permanecem pendentes. |
+| Testes automatizados e evidências observadas | 101 integrações backend e 56 testes frontend aprovados sem skips, além de OpenAPI normativo/runtime, smoke Compose acumulado e UI real; E2E completo e CI permanecem pendentes. |
 | README de execução e validação na raiz | Planejado para M6. |
 | Atualização de estados da matriz e do plano | Obrigatória em cada milestone. |
 | ADRs adicionais | Criar somente se surgir nova decisão relevante. |

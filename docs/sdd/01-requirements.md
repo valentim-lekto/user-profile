@@ -127,13 +127,13 @@ IDs publicados não devem ser renumerados nem reutilizados para outro comportame
 | `AC-PASS-01` | A alteração de senha solicita senha atual, nova senha e confirmação da nova senha. |
 | `AC-PASS-02` | Senha atual incorreta não altera o hash nem qualquer outro dado do usuário e produz mensagem de erro. |
 | `AC-PASS-03` | Nova senha ausente ou menor que 6 caracteres, ou confirmação divergente, não altera o hash, os timestamps nem qualquer outro dado do usuário e produz erro de validação. |
-| `AC-PASS-04` | Após alteração válida, o frontend informa o resultado e encerra a sessão removendo o JWT de `sessionStorage`. |
+| `AC-PASS-04` | Após alteração válida, o frontend informa o resultado e encerra a sessão que iniciou a requisição removendo seu JWT de `sessionStorage`; uma resposta tardia não remove nem redireciona uma sessão autenticada posteriormente. |
 
 ### Operação, segurança, documentação e qualidade
 
 | ID | Critério |
 |---|---|
-| `UI-STATE-01` | Cadastro, login, consulta e edições apresentam estado de carregamento e resultado de sucesso ou erro conforme aplicável. |
+| `UI-STATE-01` | Cadastro, login, consulta e edições apresentam estado de carregamento e resultado de sucesso ou erro conforme aplicável. Enquanto uma edição estiver em andamento, o formulário correspondente impede nova submissão e alteração dos campos associados à requisição pendente. |
 | `API-ERROR-01` | Respostas HTTP de erro produzidas pela API seguem `ProblemDetails`; falhas de validação seguem `ValidationProblemDetails`. Login com credenciais não reconhecidas usa `401 ProblemDetails` genérico; recursos protegidos usam `401 ProblemDetails` com challenge Bearer. Quando o proxy de mesma origem não alcança a API, ele converte a falha de transporte em `503 ProblemDetails`, sem devolver HTML ao frontend. |
 | `SEC-AUTH-01` | Endpoints de perfil identificam o usuário exclusivamente pelo claim `sub` do JWT e não aceitam `userId` do cliente. |
 | `SEC-SESSION-01` | O JWT de curta duração fica em `sessionStorage` e não há refresh token. |

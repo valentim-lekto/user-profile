@@ -57,10 +57,10 @@ Validar os comportamentos e riscos principais com a menor suíte capaz de fornec
 | `BE-PROF-001` | GET retorna somente ID imutável, nome e email do usuário indicado pelo `sub`. | `AC-DASH-01`, `AC-PROF-01` |
 | `BE-PROF-002` | Dois usuários consultam apenas o próprio perfil; query/header arbitrários não influenciam o `sub` usado pelo GET. | `SEC-AUTH-01`, `AC-PROF-01` |
 | `BE-PROF-003` | PUT válido atualiza e persiste nome/email do usuário atual, preserva `CreatedAtUtc` e avança `UpdatedAtUtc`. | `AC-PROF-02`, `AC-PROF-05`, `PREM-DATA-02` |
-| `BE-PROF-004` | PUT aplica validações equivalentes ao cadastro; cada falha preserva nome, email, email normalizado e timestamps. | `AC-PROF-03` |
+| `BE-PROF-004` | PUT aplica validações equivalentes ao cadastro, aceita email ASCII válido exatamente em 320 caracteres e rejeita as classes inválidas; cada falha preserva nome, email, email normalizado e timestamps. | `AC-PROF-03`, `PREM-INPUT-01` |
 | `BE-PROF-005` | Email de outro usuário retorna `409` sem alteração parcial; manter o próprio email não conflita. | `AC-PROF-04` |
 | `BE-PROF-006` | Dois usuários alteram somente o próprio perfil; `userId` extra no JSON retorna `400`, e query/header arbitrários não influenciam o `sub` usado pelo PUT. | `SEC-AUTH-01`, `AC-PROF-01`, `AC-PROF-02` |
-| `BE-PASS-001` | Senha atual incorreta, ausente ou acima de 128 caracteres retorna `400` e preserva nome, email, email normalizado, hash e timestamps. | `AC-PASS-02`, `PREM-INPUT-01` |
+| `BE-PASS-001` | Senha atual válida exatamente em 128 caracteres é aceita; senha atual incorreta, ausente ou acima de 128 caracteres retorna `400` e preserva nome, email, email normalizado, hash e timestamps. | `AC-PASS-02`, `PREM-INPUT-01` |
 | `BE-PASS-002` | Nova senha ausente/curta/longa ou confirmação ausente/curta/longa/divergente retorna `400`; toda a entidade é preservada, a senha antiga continua autenticando e a nova não autentica. | `AC-PASS-03`, `PREM-INPUT-01` |
 | `BE-PASS-003` | Alteração válida retorna `200`, preserva `CreatedAtUtc`, avança `UpdatedAtUtc`; senha antiga falha e nova senha autentica. | `AC-PASS-04`, `PREM-DATA-02` |
 | `BE-PASS-004` | O endpoint de senha rejeita Bearer ausente/inválido; com dois usuários altera somente a senha indicada pelo `sub`, e rejeita `userId` extra no JSON. | `AC-DASH-02`, `SEC-AUTH-01` |
@@ -69,7 +69,7 @@ Validar os comportamentos e riscos principais com a menor suíte capaz de fornec
 | `BE-ERR-002` | Após startup saudável, cadastro contra SQLite bloqueado percorre o handler real e retorna `500` sem stack trace, SQL ou segredo na resposta. | `SEC-SECRET-01`, `API-ERROR-01` |
 | `BE-DB-001` | Startup aplica migrations a banco vazio; o schema real contém exatamente os sete campos definidos no ADR-0002 com tipo/nulabilidade/chave esperados, cria o índice único e não deixa mudança pendente entre modelo e snapshot. | `OPS-DOCKER-01`, `PREM-DATA-02`, ADR-0002 |
 | `BE-HEALTH-001` | `/health` retorna `200` após startup; com timeout padrão de 30 segundos na conexão da API, bloqueio exclusivo posterior retorna `503 application/problem+json` em menos de 5 segundos. Falha de migration é testada como falha de startup. | `OPS-DOCKER-01`, `API-ERROR-01` |
-| `BE-OAS-001` | O OpenAPI gerado em runtime contém somente as operações já implementadas; em M3, exatamente `/health`, `/api/auth/register`, `/api/auth/login` e `GET /api/profile`, com segurança, status, schemas, extensões pós-`Trim`, JWT Bearer e DTOs coerentes com o contrato normativo. | `DOC-SDD-01`, `DOC-TRACE-01`, `SPEC-OAS-002`, `SPEC-OAS-003`, `SPEC-OAS-004` |
+| `BE-OAS-001` | O OpenAPI gerado em runtime contém exatamente as seis operações implementadas em M4, com segurança, status, extensões pós-`Trim`, JWT Bearer e DTOs sem campos sensíveis; nos dois PUTs de M4, também vincula body obrigatório, media types e schemas de request/resposta coerentes com o contrato normativo. | `DOC-SDD-01`, `DOC-TRACE-01`, `SPEC-OAS-002`, `SPEC-OAS-003`, `SPEC-OAS-004`, `SPEC-OAS-005` |
 
 ## Catálogo planejado — frontend
 
@@ -84,10 +84,10 @@ Validar os comportamentos e riscos principais com a menor suíte capaz de fornec
 | `FE-INT-002` | `401` de request que levava Bearer limpa sessão e conduz ao login somente se a sessão corrente ainda usa o mesmo token; um `401` tardio não remove uma sessão mais recente. O `401` do login público não levava Bearer, não dispara limpeza global e continua disponível para a tela. | `AC-LOGIN-02`, `AC-DASH-02`, `SEC-SESSION-01` |
 | `FE-DASH-001` | Dashboard busca perfil, mostra loading/erro, saúda pelo nome retornado, navega ao perfil e faz logout removendo somente o token da aplicação antes de voltar ao login. Uma nova ativação usa estado de perfil novo, de modo que a resposta pendente da sessão anterior não bloqueia nem preenche a seguinte. | `AC-DASH-01`, `AC-DASH-03`, `AC-DASH-04`, `SEC-SESSION-01` |
 | `FE-WIRE-001` | A configuração real da aplicação conecta as rotas protegidas ao guard e o `HttpClient` ao interceptor: acesso anônimo redireciona e uma sessão válida produz Bearer no GET do dashboard. | `AC-DASH-01`, `AC-DASH-02`, `SEC-AUTH-01` |
-| `FE-PROF-001` | Perfil carrega nome/email com estados de loading/erro e valida edição com as regras do cadastro. | `AC-PROF-01`, `AC-PROF-03`, `UI-STATE-01` |
-| `FE-PROF-002` | Atualização envia exatamente nome/email — nunca senha, mesmo vazia —, mostra loading, bloqueia submissão duplicada e apresenta feedback de sucesso/erro, incluindo `409`; nova consulta do dashboard mostra o nome persistido. | `AC-PROF-02`, `AC-PROF-04`, `AC-PROF-05`, `UI-STATE-01` |
-| `FE-PASS-001` | Formulário separado exige senha atual, nova senha e confirmação, e aplica os limites defensivos `128` a todas as entradas. | `AC-PASS-01`, `AC-PASS-03`, `PREM-INPUT-01` |
-| `FE-PASS-002` | Loading bloqueia submissão duplicada; sucesso remove o JWT e navega ao login com feedback; senha atual incorreta mantém a sessão e mostra erro. | `AC-PASS-02`, `AC-PASS-04`, `UI-STATE-01` |
+| `FE-PROF-001` | Perfil carrega nome/email com estados de loading/erro; o formulário renderizado vincula os inputs reais, exibe erros locais e valida edição com as regras do cadastro. | `AC-PROF-01`, `AC-PROF-03`, `UI-STATE-01`, `TEST-FLOW-01` |
+| `FE-PROF-002` | A submissão pelo formulário renderizado envia exatamente nome/email — nunca senha, mesmo vazia —, mostra loading, bloqueia os campos e submissões duplicadas e apresenta feedback de sucesso/erro, incluindo `409`; nova consulta do dashboard mostra o nome persistido. | `AC-PROF-02`, `AC-PROF-04`, `AC-PROF-05`, `UI-STATE-01`, `TEST-FLOW-01` |
+| `FE-PASS-001` | O formulário separado renderizado exige senha atual, nova senha e confirmação, e aceita o limite inclusivo `128` em todas as entradas antes de rejeitar `129`. | `AC-PASS-01`, `AC-PASS-03`, `PREM-INPUT-01`, `TEST-FLOW-01` |
+| `FE-PASS-002` | A submissão pelo formulário renderizado bloqueia os campos e submissões duplicadas durante o loading; sucesso remove o JWT e navega ao login com feedback somente se a sessão ainda usa o token que iniciou a operação; resposta tardia preserva uma sessão posterior, e senha atual incorreta mantém a sessão e mostra erro. | `AC-PASS-02`, `AC-PASS-04`, `UI-STATE-01`, `SEC-SESSION-01`, `TEST-FLOW-01` |
 
 Os testes de frontend não reimplementam criptografia, EF ou validação JWT. Services recebem respostas HTTP controladas; guard e interceptor são testados como funções no contexto de injeção Angular.
 
@@ -114,11 +114,11 @@ As jornadas usam a origem publicada pelo Nginx e não chamam a API diretamente p
 
 `scripts/validate-openapi.rb` executa `SPEC-OAS-001`–`005` sobre o contrato
 versionado, incluindo métodos extras, schemas, status, segurança, `userId`,
-ProblemDetails e campos sensíveis. O teste `BE-OAS-001` cobre a parcela já
-implementada do documento exposto em runtime. Quando as operações funcionais
-existirem, CI deve comparar a documentação exposta com o contrato versionado ou
-validar ambos pelo mesmo conjunto de testes de contrato. Divergência quebra o
-build.
+ProblemDetails e campos sensíveis. O teste `BE-OAS-001` cobre as seis operações
+do documento exposto em runtime e, nos dois PUTs de M4, inclui os `$ref` e media
+types que associam cada request e resposta ao schema normativo correspondente.
+A CI deve validar o contrato versionado e o documento runtime por esses gates;
+divergência quebra o build.
 
 ## Validação Docker e entrega
 

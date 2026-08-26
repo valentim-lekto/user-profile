@@ -136,6 +136,16 @@ describe('Profile', () => {
     ).toContain('A confirmação deve ser idêntica à nova senha.');
 
     component.passwordForm.setValue({
+      currentPassword: 'p'.repeat(128),
+      newPassword: 'n'.repeat(128),
+      newPasswordConfirmation: 'n'.repeat(128),
+    });
+    expect(component.passwordForm.valid).toBe(true);
+    expect(component.passwordForm.controls.currentPassword.valid).toBe(true);
+    expect(component.passwordForm.controls.newPassword.valid).toBe(true);
+    expect(component.passwordForm.controls.newPasswordConfirmation.valid).toBe(true);
+
+    component.passwordForm.setValue({
       currentPassword: 'p'.repeat(129),
       newPassword: 'n'.repeat(129),
       newPasswordConfirmation: 'n'.repeat(129),
@@ -146,20 +156,38 @@ describe('Profile', () => {
       true,
     );
 
-    await component.submitProfile();
-    await component.submitPassword();
+    setRenderedInputValue('name', 'ab');
+    setRenderedInputValue('email', 'ana@example');
+    setRenderedInputValue('currentPassword', '');
+    setRenderedInputValue('newPassword', 'short');
+    setRenderedInputValue('newPasswordConfirmation', 'different');
+    const [profileForm, passwordForm] = renderedForms();
+    profileForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    passwordForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+
+    const pageText = harness.routeNativeElement?.textContent ?? '';
+    expect(pageText).toContain('O nome deve ter pelo menos 3 caracteres.');
+    expect(pageText).toContain('Informe um email válido.');
+    expect(pageText).toContain('Informe sua senha atual.');
+    expect(pageText).toContain('A nova senha deve ter pelo menos 6 caracteres.');
+    expect(pageText).toContain('A confirmação deve ser idêntica à nova senha.');
     http.expectNone((request) => request.method === 'PUT');
   });
 
   it('sends only trimmed name and email, shows loading and blocks duplicate updates', async () => {
     await flushProfile();
-    component.profileForm.setValue({
-      name: '  Ana Updated  ',
-      email: '  ana.updated@example.test  ',
-    });
+    setRenderedInputValue('name', '  Ana Updated  ');
+    setRenderedInputValue('email', '  ana.updated@example.test  ');
 
-    const firstSubmission = component.submitProfile();
-    const duplicateSubmission = component.submitProfile();
+    const [profileForm] = renderedForms();
+    const saveButton = profileForm.querySelector<HTMLButtonElement>(
+      '[data-testid="save-profile"]',
+    );
+    expect(saveButton?.disabled).toBe(false);
+    saveButton?.click();
+    saveButton?.click();
     const request = http.expectOne('/api/profile');
     harness.detectChanges();
 
@@ -171,9 +199,13 @@ describe('Profile', () => {
     expect(Object.keys(request.request.body as object)).toEqual(['name', 'email']);
     expect(http.match((candidate) => candidate.method === 'PUT')).toHaveLength(0);
     expect(
-      harness.routeNativeElement?.querySelector<HTMLButtonElement>(
-        '[data-testid="save-profile"]',
-      )?.disabled,
+      saveButton?.disabled,
+    ).toBe(true);
+    expect(component.profileForm.disabled).toBe(true);
+    expect(
+      Array.from(profileForm.querySelectorAll<HTMLInputElement>('input')).every(
+        (input) => input.disabled,
+      ),
     ).toBe(true);
     expect(harness.routeNativeElement?.textContent).toContain('Salvando dados pessoais');
 
@@ -182,7 +214,7 @@ describe('Profile', () => {
       name: 'Ana Updated',
       email: 'ana.updated@example.test',
     });
-    await Promise.all([firstSubmission, duplicateSubmission]);
+    await harness.fixture.whenStable();
     harness.detectChanges();
 
     expect(harness.routeNativeElement?.textContent).toContain(
@@ -192,6 +224,7 @@ describe('Profile', () => {
       name: 'Ana Updated',
       email: 'ana.updated@example.test',
     });
+    expect(component.profileForm.enabled).toBe(true);
   });
 
   it('maps profile validation errors to fields and reports duplicate email conflicts', async () => {
@@ -216,6 +249,13 @@ describe('Profile', () => {
     expect(harness.routeNativeElement?.querySelector('mat-error')?.textContent).toContain(
       'O email informado não é válido',
     );
+    const [profileForm] = renderedForms();
+    expect(component.profileForm.enabled).toBe(true);
+    expect(
+      Array.from(profileForm.querySelectorAll<HTMLInputElement>('input')).every(
+        (input) => !input.disabled,
+      ),
+    ).toBe(true);
     expect(sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBe(accessToken);
 
     const emailInput = harness.routeNativeElement?.querySelector<HTMLInputElement>(
@@ -270,6 +310,13 @@ describe('Profile', () => {
       (element) => element.textContent,
     );
     expect(errors.some((error) => error?.includes('A senha atual está incorreta'))).toBe(true);
+    const [, passwordForm] = renderedForms();
+    expect(component.passwordForm.enabled).toBe(true);
+    expect(
+      Array.from(passwordForm.querySelectorAll<HTMLInputElement>('input')).every(
+        (input) => !input.disabled,
+      ),
+    ).toBe(true);
     expect(sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBe(accessToken);
     expect(router.url).toBe('/profile');
   });
@@ -277,10 +324,17 @@ describe('Profile', () => {
   it('blocks duplicate password changes, clears only the app session and reports success at login', async () => {
     await flushProfile();
     sessionStorage.setItem('unrelated.test-key', 'preserve-me');
-    setValidPasswordForm();
+    setRenderedInputValue('currentPassword', 'synthetic-current-password');
+    setRenderedInputValue('newPassword', 'synthetic-new-password');
+    setRenderedInputValue('newPasswordConfirmation', 'synthetic-new-password');
 
-    const firstSubmission = component.submitPassword();
-    const duplicateSubmission = component.submitPassword();
+    const [, passwordForm] = renderedForms();
+    const changePasswordButton = passwordForm.querySelector<HTMLButtonElement>(
+      '[data-testid="change-password"]',
+    );
+    expect(changePasswordButton?.disabled).toBe(false);
+    changePasswordButton?.click();
+    changePasswordButton?.click();
     const request = http.expectOne('/api/profile/password');
     harness.detectChanges();
 
@@ -292,14 +346,17 @@ describe('Profile', () => {
     });
     expect(http.match('/api/profile/password')).toHaveLength(0);
     expect(
-      harness.routeNativeElement?.querySelector<HTMLButtonElement>(
-        '[data-testid="change-password"]',
-      )?.disabled,
+      changePasswordButton?.disabled,
+    ).toBe(true);
+    expect(component.passwordForm.disabled).toBe(true);
+    expect(
+      Array.from(passwordForm.querySelectorAll<HTMLInputElement>('input')).every(
+        (input) => input.disabled,
+      ),
     ).toBe(true);
     expect(harness.routeNativeElement?.textContent).toContain('Alterando senha');
 
     request.flush({ message: 'Password changed successfully.' });
-    await Promise.all([firstSubmission, duplicateSubmission]);
     await harness.fixture.whenStable();
     harness.detectChanges();
 
@@ -309,6 +366,24 @@ describe('Profile', () => {
     expect(harness.routeNativeElement?.textContent).toContain(
       'Senha alterada com sucesso. Faça login novamente.',
     );
+  });
+
+  it('keeps a newer authenticated session when an older password change succeeds late', async () => {
+    await flushProfile();
+    setValidPasswordForm();
+
+    const submission = component.submitPassword();
+    const request = http.expectOne('/api/profile/password');
+    const newerAccessToken = createToken(Math.floor(Date.now() / 1000) + 1800);
+    sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, newerAccessToken);
+    await harness.navigateByUrl('/dashboard', DashboardStub);
+
+    request.flush({ message: 'Password changed successfully.' });
+    await submission;
+    await harness.fixture.whenStable();
+
+    expect(sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBe(newerAccessToken);
+    expect(router.url).toBe('/dashboard');
   });
 
   async function flushProfile(): Promise<void> {
@@ -325,6 +400,27 @@ describe('Profile', () => {
       newPassword: 'synthetic-new-password',
       newPasswordConfirmation: 'synthetic-new-password',
     });
+  }
+
+  function setRenderedInputValue(controlName: string, value: string): void {
+    const input = harness.routeNativeElement?.querySelector<HTMLInputElement>(
+      `input[formControlName="${controlName}"]`,
+    );
+    expect(input).not.toBeNull();
+    if (!input) {
+      return;
+    }
+
+    input.value = value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  function renderedForms(): [HTMLFormElement, HTMLFormElement] {
+    const forms = Array.from(
+      harness.routeNativeElement?.querySelectorAll<HTMLFormElement>('form') ?? [],
+    );
+    expect(forms).toHaveLength(2);
+    return [forms[0], forms[1]];
   }
 });
 

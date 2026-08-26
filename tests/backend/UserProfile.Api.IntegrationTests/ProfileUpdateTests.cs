@@ -72,6 +72,26 @@ public sealed class ProfileUpdateTests(ApiFactory factory) : IClassFixture<ApiFa
         Assert.Equal(email, persisted.Email);
     }
 
+    [Fact]
+    public async Task InclusiveProfileEmailMaximumIsAccepted()
+    {
+        using var client = factory.CreateClient();
+        var account = await RegisterAsync(factory, client, "Original User");
+        var token = await GetAccessTokenAsync(client, account.Email, account.Password);
+        var email = $"{Guid.NewGuid():N}{new string('a', 275)}@example.test";
+        Assert.Equal(320, email.Length);
+
+        using var response = await PutProfileAsync(
+            client,
+            token,
+            new { name = "Updated User", email });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var persisted = await LoadUserAsync(factory, account.Id);
+        Assert.Equal(email, persisted.Email);
+        Assert.Equal(email.ToUpperInvariant(), persisted.NormalizedEmail);
+    }
+
     [Theory]
     [InlineData("missing-name", "name")]
     [InlineData("short-name-after-trim", "name")]
@@ -352,6 +372,38 @@ public sealed class ProfileUpdateTests(ApiFactory factory) : IClassFixture<ApiFa
         await AssertLoginIsNotSuccessfulAsync(client, account.Email, candidatePassword);
     }
 
+    [Fact]
+    public async Task CurrentPasswordAtMaximumLengthIsAccepted()
+    {
+        using var client = factory.CreateClient();
+        var currentPassword = new string('p', 128);
+        var account = await RegisterAsync(
+            factory,
+            client,
+            "Password User",
+            currentPassword);
+        var token = await GetAccessTokenAsync(client, account.Email, currentPassword);
+        var newPassword = CreatePassword();
+
+        using var response = await PutPasswordAsync(
+            client,
+            token,
+            new
+            {
+                currentPassword,
+                newPassword,
+                newPasswordConfirmation = newPassword
+            });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await AssertLoginStatusAsync(
+            client,
+            account.Email,
+            currentPassword,
+            HttpStatusCode.Unauthorized);
+        await AssertLoginStatusAsync(client, account.Email, newPassword, HttpStatusCode.OK);
+    }
+
     [Theory]
     [InlineData(6)]
     [InlineData(128)]
@@ -572,10 +624,11 @@ public sealed class ProfileUpdateTests(ApiFactory factory) : IClassFixture<ApiFa
     private static async Task<Account> RegisterAsync(
         ApiFactory sourceFactory,
         HttpClient client,
-        string name)
+        string name,
+        string? suppliedPassword = null)
     {
         var email = CreateEmail();
-        var password = CreatePassword();
+        var password = suppliedPassword ?? CreatePassword();
         using var response = await client.PostAsJsonAsync(
             "/api/auth/register",
             new { name, email, password, passwordConfirmation = password });
