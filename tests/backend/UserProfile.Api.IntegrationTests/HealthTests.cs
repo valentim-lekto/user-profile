@@ -170,7 +170,13 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
         using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync());
         var paths = document.RootElement.GetProperty("paths");
         Assert.Equal(
-            ["/api/auth/login", "/api/auth/register", "/api/profile", "/health"],
+            [
+                "/api/auth/login",
+                "/api/auth/register",
+                "/api/profile",
+                "/api/profile/password",
+                "/health"
+            ],
             paths.EnumerateObject().Select(path => path.Name).Order());
 
         var healthOperation = paths.GetProperty("/health").GetProperty("get");
@@ -215,7 +221,8 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
                 .Order());
         AssertBearerChallengeHeader(loginOperation);
 
-        var profileOperation = paths.GetProperty("/api/profile").GetProperty("get");
+        var profilePath = paths.GetProperty("/api/profile");
+        var profileOperation = profilePath.GetProperty("get");
         Assert.Equal("getCurrentProfile", profileOperation.GetProperty("operationId").GetString());
         Assert.Equal(
             ["200", "401", "404", "500", "503"],
@@ -227,6 +234,40 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var profileSecurity = Assert.Single(profileOperation.GetProperty("security").EnumerateArray());
         Assert.Empty(profileSecurity.GetProperty("bearerAuth").EnumerateArray());
         AssertBearerChallengeHeader(profileOperation);
+
+        var updateProfileOperation = profilePath.GetProperty("put");
+        Assert.Equal(
+            "updateCurrentProfile",
+            updateProfileOperation.GetProperty("operationId").GetString());
+        Assert.Equal(
+            ["200", "400", "401", "404", "409", "413", "415", "500", "503"],
+            updateProfileOperation
+                .GetProperty("responses")
+                .EnumerateObject()
+                .Select(operationResponse => operationResponse.Name)
+                .Order());
+        var updateProfileSecurity = Assert.Single(
+            updateProfileOperation.GetProperty("security").EnumerateArray());
+        Assert.Empty(updateProfileSecurity.GetProperty("bearerAuth").EnumerateArray());
+        AssertBearerChallengeHeader(updateProfileOperation);
+
+        var changePasswordOperation = paths
+            .GetProperty("/api/profile/password")
+            .GetProperty("put");
+        Assert.Equal(
+            "changeCurrentPassword",
+            changePasswordOperation.GetProperty("operationId").GetString());
+        Assert.Equal(
+            ["200", "400", "401", "404", "413", "415", "500", "503"],
+            changePasswordOperation
+                .GetProperty("responses")
+                .EnumerateObject()
+                .Select(operationResponse => operationResponse.Name)
+                .Order());
+        var changePasswordSecurity = Assert.Single(
+            changePasswordOperation.GetProperty("security").EnumerateArray());
+        Assert.Empty(changePasswordSecurity.GetProperty("bearerAuth").EnumerateArray());
+        AssertBearerChallengeHeader(changePasswordOperation);
 
         var info = document.RootElement.GetProperty("info");
         Assert.Equal("User Profile API", info.GetProperty("title").GetString());
@@ -376,6 +417,62 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal("email", profileEmail.GetProperty("format").GetString());
         Assert.Equal(RegisterRequest.EmailPattern, profileEmail.GetProperty("pattern").GetString());
         Assert.Equal(320, profileEmail.GetProperty("maxLength").GetInt32());
+
+        var updateProfileSchema = schemas.GetProperty("UpdateProfileRequest");
+        Assert.False(updateProfileSchema.GetProperty("additionalProperties").GetBoolean());
+        Assert.Equal(
+            ["email", "name"],
+            updateProfileSchema
+                .GetProperty("required")
+                .EnumerateArray()
+                .Select(property => property.GetString())
+                .Order());
+        var updateProfileProperties = updateProfileSchema.GetProperty("properties");
+        Assert.Equal(
+            ["email", "name"],
+            updateProfileProperties.EnumerateObject().Select(property => property.Name).Order());
+        var updateName = updateProfileProperties.GetProperty("name");
+        Assert.False(updateName.TryGetProperty("minLength", out _));
+        Assert.False(updateName.TryGetProperty("maxLength", out _));
+        Assert.True(updateName.GetProperty("x-trim").GetBoolean());
+        Assert.Equal(3, updateName.GetProperty("x-min-length-after-trim").GetInt32());
+        Assert.Equal(200, updateName.GetProperty("x-max-length-after-trim").GetInt32());
+        var updateEmail = updateProfileProperties.GetProperty("email");
+        Assert.False(updateEmail.TryGetProperty("minLength", out _));
+        Assert.False(updateEmail.TryGetProperty("maxLength", out _));
+        Assert.False(updateEmail.TryGetProperty("format", out _));
+        Assert.Equal(
+            RegisterRequestSchemaFilter.RawEmailPattern,
+            updateEmail.GetProperty("pattern").GetString());
+        Assert.True(updateEmail.GetProperty("x-trim").GetBoolean());
+        Assert.Equal(1, updateEmail.GetProperty("x-min-length-after-trim").GetInt32());
+        Assert.Equal(320, updateEmail.GetProperty("x-max-length-after-trim").GetInt32());
+        Assert.Equal(
+            RegisterRequest.EmailPattern,
+            updateEmail.GetProperty("x-pattern-after-trim").GetString());
+
+        var changePasswordSchema = schemas.GetProperty("ChangePasswordRequest");
+        Assert.False(changePasswordSchema.GetProperty("additionalProperties").GetBoolean());
+        Assert.Equal(
+            ["currentPassword", "newPassword", "newPasswordConfirmation"],
+            changePasswordSchema
+                .GetProperty("required")
+                .EnumerateArray()
+                .Select(property => property.GetString())
+                .Order());
+        var changePasswordProperties = changePasswordSchema.GetProperty("properties");
+        Assert.Equal(
+            ["currentPassword", "newPassword", "newPasswordConfirmation"],
+            changePasswordProperties.EnumerateObject().Select(property => property.Name).Order());
+        AssertPasswordSchema(
+            changePasswordProperties.GetProperty("currentPassword"),
+            minimumLength: 1);
+        AssertPasswordSchema(
+            changePasswordProperties.GetProperty("newPassword"),
+            minimumLength: 6);
+        AssertPasswordSchema(
+            changePasswordProperties.GetProperty("newPasswordConfirmation"),
+            minimumLength: 6);
     }
 
     private static void AssertBearerChallengeHeader(JsonElement operation)
@@ -389,6 +486,15 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var schema = header.GetProperty("schema");
         Assert.Equal("string", schema.GetProperty("type").GetString());
         Assert.Equal("^Bearer(?: .*)?$", schema.GetProperty("pattern").GetString());
+    }
+
+    private static void AssertPasswordSchema(JsonElement schema, int minimumLength)
+    {
+        Assert.Equal("string", schema.GetProperty("type").GetString());
+        Assert.Equal("password", schema.GetProperty("format").GetString());
+        Assert.True(schema.GetProperty("writeOnly").GetBoolean());
+        Assert.Equal(minimumLength, schema.GetProperty("minLength").GetInt32());
+        Assert.Equal(128, schema.GetProperty("maxLength").GetInt32());
     }
 
     [Fact]

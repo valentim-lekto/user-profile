@@ -19,6 +19,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 
     private readonly int databaseTimeoutSeconds;
     private readonly IInterceptor? dbInterceptor;
+    private readonly AdjustableTimeProvider timeProvider = new(FixedUtcNow);
     private readonly byte[] jwtSigningKey = RandomNumberGenerator.GetBytes(
         JwtOptions.MinimumSigningKeyBytes * 2);
     private readonly string testDirectory = Path.Combine(
@@ -38,7 +39,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 
     public string DatabasePath => Path.Combine(testDirectory, "user-profile.db");
 
-    public DateTimeOffset UtcNow => FixedUtcNow;
+    public DateTimeOffset UtcNow => timeProvider.GetUtcNow();
 
     public byte[] JwtSigningKey => jwtSigningKey.ToArray();
 
@@ -49,6 +50,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     public static ApiFactory WithDatabaseTimeout(int seconds) => new(seconds, null);
 
     public static ApiFactory WithInterceptor(IInterceptor interceptor) => new(30, interceptor);
+
+    public void AdvanceTime(TimeSpan elapsed) => timeProvider.Advance(elapsed);
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -69,7 +72,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         builder.ConfigureServices(services =>
         {
             services.RemoveAll<TimeProvider>();
-            services.AddSingleton<TimeProvider>(new FixedTimeProvider(FixedUtcNow));
+            services.AddSingleton<TimeProvider>(timeProvider);
 
             if (dbInterceptor is not null)
             {
@@ -94,8 +97,26 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         }
     }
 
-    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    private sealed class AdjustableTimeProvider(DateTimeOffset utcNow) : TimeProvider
     {
-        public override DateTimeOffset GetUtcNow() => utcNow;
+        private long utcTicks = utcNow.UtcTicks;
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            return new DateTimeOffset(Interlocked.Read(ref utcTicks), TimeSpan.Zero);
+        }
+
+        public void Advance(TimeSpan elapsed)
+        {
+            if (elapsed <= TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(elapsed),
+                    elapsed,
+                    "Elapsed time must be positive.");
+            }
+
+            Interlocked.Add(ref utcTicks, elapsed.Ticks);
+        }
     }
 }

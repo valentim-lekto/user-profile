@@ -7,8 +7,11 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { AUTH_TOKEN_STORAGE_KEY } from '../../../core/auth/auth.service';
 import { Login } from './login';
 
-@Component({ template: '' })
+@Component({ selector: 'app-dashboard-stub', template: '' })
 class DashboardStub {}
+
+@Component({ selector: 'app-origin-stub', template: '' })
+class OriginStub {}
 
 describe('Login', () => {
   let component: Login;
@@ -23,6 +26,7 @@ describe('Login', () => {
         provideRouter([
           { path: 'login', component: Login },
           { path: 'dashboard', component: DashboardStub },
+          { path: 'origin', component: OriginStub },
         ]),
         provideHttpClient(),
         provideHttpClientTesting(),
@@ -186,6 +190,17 @@ describe('Login', () => {
       'Não foi possível entrar',
     );
     expect(sessionStorage.length).toBe(0);
+  });
+
+  it('shows the password-change confirmation received through navigation state', async () => {
+    await harness.navigateByUrl('/origin', OriginStub);
+    await router.navigate(['/login'], { state: { passwordChanged: true } });
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+
+    expect(harness.routeNativeElement?.querySelector('[role="status"]')?.textContent).toContain(
+      'Senha alterada com sucesso. Faça login novamente.',
+    );
   });
 });
 

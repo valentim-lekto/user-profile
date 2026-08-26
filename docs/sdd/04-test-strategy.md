@@ -57,11 +57,11 @@ Validar os comportamentos e riscos principais com a menor suíte capaz de fornec
 | `BE-PROF-001` | GET retorna somente ID imutável, nome e email do usuário indicado pelo `sub`. | `AC-DASH-01`, `AC-PROF-01` |
 | `BE-PROF-002` | Dois usuários consultam apenas o próprio perfil; query/header arbitrários não influenciam o `sub` usado pelo GET. | `SEC-AUTH-01`, `AC-PROF-01` |
 | `BE-PROF-003` | PUT válido atualiza e persiste nome/email do usuário atual, preserva `CreatedAtUtc` e avança `UpdatedAtUtc`. | `AC-PROF-02`, `AC-PROF-05`, `PREM-DATA-02` |
-| `BE-PROF-004` | PUT aplica validações equivalentes ao cadastro. | `AC-PROF-03` |
-| `BE-PROF-005` | Email de outro usuário retorna `409`; manter o próprio email não conflita. | `AC-PROF-04` |
+| `BE-PROF-004` | PUT aplica validações equivalentes ao cadastro; cada falha preserva nome, email, email normalizado e timestamps. | `AC-PROF-03` |
+| `BE-PROF-005` | Email de outro usuário retorna `409` sem alteração parcial; manter o próprio email não conflita. | `AC-PROF-04` |
 | `BE-PROF-006` | Dois usuários alteram somente o próprio perfil; `userId` extra no JSON retorna `400`, e query/header arbitrários não influenciam o `sub` usado pelo PUT. | `SEC-AUTH-01`, `AC-PROF-01`, `AC-PROF-02` |
-| `BE-PASS-001` | Senha atual incorreta, ausente ou acima de 128 caracteres retorna `400` e não muda o hash. | `AC-PASS-02`, `PREM-INPUT-01` |
-| `BE-PASS-002` | Nova senha ausente/curta/longa ou confirmação ausente/curta/longa/divergente retorna `400`; o hash não muda, a senha antiga continua autenticando e a nova não autentica. | `AC-PASS-03`, `PREM-INPUT-01` |
+| `BE-PASS-001` | Senha atual incorreta, ausente ou acima de 128 caracteres retorna `400` e preserva nome, email, email normalizado, hash e timestamps. | `AC-PASS-02`, `PREM-INPUT-01` |
+| `BE-PASS-002` | Nova senha ausente/curta/longa ou confirmação ausente/curta/longa/divergente retorna `400`; toda a entidade é preservada, a senha antiga continua autenticando e a nova não autentica. | `AC-PASS-03`, `PREM-INPUT-01` |
 | `BE-PASS-003` | Alteração válida retorna `200`, preserva `CreatedAtUtc`, avança `UpdatedAtUtc`; senha antiga falha e nova senha autentica. | `AC-PASS-04`, `PREM-DATA-02` |
 | `BE-PASS-004` | O endpoint de senha rejeita Bearer ausente/inválido; com dois usuários altera somente a senha indicada pelo `sub`, e rejeita `userId` extra no JSON. | `AC-DASH-02`, `SEC-AUTH-01` |
 | `BE-DTO-001` | Nenhuma resposta expõe senha, hash ou email normalizado; somente `ProfileResponse` expõe o ID imutável previsto no contrato. | `AC-PROF-01`, `SEC-SECRET-01` |
@@ -85,9 +85,9 @@ Validar os comportamentos e riscos principais com a menor suíte capaz de fornec
 | `FE-DASH-001` | Dashboard busca perfil, mostra loading/erro, saúda pelo nome retornado, navega ao perfil e faz logout removendo somente o token da aplicação antes de voltar ao login. Uma nova ativação usa estado de perfil novo, de modo que a resposta pendente da sessão anterior não bloqueia nem preenche a seguinte. | `AC-DASH-01`, `AC-DASH-03`, `AC-DASH-04`, `SEC-SESSION-01` |
 | `FE-WIRE-001` | A configuração real da aplicação conecta as rotas protegidas ao guard e o `HttpClient` ao interceptor: acesso anônimo redireciona e uma sessão válida produz Bearer no GET do dashboard. | `AC-DASH-01`, `AC-DASH-02`, `SEC-AUTH-01` |
 | `FE-PROF-001` | Perfil carrega nome/email com estados de loading/erro e valida edição com as regras do cadastro. | `AC-PROF-01`, `AC-PROF-03`, `UI-STATE-01` |
-| `FE-PROF-002` | Atualização mostra loading, bloqueia submissão duplicada e apresenta feedback de sucesso/erro, incluindo `409`. | `AC-PROF-04`, `AC-PROF-05`, `UI-STATE-01` |
+| `FE-PROF-002` | Atualização envia exatamente nome/email — nunca senha, mesmo vazia —, mostra loading, bloqueia submissão duplicada e apresenta feedback de sucesso/erro, incluindo `409`; nova consulta do dashboard mostra o nome persistido. | `AC-PROF-02`, `AC-PROF-04`, `AC-PROF-05`, `UI-STATE-01` |
 | `FE-PASS-001` | Formulário separado exige senha atual, nova senha e confirmação, e aplica os limites defensivos `128` a todas as entradas. | `AC-PASS-01`, `AC-PASS-03`, `PREM-INPUT-01` |
-| `FE-PASS-002` | Loading bloqueia submissão duplicada; sucesso exibe feedback e remove o JWT; senha atual incorreta mantém a sessão e mostra erro. | `AC-PASS-02`, `AC-PASS-04`, `UI-STATE-01` |
+| `FE-PASS-002` | Loading bloqueia submissão duplicada; sucesso remove o JWT e navega ao login com feedback; senha atual incorreta mantém a sessão e mostra erro. | `AC-PASS-02`, `AC-PASS-04`, `UI-STATE-01` |
 
 Os testes de frontend não reimplementam criptografia, EF ou validação JWT. Services recebem respostas HTTP controladas; guard e interceptor são testados como funções no contexto de injeção Angular.
 
@@ -126,7 +126,7 @@ build.
 |---|---|---|
 | `TECH-BACKEND-001` | Solution/projetos e lock NuGet usam ASP.NET Core/C#, EF Core SQLite e JWT nas versões fixadas; restore locked e build passam. | `TECH-BACKEND-01` |
 | `TECH-FRONTEND-001` | `package.json`/lockfile usam Angular standalone/strict, Reactive Forms e Material nas versões fixadas; `npm ci` e build passam. | `TECH-FRONTEND-01` |
-| `OPS-COMPOSE-001` | `scripts/validate-m1-compose.sh` é o smoke acumulado M1+M2+M3: em projeto/volume nomeado efêmero executa `docker compose up --build --wait` sem `.env` nem SDKs, valida origem única, cadastro, login, `401` equivalente com Bearer, perfil por `sub`, `413/415`, ausência da senha sintética válida, dos marcadores e do JWT observado nos logs, recria a API preservando o volume, renova a sessão e remove somente os recursos temporários ao final. | `OPS-DOCKER-01`, `OPS-DOCKER-02`, `OPS-DOCKER-03`, `API-ERROR-01` |
+| `OPS-COMPOSE-001` | `scripts/validate-m1-compose.sh` é o smoke acumulado M1+M2+M3+M4: em projeto/volume nomeado efêmero executa `docker compose up --build --wait` sem `.env` nem SDKs, valida origem única, cadastro, login, os dois PUTs, falhas sem mutação, `401` equivalente com Bearer, `413/415`, ausência de credenciais/marcadores/JWT nos logs, recria a API preservando perfil/senha, renova a sessão e remove somente os recursos temporários ao final. | `OPS-DOCKER-01`, `OPS-DOCKER-02`, `OPS-DOCKER-03`, `API-ERROR-01` |
 | `OPS-ORIGIN-001` | O mesmo smoke verifica SPA, `/api/*`, `/swagger/*` e `/health` por `http://localhost:8080`, ausência de porta pública da API, `404 ProblemDetails`, upstream parado convertido em `503 ProblemDetails` e mapeamento explícito de `502`/`504`. | `API-ERROR-01`, ADR-0004 |
 | `OPS-PERSIST-001` | Criar usuário, recriar serviços sem remover volume e autenticar novamente. | `OPS-DOCKER-03` |
 | `OPS-TAGS-001` | Dockerfiles não contêm `latest` nem tags incompletas e usam as versões do design. | `OPS-DOCKER-02` |
@@ -141,7 +141,7 @@ build.
 | M1 | Build backend/frontend; `dotnet test` deve descobrir e aprovar exatamente os testes M1, não apenas retornar exit code zero; `TECH-FRONTEND-001`, parte aplicável de `TECH-BACKEND-001`, `SPEC-OAS-*`, `BE-DB-001`, `BE-HEALTH-001`, `BE-OAS-001`, `OPS-COMPOSE-001`, `OPS-ORIGIN-001`, `OPS-TAGS-001`, `.env.example` sem segredo, ProblemDetails runtime, Swagger e smoke Compose. |
 | M2 | `BE-REG-*`, `FE-REG-*`, `BE-ERR-001/002`, `BE-OAS-001`, parcela M2 de `OPS-COMPOSE-001`/`OPS-SECRET-001`, assertion aplicável de `BE-DTO-001` e regressão dos gates M1. |
 | M3 | `BE-LOGIN-*`, `BE-AUTH-*`, `BE-CONFIG-001`, `BE-PROF-001/002`, `TECH-BACKEND-001`, parte de `.env.example`/logs de `OPS-SECRET-001`, `FE-LOGIN-*`, `FE-GUARD-*`, `FE-INT-*`, `FE-DASH-*`, `FE-WIRE-*` e assertions aplicáveis de `BE-ERR-001`/`BE-DTO-001`. |
-| M4 | `BE-PROF-003/004/005/006`, `BE-PASS-*`, `FE-PROF-*`, `FE-PASS-*` e assertions aplicáveis de `BE-ERR-001`/`BE-DTO-001`. |
+| M4 | `BE-PROF-003/004/005/006`, `BE-PASS-*`, `FE-PROF-*`, `FE-PASS-*`, parcela M4 de `OPS-COMPOSE-001`/`OPS-SECRET-001` e assertions aplicáveis de `BE-ERR-001`/`BE-DTO-001`. |
 | M5 | `E2E-*`, suíte acumulada completa, CI, `OPS-TAGS-001`, auditorias de log/segredo e build de produção. |
 | M6 | Reexecução de `TECH-*`, `OPS-*`, `DOC-RUN-001`, `DOC-EXPLAIN-001`, `SPEC-TRACE-001`, revisão manual e execução completa em checkout limpo. |
 
@@ -156,3 +156,4 @@ Não será fixado percentual arbitrário. A cobertura é orientada à matriz e a
 - Bancos, containers e processos temporários são limpos após a execução.
 - Falhas produzem evidência suficiente sem imprimir valores sensíveis.
 - A matriz de rastreabilidade reflete os IDs implementados e seu estado real.
+- O gate de M4 também reexecuta `OPS-COMPOSE-001` de forma acumulada: os dois PUTs, preservação após falhas, senha antiga/nova, persistência após recriar a API, logs seguros e cleanup isolado devem passar; a interface real cobre o fluxo cadastral e a inspeção dos dois formulários sem antecipar as jornadas Playwright de M5.

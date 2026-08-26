@@ -143,6 +143,8 @@ M2 e M4 sem ampliar o contrato HTTP.
 - Cadastro, login e alteração de email calculam `NormalizedEmail` da mesma forma.
 - `Email` armazena o valor aparado para exibição; `NormalizedEmail` existe apenas para busca e unicidade.
 - Como todo email aceito é ASCII, `Email.Trim().ToUpperInvariant()` produz uma chave canônica sem as lacunas de case folding Unicode que permitiriam duas contas equivalentes, como `ß` e `ẞ`.
+- A atualização cadastral valida todo o request antes de mutar a entidade e persiste `Name`, `Email`, `NormalizedEmail` e `UpdatedAtUtc` em um único `SaveChangesAsync`; validação ou conflito não deixam alterações parciais.
+- A troca de senha só atribui o novo hash e `UpdatedAtUtc` depois de validar integralmente senha atual, nova senha e confirmação; qualquer falha preserva a entidade sem persistência parcial.
 - O índice único `UX_Users_NormalizedEmail` é a garantia autoritativa contra corrida.
 - Uma consulta prévia pode melhorar a mensagem, mas violação do índice também deve ser convertida em `409 Conflict`.
 - Na edição, o próprio email normalizado é permitido; somente outro usuário gera conflito.
@@ -245,8 +247,8 @@ Essa regra concilia execução sem preparação manual com a proibição de vers
 |---|---|---|
 | `/register` | Pública | Formulário reativo; `201` navega para `/login` com aviso de sucesso e sem criar sessão. |
 | `/login` | Pública | Formulário reativo; `200` grava o JWT em `sessionStorage` e navega para `/dashboard`. |
-| `/dashboard` | Guard | Consulta `/api/profile`, mostra boas-vindas com `name` e link para `/profile`. |
-| `/profile` | Guard | Consulta e altera nome/email; oferece formulário separado para senha. |
+| `/dashboard` | Guard | Consulta `/api/profile` a cada ativação, mostra boas-vindas com `name` e link para `/profile`; portanto reflete uma edição persistida quando consultado novamente. |
+| `/profile` | Guard | Consulta e altera nome/email; oferece formulário separado para senha, sem misturar campos de senha no payload cadastral. |
 
 Cada operação assíncrona expõe estado de carregamento, impede submissão duplicada e apresenta sucesso ou erro. O estado de carregamento do perfil é recriado a cada ativação do dashboard, isolando respostas pendentes de uma sessão encerrada. O interceptor reage a `401` global somente quando a requisição levava Bearer e a sessão corrente ainda contém exatamente aquele token; nesse caso limpa a sessão e conduz ao login. O `401` esperado do próprio login não levava Bearer, portanto permanece disponível para a mensagem genérica da tela e não dispara limpeza/navegação global.
 

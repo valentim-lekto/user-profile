@@ -8,7 +8,7 @@ cd "$repository_root"
 
 review_tmp=$(mktemp -d)
 stack_started=0
-COMPOSE_PROJECT_NAME="user-profile-m3-smoke-$$"
+COMPOSE_PROJECT_NAME="user-profile-m4-smoke-$$"
 export COMPOSE_PROJECT_NAME
 
 cleanup() {
@@ -28,7 +28,7 @@ cleanup() {
 }
 
 fail() {
-  printf 'M1+M2+M3 Compose validation failed: %s\n' "$1" >&2
+  printf 'M1+M2+M3+M4 Compose validation failed: %s\n' "$1" >&2
   exit 1
 }
 
@@ -156,16 +156,18 @@ grep -Fq '"/health"' "$review_tmp/body" || fail 'runtime OpenAPI omits /health'
 grep -Fq '"/api/auth/register"' "$review_tmp/body" || fail 'runtime OpenAPI omits registration'
 grep -Fq '"/api/auth/login"' "$review_tmp/body" || fail 'runtime OpenAPI omits login'
 grep -Fq '"/api/profile"' "$review_tmp/body" || fail 'runtime OpenAPI omits profile'
+grep -Fq '"/api/profile/password"' "$review_tmp/body" ||
+  fail 'runtime OpenAPI omits password change'
 grep -Fq '"bearerAuth"' "$review_tmp/body" || fail 'runtime OpenAPI omits Bearer authentication'
 
 request '/api/not-implemented' '404' 'application/problem+json'
 grep -Fq '"status":404' "$review_tmp/body" || fail '404 body is not ProblemDetails'
 
 smoke_suffix="$(date +%s)-$$"
-smoke_email="m3-smoke-$smoke_suffix@example.test"
-smoke_password="M3-smoke-$smoke_suffix-Aa1!"
+smoke_email="m4-smoke-$smoke_suffix@example.test"
+smoke_password="M4-smoke-$smoke_suffix-Aa1!"
 registration_payload=$(printf \
-  '{"name":"M3 Smoke","email":"%s","password":"%s","passwordConfirmation":"%s"}' \
+  '{"name":"M4 Smoke","email":"%s","password":"%s","passwordConfirmation":"%s"}' \
   "$smoke_email" "$smoke_password" "$smoke_password")
 
 printf '%s' "$registration_payload" >"$review_tmp/request"
@@ -180,7 +182,7 @@ grep -Fq '"status":400' "$review_tmp/body" || fail 'invalid registration is not 
 
 uppercase_email=$(printf '%s' "$smoke_email" | tr '[:lower:]' '[:upper:]')
 duplicate_payload=$(printf \
-  '{"name":"M3 Duplicate","email":"  %s  ","password":"%s","passwordConfirmation":"%s"}' \
+  '{"name":"M4 Duplicate","email":"  %s  ","password":"%s","passwordConfirmation":"%s"}' \
   "$uppercase_email" "$smoke_password" "$smoke_password")
 post_json '/api/auth/register' '409' "$duplicate_payload"
 grep -Fq '"status":409' "$review_tmp/body" || fail 'duplicate registration is not ProblemDetails'
@@ -230,16 +232,166 @@ request '/api/profile' '401' 'application/problem+json' \
 grep -Eiq '^WWW-Authenticate:[[:space:]]*Bearer' "$review_tmp/headers" ||
   fail 'invalid-token profile omits the Bearer challenge'
 
+request '/api/profile' '401' 'application/problem+json' \
+  --request PUT \
+  --header 'Content-Type: application/json' \
+  --data '{"name":"Anonymous Update","email":"anonymous@example.test"}'
+grep -Eiq '^WWW-Authenticate:[[:space:]]*Bearer' "$review_tmp/headers" ||
+  fail 'unauthenticated profile update omits the Bearer challenge'
+
+request '/api/profile/password' '401' 'application/problem+json' \
+  --request PUT \
+  --header 'Content-Type: application/json' \
+  --data '{"currentPassword":"old-value","newPassword":"new-value","newPasswordConfirmation":"new-value"}'
+grep -Eiq '^WWW-Authenticate:[[:space:]]*Bearer' "$review_tmp/headers" ||
+  fail 'unauthenticated password update omits the Bearer challenge'
+
+request '/api/profile/password' '401' 'application/problem+json' \
+  --request PUT \
+  --header 'Authorization: Bearer synthetically-invalid-token' \
+  --header 'Content-Type: application/json' \
+  --data '{"currentPassword":"old-value","newPassword":"new-value","newPasswordConfirmation":"new-value"}'
+grep -Eiq '^WWW-Authenticate:[[:space:]]*Bearer' "$review_tmp/headers" ||
+  fail 'invalid-token password update omits the Bearer challenge'
+
 request '/api/profile?userId=00000000-0000-0000-0000-000000000000' '200' 'application/json' \
   --header "Authorization: Bearer $access_token" \
   --header 'X-User-Id: 00000000-0000-0000-0000-000000000000'
 grep -Fq "\"email\":\"$smoke_email\"" "$review_tmp/body" ||
   fail 'profile was not resolved from the authenticated subject'
 grep -Fq '"id"' "$review_tmp/body" || fail 'profile response omits id'
-grep -Fq '"name":"M3 Smoke"' "$review_tmp/body" || fail 'profile response omits name'
+grep -Fq '"name":"M4 Smoke"' "$review_tmp/body" || fail 'profile response omits name'
 if grep -Eiq 'password|normalizedEmail|createdAt|updatedAt' "$review_tmp/body"; then
   fail 'profile response exposes an internal field'
 fi
+
+updated_email="m4-updated-$smoke_suffix@example.test"
+profile_update_payload=$(printf \
+  '{"name":"  M4 Updated  ","email":"  %s  "}' \
+  "$updated_email")
+printf '%s' "$profile_update_payload" >"$review_tmp/request"
+request '/api/profile?userId=00000000-0000-0000-0000-000000000000' '200' 'application/json' \
+  --request PUT \
+  --header "Authorization: Bearer $access_token" \
+  --header 'X-User-Id: 00000000-0000-0000-0000-000000000000' \
+  --header 'Content-Type: application/json' \
+  --data-binary "@$review_tmp/request"
+grep -Fq '"name":"M4 Updated"' "$review_tmp/body" ||
+  fail 'profile update did not trim and persist the name'
+grep -Fq "\"email\":\"$updated_email\"" "$review_tmp/body" ||
+  fail 'profile update did not trim and persist the email'
+if grep -Eiq 'password|normalizedEmail|createdAt|updatedAt' "$review_tmp/body"; then
+  fail 'profile update response exposes an internal field'
+fi
+
+invalid_profile_payload=$(printf \
+  '{"name":"x","email":"invalid-mutation-%s@example.test"}' \
+  "$smoke_suffix")
+printf '%s' "$invalid_profile_payload" >"$review_tmp/request"
+request '/api/profile' '400' 'application/problem+json' \
+  --request PUT \
+  --header "Authorization: Bearer $access_token" \
+  --header 'Content-Type: application/json' \
+  --data-binary "@$review_tmp/request"
+
+request '/api/profile' '200' 'application/json' \
+  --header "Authorization: Bearer $access_token"
+grep -Fq '"name":"M4 Updated"' "$review_tmp/body" ||
+  fail 'invalid profile update partially changed the name'
+grep -Fq "\"email\":\"$updated_email\"" "$review_tmp/body" ||
+  fail 'invalid profile update partially changed the email'
+
+conflict_email="m4-conflict-$smoke_suffix@example.test"
+conflict_password="M4-conflict-$smoke_suffix-Aa1!"
+conflict_registration_payload=$(printf \
+  '{"name":"M4 Conflict","email":"%s","password":"%s","passwordConfirmation":"%s"}' \
+  "$conflict_email" "$conflict_password" "$conflict_password")
+printf '%s' "$conflict_registration_payload" >"$review_tmp/request"
+request '/api/auth/register' '201' 'application/json' \
+  --request POST \
+  --header 'Content-Type: application/json' \
+  --data-binary "@$review_tmp/request"
+
+conflict_uppercase_email=$(printf '%s' "$conflict_email" | tr '[:lower:]' '[:upper:]')
+conflicting_profile_payload=$(printf \
+  '{"name":"Must Not Persist","email":"  %s  "}' \
+  "$conflict_uppercase_email")
+printf '%s' "$conflicting_profile_payload" >"$review_tmp/request"
+request '/api/profile' '409' 'application/problem+json' \
+  --request PUT \
+  --header "Authorization: Bearer $access_token" \
+  --header 'Content-Type: application/json' \
+  --data-binary "@$review_tmp/request"
+
+request '/api/profile' '200' 'application/json' \
+  --header "Authorization: Bearer $access_token"
+grep -Fq '"name":"M4 Updated"' "$review_tmp/body" ||
+  fail 'conflicting profile update partially changed the name'
+grep -Fq "\"email\":\"$updated_email\"" "$review_tmp/body" ||
+  fail 'conflicting profile update partially changed the email'
+
+new_password="M4-new-$smoke_suffix-Aa2!"
+wrong_current_payload=$(printf \
+  '{"currentPassword":"wrong-%s","newPassword":"%s","newPasswordConfirmation":"%s"}' \
+  "$smoke_suffix" "$new_password" "$new_password")
+printf '%s' "$wrong_current_payload" >"$review_tmp/request"
+request '/api/profile/password' '400' 'application/problem+json' \
+  --request PUT \
+  --header "Authorization: Bearer $access_token" \
+  --header 'Content-Type: application/json' \
+  --data-binary "@$review_tmp/request"
+
+mismatched_password_payload=$(printf \
+  '{"currentPassword":"%s","newPassword":"%s","newPasswordConfirmation":"different-%s"}' \
+  "$smoke_password" "$new_password" "$smoke_suffix")
+printf '%s' "$mismatched_password_payload" >"$review_tmp/request"
+request '/api/profile/password' '400' 'application/problem+json' \
+  --request PUT \
+  --header "Authorization: Bearer $access_token" \
+  --header 'Content-Type: application/json' \
+  --data-binary "@$review_tmp/request"
+
+old_credentials_after_failures=$(printf \
+  '{"email":"%s","password":"%s"}' \
+  "$updated_email" "$smoke_password")
+printf '%s' "$old_credentials_after_failures" >"$review_tmp/request"
+request '/api/auth/login' '200' 'application/json' \
+  --request POST \
+  --header 'Content-Type: application/json' \
+  --data-binary "@$review_tmp/request"
+
+valid_password_payload=$(printf \
+  '{"currentPassword":"%s","newPassword":"%s","newPasswordConfirmation":"%s"}' \
+  "$smoke_password" "$new_password" "$new_password")
+printf '%s' "$valid_password_payload" >"$review_tmp/request"
+request '/api/profile/password' '200' 'application/json' \
+  --request PUT \
+  --header "Authorization: Bearer $access_token" \
+  --header 'Content-Type: application/json' \
+  --data-binary "@$review_tmp/request"
+grep -Fq '"message":"Password changed successfully."' "$review_tmp/body" ||
+  fail 'password update response is unexpected'
+if grep -Eiq '"(passwordHash|accessToken|currentPassword|newPassword|newPasswordConfirmation)"' \
+  "$review_tmp/body"; then
+  fail 'password update response exposes a sensitive field'
+fi
+
+printf '%s' "$old_credentials_after_failures" >"$review_tmp/request"
+request '/api/auth/login' '401' 'application/problem+json' \
+  --request POST \
+  --header 'Content-Type: application/json' \
+  --data-binary "@$review_tmp/request"
+
+updated_login_payload=$(printf \
+  '{"email":"  %s  ","password":"%s"}' \
+  "$updated_email" "$new_password")
+printf '%s' "$updated_login_payload" >"$review_tmp/request"
+request '/api/auth/login' '200' 'application/json' \
+  --request POST \
+  --header 'Content-Type: application/json' \
+  --data-binary "@$review_tmp/request"
+post_change_access_token=$(sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p' "$review_tmp/body")
+[ -n "$post_change_access_token" ] || fail 'new password did not create a session'
 
 printf '%s' 'not-json' >"$review_tmp/request"
 request '/api/auth/register' '415' 'application/problem+json' \
@@ -248,11 +400,11 @@ request '/api/auth/register' '415' 'application/problem+json' \
   --data-binary "@$review_tmp/request"
 grep -Fq '"status":415' "$review_tmp/body" || fail 'unsupported media type is not ProblemDetails'
 
-query_marker="M3_QUERY_MARKER_$smoke_suffix"
-body_marker="M3_BODY_MARKER_$smoke_suffix"
-header_marker="M3_HEADER_MARKER_$smoke_suffix"
+query_marker="M4_QUERY_MARKER_$smoke_suffix"
+body_marker="M4_BODY_MARKER_$smoke_suffix"
+header_marker="M4_HEADER_MARKER_$smoke_suffix"
 marker_payload=$(printf \
-  '{"name":"M3 Marker","email":"marker-%s@example.test","password":"%s","passwordConfirmation":"different"}' \
+  '{"name":"M4 Marker","email":"marker-%s@example.test","password":"%s","passwordConfirmation":"different"}' \
   "$smoke_suffix" "$body_marker")
 printf '%s' "$marker_payload" >"$review_tmp/request"
 request "/api/auth/register?password=$query_marker" '400' 'application/problem+json' \
@@ -261,13 +413,14 @@ request "/api/auth/register?password=$query_marker" '400' 'application/problem+j
   --header "Authorization: Bearer $header_marker" \
   --data-binary "@$review_tmp/request"
 
-sleep 1
 docker compose logs --no-color >"$review_tmp/logs"
 if grep -Fq -- "$query_marker" "$review_tmp/logs" ||
   grep -Fq -- "$body_marker" "$review_tmp/logs" ||
   grep -Fq -- "$header_marker" "$review_tmp/logs" ||
   grep -Fq -- "$smoke_password" "$review_tmp/logs" ||
-  grep -Fq -- "$access_token" "$review_tmp/logs"; then
+  grep -Fq -- "$new_password" "$review_tmp/logs" ||
+  grep -Fq -- "$access_token" "$review_tmp/logs" ||
+  grep -Fq -- "$post_change_access_token" "$review_tmp/logs"; then
   fail 'a synthetic query, body, header, password or JWT marker was exposed in container logs'
 fi
 
@@ -286,16 +439,19 @@ grep -Eq 'error_page[[:space:]]+413[[:space:]]+=[[:space:]]+@payload_too_large;'
 
 docker compose up --detach --force-recreate api >/dev/null
 wait_for_health
-post_json '/api/auth/register' '409' "$duplicate_payload"
+persisted_profile_duplicate=$(printf \
+  '{"name":"M4 Persisted Duplicate","email":"%s","password":"%s","passwordConfirmation":"%s"}' \
+  "$updated_email" "$new_password" "$new_password")
+post_json '/api/auth/register' '409' "$persisted_profile_duplicate"
 grep -Fq '"status":409' "$review_tmp/body" ||
-  fail 'registration did not persist after recreating the API'
+  fail 'updated profile did not persist after recreating the API'
 
 request '/api/profile' '401' 'application/problem+json' \
-  --header "Authorization: Bearer $access_token"
+  --header "Authorization: Bearer $post_change_access_token"
 grep -Eiq '^WWW-Authenticate:[[:space:]]*Bearer' "$review_tmp/headers" ||
   fail 'old process-token rejection omitted the Bearer challenge'
 
-printf '%s' "$login_payload" >"$review_tmp/request"
+printf '%s' "$updated_login_payload" >"$review_tmp/request"
 request '/api/auth/login' '200' 'application/json' \
   --request POST \
   --header 'Content-Type: application/json' \
@@ -303,17 +459,29 @@ request '/api/auth/login' '200' 'application/json' \
 recreated_access_token=$(sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p' "$review_tmp/body")
 [ -n "$recreated_access_token" ] ||
   fail 'persisted credentials could not create a new session after recreating the API'
-[ "$recreated_access_token" != "$access_token" ] ||
-  fail 'recreating the API did not rotate the process-local Development token'
 
 request '/api/profile' '200' 'application/json' \
   --header "Authorization: Bearer $recreated_access_token"
-grep -Fq "\"email\":\"$smoke_email\"" "$review_tmp/body" ||
+grep -Fq "\"email\":\"$updated_email\"" "$review_tmp/body" ||
   fail 'the persisted profile could not be read after recreating the API'
+grep -Fq '"name":"M4 Updated"' "$review_tmp/body" ||
+  fail 'the persisted profile name was lost after recreating the API'
+
+docker compose logs --no-color >"$review_tmp/logs"
+if grep -Fq -- "$query_marker" "$review_tmp/logs" ||
+  grep -Fq -- "$body_marker" "$review_tmp/logs" ||
+  grep -Fq -- "$header_marker" "$review_tmp/logs" ||
+  grep -Fq -- "$smoke_password" "$review_tmp/logs" ||
+  grep -Fq -- "$new_password" "$review_tmp/logs" ||
+  grep -Fq -- "$access_token" "$review_tmp/logs" ||
+  grep -Fq -- "$post_change_access_token" "$review_tmp/logs" ||
+  grep -Fq -- "$recreated_access_token" "$review_tmp/logs"; then
+  fail 'a synthetic credential or marker was exposed in logs after recreating the API'
+fi
 
 docker compose stop api >/dev/null
 request '/health' '503' 'application/problem+json'
 grep -Fq '"status":503' "$review_tmp/body" || fail 'upstream failure body is not ProblemDetails'
 
 printf '%s\n' \
-  'M1+M2+M3 Compose OK: same origin, registration, login, protected profile, auth failures, persistence, 413/415, safe logs and upstream 503 verified'
+  'M1+M2+M3+M4 Compose OK: same origin, registration, login, profile/password updates, auth failures, persistence, 413/415, safe logs and upstream 503 verified'

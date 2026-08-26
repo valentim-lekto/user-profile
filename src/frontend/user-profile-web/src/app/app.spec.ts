@@ -63,6 +63,37 @@ describe('App', () => {
     },
     10_000,
   );
+
+  it(
+    'wires the real protected profile route to its authenticated load',
+    async () => {
+      const harness = await RouterTestingHarness.create();
+      const router = TestBed.inject(Router);
+      const http = TestBed.inject(HttpTestingController);
+
+      await harness.navigateByUrl('/profile');
+      expect(router.url).toBe('/login');
+
+      const accessToken = createToken(Math.floor(Date.now() / 1000) + 900);
+      sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, accessToken);
+      await harness.navigateByUrl('/profile');
+
+      const request = http.expectOne('/api/profile');
+      expect(request.request.method).toBe('GET');
+      expect(request.request.headers.get('Authorization')).toBe(`Bearer ${accessToken}`);
+      request.flush({
+        id: '00000000-0000-4000-8000-000000000001',
+        name: 'Ana Example',
+        email: 'ana@example.test',
+      });
+      await harness.fixture.whenStable();
+      harness.detectChanges();
+
+      expect(harness.routeNativeElement?.textContent).toContain('Dados pessoais');
+      expect(harness.routeNativeElement?.textContent).toContain('Alterar senha');
+    },
+    10_000,
+  );
 });
 
 function createToken(exp: number): string {

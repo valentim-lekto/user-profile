@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using Microsoft.OpenApi;
 using Swashbuckle.AspNetCore.SwaggerGen;
+using UserProfile.Api.Features.Profile;
 
 namespace UserProfile.Api.Features.Auth;
 
@@ -11,19 +12,20 @@ public sealed class RegisterRequestSchemaFilter : ISchemaFilter
 
     public void Apply(IOpenApiSchema schema, SchemaFilterContext context)
     {
-        if (schema is not OpenApiSchema requestSchema ||
-            (context.Type != typeof(RegisterRequest) && context.Type != typeof(LoginRequest)))
+        if (schema is not OpenApiSchema requestSchema || !IsSupportedRequest(context.Type))
         {
             return;
         }
 
-        if (context.Type == typeof(RegisterRequest) &&
+        if ((context.Type == typeof(RegisterRequest) ||
+                context.Type == typeof(UpdateProfileRequest)) &&
             FindProperty(requestSchema, "name") is { } name)
         {
             MarkTrimmed(name, minimumLength: 3, maximumLength: 200);
         }
 
-        if (FindProperty(requestSchema, "email") is { } email)
+        if (context.Type != typeof(ChangePasswordRequest) &&
+            FindProperty(requestSchema, "email") is { } email)
         {
             MarkTrimmed(email, minimumLength: 1, maximumLength: 320);
             email.Format = null;
@@ -31,11 +33,28 @@ public sealed class RegisterRequestSchemaFilter : ISchemaFilter
             AddExtension(email, "x-pattern-after-trim", RegisterRequest.EmailPattern);
         }
 
-        MarkPassword(requestSchema, "password");
-        if (context.Type == typeof(RegisterRequest))
+        if (context.Type == typeof(RegisterRequest) || context.Type == typeof(LoginRequest))
         {
-            MarkPassword(requestSchema, "passwordConfirmation");
+            MarkPassword(requestSchema, "password");
+            if (context.Type == typeof(RegisterRequest))
+            {
+                MarkPassword(requestSchema, "passwordConfirmation");
+            }
         }
+        else if (context.Type == typeof(ChangePasswordRequest))
+        {
+            MarkPassword(requestSchema, "currentPassword");
+            MarkPassword(requestSchema, "newPassword");
+            MarkPassword(requestSchema, "newPasswordConfirmation");
+        }
+    }
+
+    private static bool IsSupportedRequest(Type type)
+    {
+        return type == typeof(RegisterRequest) ||
+            type == typeof(LoginRequest) ||
+            type == typeof(UpdateProfileRequest) ||
+            type == typeof(ChangePasswordRequest);
     }
 
     private static void MarkTrimmed(

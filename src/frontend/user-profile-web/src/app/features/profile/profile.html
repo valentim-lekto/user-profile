@@ -1,0 +1,193 @@
+<section class="profile-page" aria-labelledby="profile-title">
+  <header class="page-heading">
+    <div>
+      <h1 id="profile-title">Perfil</h1>
+      <p>Consulte e atualize seus dados cadastrais.</p>
+    </div>
+    <a mat-button routerLink="/dashboard">Voltar ao dashboard</a>
+  </header>
+
+  @if (profiles.loading()) {
+    <p class="loading-message page-message" role="status" aria-live="polite">
+      Carregando seu perfil…
+    </p>
+  } @else if (profiles.profile(); as profile) {
+    <p class="profile-id">
+      <span>Identificador da conta</span>
+      <code>{{ profile.id }}</code>
+    </p>
+
+    <div class="profile-sections">
+      <mat-card appearance="outlined" aria-labelledby="personal-data-title">
+        <mat-card-header>
+          <mat-card-title id="personal-data-title">Dados pessoais</mat-card-title>
+          <mat-card-subtitle>Altere seu nome e email.</mat-card-subtitle>
+        </mat-card-header>
+
+        <form
+          [formGroup]="profileForm"
+          (ngSubmit)="submitProfile()"
+          [attr.aria-busy]="profiles.updateLoading()"
+          novalidate
+        >
+          <mat-card-content class="form-content">
+            <mat-form-field appearance="outline">
+              <mat-label>Nome</mat-label>
+              <input
+                matInput
+                formControlName="name"
+                autocomplete="name"
+                (input)="clearProfileApiFieldError('name')"
+              />
+              <mat-hint>Entre 3 e 200 caracteres.</mat-hint>
+              @if (profileFieldError('name'); as error) {
+                <mat-error>{{ error }}</mat-error>
+              }
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Email</mat-label>
+              <input
+                matInput
+                type="email"
+                formControlName="email"
+                autocomplete="email"
+                (input)="clearProfileApiFieldError('email')"
+              />
+              <mat-hint>Até 320 caracteres.</mat-hint>
+              @if (profileFieldError('email'); as error) {
+                <mat-error>{{ error }}</mat-error>
+              }
+            </mat-form-field>
+
+            @if (profileSuccess(); as message) {
+              <p class="success-message" role="status" aria-live="polite">{{ message }}</p>
+            }
+
+            @if (profileError(); as error) {
+              <p class="error-message" role="alert" aria-live="assertive">{{ error }}</p>
+            }
+
+            @if (profiles.updateLoading()) {
+              <p class="loading-message" role="status" aria-live="polite">
+                Salvando dados pessoais…
+              </p>
+            }
+          </mat-card-content>
+
+          <mat-card-actions align="end">
+            <button
+              mat-flat-button
+              type="submit"
+              data-testid="save-profile"
+              [disabled]="profiles.updateLoading()"
+            >
+              {{ profiles.updateLoading() ? 'Salvando…' : 'Salvar dados' }}
+            </button>
+          </mat-card-actions>
+        </form>
+      </mat-card>
+
+      <mat-card appearance="outlined" aria-labelledby="password-title">
+        <mat-card-header>
+          <mat-card-title id="password-title">Alterar senha</mat-card-title>
+          <mat-card-subtitle>Você precisará entrar novamente após a alteração.</mat-card-subtitle>
+        </mat-card-header>
+
+        <form
+          [formGroup]="passwordForm"
+          (ngSubmit)="submitPassword()"
+          [attr.aria-busy]="profiles.passwordLoading()"
+          novalidate
+        >
+          <mat-card-content class="form-content">
+            <mat-form-field appearance="outline">
+              <mat-label>Senha atual</mat-label>
+              <input
+                matInput
+                type="password"
+                formControlName="currentPassword"
+                autocomplete="current-password"
+                maxlength="128"
+                (input)="clearPasswordApiFieldError('currentPassword')"
+              />
+              @if (passwordFieldError('currentPassword'); as error) {
+                <mat-error>{{ error }}</mat-error>
+              }
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Nova senha</mat-label>
+              <input
+                matInput
+                type="password"
+                formControlName="newPassword"
+                autocomplete="new-password"
+                maxlength="128"
+                (input)="clearPasswordApiFieldError('newPassword')"
+              />
+              <mat-hint>Entre 6 e 128 caracteres.</mat-hint>
+              @if (passwordFieldError('newPassword'); as error) {
+                <mat-error>{{ error }}</mat-error>
+              }
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Confirmação da nova senha</mat-label>
+              <input
+                matInput
+                type="password"
+                formControlName="newPasswordConfirmation"
+                autocomplete="new-password"
+                maxlength="128"
+                (input)="clearPasswordApiFieldError('newPasswordConfirmation')"
+              />
+              @if (passwordFieldError('newPasswordConfirmation'); as error) {
+                <mat-error>{{ error }}</mat-error>
+              }
+            </mat-form-field>
+
+            @if (
+              passwordForm.controls.newPasswordConfirmation.touched &&
+              passwordForm.hasError('passwordsMismatch')
+            ) {
+              <p class="field-error" role="alert">
+                A confirmação deve ser idêntica à nova senha.
+              </p>
+            }
+
+            @if (passwordError(); as error) {
+              <p class="error-message" role="alert" aria-live="assertive">{{ error }}</p>
+            }
+
+            @if (profiles.passwordLoading()) {
+              <p class="loading-message" role="status" aria-live="polite">Alterando senha…</p>
+            }
+          </mat-card-content>
+
+          <mat-card-actions align="end">
+            <button
+              mat-flat-button
+              type="submit"
+              data-testid="change-password"
+              [disabled]="profiles.passwordLoading()"
+            >
+              {{ profiles.passwordLoading() ? 'Alterando…' : 'Alterar senha' }}
+            </button>
+          </mat-card-actions>
+        </form>
+      </mat-card>
+    </div>
+  } @else if (profiles.errorStatus() !== null) {
+    <div class="error-message page-message" role="alert" aria-live="assertive">
+      <p>
+        {{
+          profiles.errorStatus() === 503
+            ? 'O serviço está indisponível no momento. Tente novamente em breve.'
+            : 'Não foi possível carregar seu perfil. Tente novamente.'
+        }}
+      </p>
+      <button mat-button type="button" (click)="reload()">Tentar novamente</button>
+    </div>
+  }
+</section>

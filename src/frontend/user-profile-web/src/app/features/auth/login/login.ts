@@ -26,11 +26,12 @@ type LoginField = 'email' | 'password';
 export class Login {
   private readonly formBuilder = inject(NonNullableFormBuilder);
   private readonly router = inject(Router);
+  private readonly navigationState = this.router.currentNavigation()?.extras.state;
 
   protected readonly auth = inject(AuthService);
   protected readonly apiError = signal<string | null>(null);
-  protected readonly registrationCompleted =
-    this.router.currentNavigation()?.extras.state?.['registrationCompleted'] === true;
+  protected readonly registrationCompleted = this.navigationState?.['registrationCompleted'] === true;
+  protected readonly passwordChanged = this.navigationState?.['passwordChanged'] === true;
 
   readonly form = this.formBuilder.group({
     email: ['', [trimmedLength(1, 320), trimmedEmail]],

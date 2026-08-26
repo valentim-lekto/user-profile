@@ -12,6 +12,12 @@
         </p>
       }
 
+      @if (passwordChanged) {
+        <p class="success-message" role="status" aria-live="polite">
+          Senha alterada com sucesso. Faça login novamente.
+        </p>
+      }
+
       <form
         class="login-form"
         [formGroup]="form"

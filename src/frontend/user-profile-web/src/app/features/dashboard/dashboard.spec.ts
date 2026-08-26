@@ -106,6 +106,29 @@ describe('Dashboard', () => {
     expect(router.url).toBe('/login');
   });
 
+  it('shows the updated name after returning from profile and consulting the API again', async () => {
+    http.expectOne('/api/profile').flush({
+      id: '00000000-0000-4000-8000-000000000001',
+      name: 'Ana Example',
+      email: 'ana@example.test',
+    });
+    await harness.fixture.whenStable();
+
+    await harness.navigateByUrl('/profile', ProfileStub);
+    await harness.navigateByUrl('/dashboard', Dashboard);
+
+    http.expectOne('/api/profile').flush({
+      id: '00000000-0000-4000-8000-000000000001',
+      name: 'Ana Updated',
+      email: 'ana.updated@example.test',
+    });
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+
+    expect(harness.routeNativeElement?.textContent).toContain('Boas-vindas, Ana Updated!');
+    expect(harness.routeNativeElement?.textContent).not.toContain('Boas-vindas, Ana Example!');
+  });
+
   it('isolates a pending profile response from the next authenticated session', async () => {
     const firstRequest = http.expectOne('/api/profile');
 

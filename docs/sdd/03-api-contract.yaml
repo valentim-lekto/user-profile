@@ -182,7 +182,8 @@ paths:
       summary: Altera nome e email do perfil atual
       description: >-
         Atualiza apenas nome e email do usuário identificado pelo claim sub.
-        Aplica as mesmas regras do cadastro e não altera senha.
+        Aplica as mesmas regras do cadastro e não altera senha. O request é
+        validado integralmente e falhas não deixam atualização parcial.
       security:
         - bearerAuth: []
       x-functional-requirements:
@@ -245,7 +246,8 @@ paths:
       description: >-
         Verifica a senha atual e altera a senha do usuário identificado pelo
         claim sub. A nova senha não é aparada e deve ser idêntica à confirmação.
-        Nenhum token novo é emitido; após o sucesso, o frontend encerra a sessão.
+        Falhas preservam o hash e os demais dados. Nenhum token novo é emitido;
+        após o sucesso, o frontend encerra a sessão.
       security:
         - bearerAuth: []
       x-functional-requirements:

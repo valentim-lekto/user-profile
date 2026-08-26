@@ -121,12 +121,12 @@ IDs publicados não devem ser renumerados nem reutilizados para outro comportame
 |---|---|
 | `AC-PROF-01` | O usuário autenticado consulta o próprio `id`, nome e email, sem enviar `userId`, e acessa uma operação separada para alterar a senha. |
 | `AC-PROF-02` | Nome e email são alterados em operação distinta da alteração de senha. |
-| `AC-PROF-03` | Nome/email inválidos são rejeitados segundo as mesmas regras do cadastro. |
-| `AC-PROF-04` | Alterar o email para o email normalizado de outra conta é rejeitado; manter o próprio email não produz conflito. |
-| `AC-PROF-05` | Uma atualização válida persiste os dados e informa sucesso; uma falha informa erro. |
+| `AC-PROF-03` | Nome/email inválidos são rejeitados segundo as mesmas regras do cadastro, sem alterar parcialmente nome, email normalizado ou timestamps. |
+| `AC-PROF-04` | Alterar o email para o email normalizado de outra conta é rejeitado sem alterar qualquer dado; manter o próprio email não produz conflito. |
+| `AC-PROF-05` | Uma atualização válida persiste os dados e informa sucesso; uma falha informa erro. Uma nova consulta do dashboard reflete o nome atualizado. |
 | `AC-PASS-01` | A alteração de senha solicita senha atual, nova senha e confirmação da nova senha. |
-| `AC-PASS-02` | Senha atual incorreta não altera a senha e produz mensagem de erro. |
-| `AC-PASS-03` | Nova senha ausente ou menor que 6 caracteres, ou confirmação divergente, não altera a senha e produz erro de validação. |
+| `AC-PASS-02` | Senha atual incorreta não altera o hash nem qualquer outro dado do usuário e produz mensagem de erro. |
+| `AC-PASS-03` | Nova senha ausente ou menor que 6 caracteres, ou confirmação divergente, não altera o hash, os timestamps nem qualquer outro dado do usuário e produz erro de validação. |
 | `AC-PASS-04` | Após alteração válida, o frontend informa o resultado e encerra a sessão removendo o JWT de `sessionStorage`. |
 
 ### Operação, segurança, documentação e qualidade
