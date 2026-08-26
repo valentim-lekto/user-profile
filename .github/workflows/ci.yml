@@ -1,0 +1,61 @@
+name: Continuous integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      COMPOSE_PROJECT_NAME: user-profile-ci-${{ github.run_id }}-${{ github.run_attempt }}
+      E2E_ARTIFACTS_DIR: ${{ github.workspace }}/artifacts/e2e
+      SMOKE_FAILURE_ARTIFACTS_DIR: ${{ github.workspace }}/artifacts/ci/smoke
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+
+      - name: Validate OpenAPI contract
+        run: docker compose --profile contract-tests run --rm contract-tests
+
+      - name: Test backend
+        run: docker compose --profile backend-tests run --build --rm backend-tests
+
+      - name: Test frontend
+        run: docker compose --profile frontend-tests run --build --rm frontend-tests
+
+      - name: Build images and smoke test Compose
+        run: ./scripts/validate-m1-compose.sh
+
+      - name: Run end-to-end tests
+        run: ./scripts/e2e-playwright.sh
+
+      - name: Collect failure diagnostics
+        if: failure()
+        run: |
+          mkdir -p artifacts/ci
+          docker compose --profile backend-tests --profile frontend-tests --profile contract-tests --profile e2e ps --all > artifacts/ci/compose-ps.txt 2>&1 || true
+          docker compose --profile backend-tests --profile frontend-tests --profile contract-tests --profile e2e config --images > artifacts/ci/compose-images.txt 2>&1 || true
+          docker compose --profile backend-tests --profile frontend-tests --profile contract-tests --profile e2e logs --no-color > artifacts/ci/compose.log 2>&1 || true
+          printf 'workflow=%s\nrun_id=%s\nrun_attempt=%s\ncommit=%s\n' "$GITHUB_WORKFLOW" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA" > artifacts/ci/context.txt
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: failure-diagnostics
+          path: artifacts
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Cleanup Compose resources
+        if: always()
+        run: docker compose --profile e2e down --volumes --remove-orphans

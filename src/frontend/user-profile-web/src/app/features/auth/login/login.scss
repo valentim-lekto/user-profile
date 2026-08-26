@@ -46,3 +46,15 @@ mat-card-content {
   justify-content: space-between;
   margin-top: 0.5rem;
 }
+
+@media (max-width: 30rem) {
+  .form-actions {
+    align-items: stretch;
+    flex-direction: column;
+
+    a,
+    button {
+      width: 100%;
+    }
+  }
+}

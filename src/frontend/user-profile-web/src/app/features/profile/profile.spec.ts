@@ -67,6 +67,8 @@ describe('Profile', () => {
     expect(harness.routeNativeElement?.textContent).toContain(CURRENT_PROFILE.id);
     expect(harness.routeNativeElement?.textContent).toContain('Dados pessoais');
     expect(harness.routeNativeElement?.textContent).toContain('Alterar senha');
+    expect(harness.routeNativeElement?.querySelectorAll('h1')).toHaveLength(1);
+    expect(harness.routeNativeElement?.querySelectorAll('h2')).toHaveLength(2);
   });
 
   it('shows a load error and retries the real profile request', async () => {
@@ -134,6 +136,16 @@ describe('Profile', () => {
     expect(
       harness.routeNativeElement?.querySelector('.field-error[role="alert"]')?.textContent,
     ).toContain('A confirmação deve ser idêntica à nova senha.');
+    const confirmation = harness.routeNativeElement?.querySelector<HTMLInputElement>(
+      'input[formControlName="newPasswordConfirmation"]',
+    );
+    expect(confirmation?.getAttribute('aria-invalid')).toBe('true');
+    expect(confirmation?.getAttribute('aria-errormessage')).toBe(
+      'profile-password-mismatch',
+    );
+    expect(
+      harness.routeNativeElement?.querySelector('#profile-password-mismatch')?.textContent,
+    ).toContain('A confirmação deve ser idêntica à nova senha.');
 
     component.passwordForm.setValue({
       currentPassword: 'p'.repeat(128),
@@ -163,7 +175,9 @@ describe('Profile', () => {
     setRenderedInputValue('newPasswordConfirmation', 'different');
     const [profileForm, passwordForm] = renderedForms();
     profileForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    expect(document.activeElement?.getAttribute('formControlName')).toBe('name');
     passwordForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    expect(document.activeElement?.getAttribute('formControlName')).toBe('currentPassword');
     await harness.fixture.whenStable();
     harness.detectChanges();
 
@@ -239,7 +253,7 @@ describe('Profile', () => {
       {
         title: 'Bad Request',
         status: 400,
-        errors: { Email: ['O email informado não é válido.'] },
+        errors: { Email: ['Email must be valid.'] },
       },
       { status: 400, statusText: 'Bad Request' },
     );
@@ -247,8 +261,10 @@ describe('Profile', () => {
     harness.detectChanges();
 
     expect(harness.routeNativeElement?.querySelector('mat-error')?.textContent).toContain(
-      'O email informado não é válido',
+      'Revise o email informado.',
     );
+    expect(harness.routeNativeElement?.textContent).not.toContain('Email must be valid.');
+    expect(document.activeElement?.getAttribute('formControlName')).toBe('email');
     const [profileForm] = renderedForms();
     expect(component.profileForm.enabled).toBe(true);
     expect(
@@ -278,6 +294,7 @@ describe('Profile', () => {
     expect(harness.routeNativeElement?.querySelector('[role="alert"]')?.textContent).toContain(
       'Este email já pertence a outra conta',
     );
+    expect(document.activeElement?.getAttribute('formControlName')).toBe('email');
     expect(router.url).toBe('/profile');
   });
 
@@ -297,7 +314,7 @@ describe('Profile', () => {
       {
         title: 'Bad Request',
         status: 400,
-        errors: { CurrentPassword: ['A senha atual está incorreta.'] },
+        errors: { CurrentPassword: ['Current password is incorrect.'] },
       },
       { status: 400, statusText: 'Bad Request' },
     );
@@ -309,7 +326,9 @@ describe('Profile', () => {
       harness.routeNativeElement?.querySelectorAll('mat-error') ?? [],
       (element) => element.textContent,
     );
-    expect(errors.some((error) => error?.includes('A senha atual está incorreta'))).toBe(true);
+    expect(errors.some((error) => error?.includes('A senha atual está incorreta.'))).toBe(true);
+    expect(harness.routeNativeElement?.textContent).not.toContain('Current password is incorrect.');
+    expect(document.activeElement?.getAttribute('formControlName')).toBe('currentPassword');
     const [, passwordForm] = renderedForms();
     expect(component.passwordForm.enabled).toBe(true);
     expect(

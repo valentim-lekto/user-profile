@@ -49,6 +49,9 @@ describe('Dashboard', () => {
 
   it('shows loading, then welcomes the user by the API name and offers profile navigation', async () => {
     harness.detectChanges();
+    const headings = harness.routeNativeElement?.querySelectorAll('h1') ?? [];
+    expect(headings).toHaveLength(1);
+    expect(headings[0]?.textContent).toContain('Início');
     expect(harness.routeNativeElement?.querySelector('[role="status"]')?.textContent).toContain(
       'Carregando seu perfil',
     );
@@ -62,6 +65,10 @@ describe('Dashboard', () => {
     harness.detectChanges();
 
     expect(harness.routeNativeElement?.textContent).toContain('Boas-vindas, Ana Example!');
+    expect(harness.routeNativeElement?.querySelector('h2.welcome-title')).not.toBeNull();
+    expect(harness.routeNativeElement?.textContent).toContain(
+      'Consulte ou atualize seus dados no perfil.',
+    );
     const profileLink = harness.routeNativeElement?.querySelector<HTMLAnchorElement>(
       'a[href="/profile"]',
     );
@@ -70,6 +77,21 @@ describe('Dashboard', () => {
     profileLink?.click();
     await harness.fixture.whenStable();
     expect(router.url).toBe('/profile');
+  });
+
+  it('wraps a defensively long name without losing the welcome content', async () => {
+    const longName = 'N'.repeat(200);
+    http.expectOne('/api/profile').flush({
+      id: '00000000-0000-4000-8000-000000000001',
+      name: longName,
+      email: 'ana@example.test',
+    });
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+
+    const welcome = harness.routeNativeElement?.querySelector<HTMLElement>('.welcome-title');
+    expect(welcome?.textContent).toContain(longName);
+    expect(welcome ? getComputedStyle(welcome).overflowWrap : null).toBe('anywhere');
   });
 
   it('shows a clear error when the profile cannot be loaded', async () => {
@@ -83,6 +105,7 @@ describe('Dashboard', () => {
     expect(harness.routeNativeElement?.querySelector('[role="alert"]')?.textContent).toContain(
       'O serviço está indisponível no momento',
     );
+    expect(harness.routeNativeElement?.querySelectorAll('h1')).toHaveLength(1);
   });
 
   it('removes the token and returns to login on logout', async () => {

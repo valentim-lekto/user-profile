@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, ElementRef, inject, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -24,6 +24,7 @@ type LoginField = 'email' | 'password';
   styleUrl: './login.scss',
 })
 export class Login {
+  private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly formBuilder = inject(NonNullableFormBuilder);
   private readonly router = inject(Router);
   private readonly navigationState = this.router.currentNavigation()?.extras.state;
@@ -47,6 +48,7 @@ export class Login {
 
     if (this.form.invalid) {
       this.form.markAllAsTouched();
+      this.focusFirstInvalidField();
       return;
     }
 
@@ -62,6 +64,7 @@ export class Login {
     }
 
     this.apiError.set(loginErrorMessage(this.auth.error()?.status));
+    this.focusField('email');
   }
 
   protected clearApiError(): void {
@@ -89,6 +92,22 @@ export class Login {
     }
 
     return null;
+  }
+
+  private focusFirstInvalidField(): void {
+    const field = (['email', 'password'] as const).find(
+      (candidate) => this.form.controls[candidate].invalid,
+    );
+
+    if (field) {
+      this.focusField(field);
+    }
+  }
+
+  private focusField(field: LoginField): void {
+    this.element.nativeElement
+      .querySelector<HTMLInputElement>(`input[formControlName="${field}"]`)
+      ?.focus();
   }
 }
 

@@ -81,6 +81,10 @@ describe('Login', () => {
     );
     expect(errors).toContain('Informe seu email.');
     expect(errors).toContain('Informe sua senha.');
+    const headings = harness.routeNativeElement?.querySelectorAll('h1') ?? [];
+    expect(headings).toHaveLength(1);
+    expect(headings[0]?.textContent).toContain('Entrar');
+    expect(document.activeElement?.getAttribute('formControlName')).toBe('email');
   });
 
   it('shows loading, blocks duplicate submission, stores the token and navigates to dashboard', async () => {
@@ -136,6 +140,7 @@ describe('Login', () => {
     expect(harness.routeNativeElement?.querySelector('[role="alert"]')?.textContent).toContain(
       'Email ou senha inválidos',
     );
+    expect(document.activeElement?.getAttribute('formControlName')).toBe('email');
     expect(sessionStorage.length).toBe(0);
   });
 

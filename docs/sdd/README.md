@@ -20,14 +20,14 @@ Este diretório reúne os artefatos versionados do processo Spec-Driven Developm
 | Artefato | Finalidade | Estado |
 |---|---|---|
 | [`00-challenge.md`](00-challenge.md) | Preservar o enunciado, com requisitos originais e decisões aprovadas claramente separados. | Concluído nesta etapa. |
-| [`01-requirements.md`](01-requirements.md) | Definir escopo, atores, casos de uso, requisitos, critérios, premissas, exclusões e Definition of Done. | M4 implementado e validado: operações inválidas preservam integralmente os dados e o dashboard reflete uma nova consulta. |
-| [`02-technical-design.md`](02-technical-design.md) | Definir arquitetura, modelo de dados, segurança, frontend, operação e versões fixadas. | M1–M4 validados, inclusive a atomicidade dos dois PUTs e a limpeza de sessão após trocar a senha. |
+| [`01-requirements.md`](01-requirements.md) | Definir escopo, atores, casos de uso, requisitos, critérios, premissas, exclusões e Definition of Done. | Funcionalidades M1–M4 e gate de qualidade M5 implementados e validados, sem ampliar o escopo de negócio. |
+| [`02-technical-design.md`](02-technical-design.md) | Definir arquitetura, modelo de dados, segurança, frontend, operação e versões fixadas. | M1–M5 validados, inclusive perfis Compose, Playwright fixado, CI e política segura de artefatos. |
 | [`03-api-contract.yaml`](03-api-contract.yaml) | Definir requests, responses, schemas, autenticação e erros da API. | Seis operações normativas e 53 referências locais aprovadas; Swagger runtime também validado. |
-| [`04-test-strategy.md`](04-test-strategy.md) | Definir integração, frontend, E2E, Docker e gates. | Gates M4 de autorização, atomicidade, payload, estados e encerramento de sessão aprovados; E2E completos continuam em M5. |
-| [`05-execution-plan.md`](05-execution-plan.md) | Organizar a implementação incremental em M1–M6. | M1–M4 concluídos; M5–M6 pendentes. |
-| [`06-traceability.md`](06-traceability.md) | Relacionar requisito, critério, design, milestone, teste e estado. | M4 concluído com evidências automatizadas, Compose e UI real. |
-| [`review-log.md`](review-log.md) | Registrar revisão independente, achados, decisões, comandos e riscos. | Revisões independentes de design, M1, M2 e M3 registradas. |
-| [`ai-usage.md`](ai-usage.md) | Definir e registrar de forma resumida o uso responsável de IA. | Uso de IA, auditorias e validação até M4 resumidos. |
+| [`04-test-strategy.md`](04-test-strategy.md) | Definir integração, frontend, E2E, Docker e gates. | 101 integrações backend, 57 testes frontend, três jornadas E2E e smoke acumulado aprovados. |
+| [`05-execution-plan.md`](05-execution-plan.md) | Organizar a implementação incremental em M1–M6. | M1–M5 concluídos; M6 pendente. |
+| [`06-traceability.md`](06-traceability.md) | Relacionar requisito, critério, design, milestone, teste e estado. | M5 concluído com evidências automatizadas, Compose, E2E e inspeção da UI real. |
+| [`review-log.md`](review-log.md) | Registrar revisão independente, achados, decisões, comandos e riscos. | Revisões independentes de design e M1–M4 registradas. |
+| [`ai-usage.md`](ai-usage.md) | Definir e registrar de forma resumida o uso responsável de IA. | Uso de IA, auditorias e validação até M5 resumidos. |
 
 ## Governança
 
@@ -49,8 +49,8 @@ Novas decisões relevantes devem criar ou substituir ADR; registrar apenas uma p
 
 | Item | Estado |
 |---|---|
-| Código, dependências, Dockerfiles e Compose | Walking skeleton M1, cadastro M2, login/autorização/dashboard M3 e perfil/senha M4 concluídos; M5–M6 pendentes. |
-| Testes automatizados e evidências observadas | 101 integrações backend e 56 testes frontend aprovados sem skips, além de OpenAPI normativo/runtime, smoke Compose acumulado e UI real; E2E completo e CI permanecem pendentes. |
+| Código, dependências, Dockerfiles e Compose | Walking skeleton M1, cadastro M2, login/autorização/dashboard M3, perfil/senha M4 e qualidade/E2E/CI M5 concluídos; somente M6 permanece pendente. |
+| Testes automatizados e evidências observadas | 101 integrações backend, 57 testes frontend e três jornadas E2E aprovados sem skips, além de OpenAPI normativo/runtime, perfis Compose, smoke acumulado e UI real. |
 | README de execução e validação na raiz | Planejado para M6. |
 | Atualização de estados da matriz e do plano | Obrigatória em cada milestone. |
 | ADRs adicionais | Criar somente se surgir nova decisão relevante. |

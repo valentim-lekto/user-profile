@@ -13,9 +13,10 @@ mat-card-content {
   padding-top: 1.5rem;
 }
 
-h1 {
+.welcome-title {
   font: var(--mat-sys-headline-medium);
   margin-top: 0;
+  overflow-wrap: anywhere;
 }
 
 .loading-message {
@@ -30,5 +31,21 @@ h1 {
 
   p {
     margin-top: 0;
+  }
+}
+
+mat-card-actions {
+  flex-wrap: wrap;
+}
+
+@media (max-width: 30rem) {
+  mat-card-actions {
+    align-items: stretch;
+    flex-direction: column;
+
+    a,
+    button {
+      width: 100%;
+    }
   }
 }

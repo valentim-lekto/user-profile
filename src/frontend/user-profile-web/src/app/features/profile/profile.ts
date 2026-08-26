@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, ElementRef, OnInit, inject, signal } from '@angular/core';
 import {
   AbstractControl,
   NonNullableFormBuilder,
@@ -8,6 +8,7 @@ import {
 } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { ErrorStateMatcher } from '@angular/material/core';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { Router, RouterLink } from '@angular/router';
@@ -37,6 +38,13 @@ const PASSWORD_API_FIELDS: Record<string, PasswordField> = {
   newpasswordconfirmation: 'newPasswordConfirmation',
 };
 
+const PROFILE_FIELDS: readonly ProfileField[] = ['name', 'email'];
+const PASSWORD_FIELDS: readonly PasswordField[] = [
+  'currentPassword',
+  'newPassword',
+  'newPasswordConfirmation',
+];
+
 const newPasswordsMatch: ValidatorFn = (control: AbstractControl) => {
   const password = control.get('newPassword')?.value;
   const confirmation = control.get('newPasswordConfirmation')?.value;
@@ -60,6 +68,7 @@ const newPasswordsMatch: ValidatorFn = (control: AbstractControl) => {
 })
 export class Profile implements OnInit {
   private readonly auth = inject(AuthService);
+  private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly formBuilder = inject(NonNullableFormBuilder);
   private readonly router = inject(Router);
 
@@ -90,6 +99,13 @@ export class Profile implements OnInit {
     { validators: newPasswordsMatch },
   );
 
+  protected readonly newPasswordConfirmationErrorStateMatcher: ErrorStateMatcher = {
+    isErrorState: (control, form) =>
+      !!control &&
+      (control.invalid || this.passwordForm.hasError('passwordsMismatch')) &&
+      (control.touched || form?.submitted === true),
+  };
+
   ngOnInit(): void {
     void this.reload();
   }
@@ -111,6 +127,7 @@ export class Profile implements OnInit {
 
     if (this.profileForm.invalid) {
       this.profileForm.markAllAsTouched();
+      this.focusFirstInvalidProfileField();
       return;
     }
 
@@ -144,6 +161,7 @@ export class Profile implements OnInit {
 
     if (this.passwordForm.invalid) {
       this.passwordForm.markAllAsTouched();
+      this.focusFirstInvalidPasswordField();
       return;
     }
 
@@ -182,9 +200,8 @@ export class Profile implements OnInit {
   }
 
   protected profileFieldError(field: ProfileField): string | null {
-    const apiError = this.profileApiFieldErrors()[field]?.[0];
-    if (apiError) {
-      return apiError;
+    if (this.profileApiFieldErrors()[field]) {
+      return profileApiValidationMessage(field);
     }
 
     const control = this.profileForm.controls[field];
@@ -214,9 +231,8 @@ export class Profile implements OnInit {
   }
 
   protected passwordFieldError(field: PasswordField): string | null {
-    const apiError = this.passwordApiFieldErrors()[field]?.[0];
-    if (apiError) {
-      return apiError;
+    if (this.passwordApiFieldErrors()[field]) {
+      return passwordApiValidationMessage(field);
     }
 
     const control = this.passwordForm.controls[field];
@@ -241,6 +257,13 @@ export class Profile implements OnInit {
     return null;
   }
 
+  protected newPasswordConfirmationMismatch(): boolean {
+    return (
+      this.passwordForm.controls.newPasswordConfirmation.touched &&
+      this.passwordForm.hasError('passwordsMismatch')
+    );
+  }
+
   private applyProfileProblem(problem: ProfileProblemDetails | null): void {
     if (problem?.status === 400) {
       const fieldErrors = mapFieldErrors(problem.errors, PROFILE_API_FIELDS);
@@ -254,6 +277,8 @@ export class Profile implements OnInit {
 
       if (Object.keys(fieldErrors).length === 0) {
         this.profileError.set('Revise os dados informados e tente novamente.');
+      } else {
+        this.focusFirstProfileApiField(fieldErrors);
       }
 
       return;
@@ -261,6 +286,7 @@ export class Profile implements OnInit {
 
     if (problem?.status === 409) {
       this.profileError.set('Este email já pertence a outra conta.');
+      this.focusField('email');
       return;
     }
 
@@ -285,6 +311,8 @@ export class Profile implements OnInit {
 
       if (Object.keys(fieldErrors).length === 0) {
         this.passwordError.set('Revise as senhas informadas e tente novamente.');
+      } else {
+        this.focusFirstPasswordApiField(fieldErrors);
       }
 
       return;
@@ -303,7 +331,7 @@ export class Profile implements OnInit {
     this.profileError.set(null);
     this.profileSuccess.set(null);
 
-    for (const field of Object.values(PROFILE_API_FIELDS)) {
+    for (const field of PROFILE_FIELDS) {
       clearApiError(this.profileForm.controls[field]);
     }
   }
@@ -312,9 +340,51 @@ export class Profile implements OnInit {
     this.passwordApiFieldErrors.set({});
     this.passwordError.set(null);
 
-    for (const field of Object.values(PASSWORD_API_FIELDS)) {
+    for (const field of PASSWORD_FIELDS) {
       clearApiError(this.passwordForm.controls[field]);
     }
+  }
+
+  private focusFirstInvalidProfileField(): void {
+    const field = PROFILE_FIELDS.find((candidate) => this.profileForm.controls[candidate].invalid);
+    if (field) {
+      this.focusField(field);
+    }
+  }
+
+  private focusFirstInvalidPasswordField(): void {
+    const field = PASSWORD_FIELDS.find(
+      (candidate) => this.passwordForm.controls[candidate].invalid,
+    );
+
+    if (field) {
+      this.focusField(field);
+      return;
+    }
+
+    if (this.passwordForm.hasError('passwordsMismatch')) {
+      this.focusField('newPasswordConfirmation');
+    }
+  }
+
+  private focusFirstProfileApiField(errors: ApiFieldErrors<ProfileField>): void {
+    const field = PROFILE_FIELDS.find((candidate) => errors[candidate]);
+    if (field) {
+      this.focusField(field);
+    }
+  }
+
+  private focusFirstPasswordApiField(errors: ApiFieldErrors<PasswordField>): void {
+    const field = PASSWORD_FIELDS.find((candidate) => errors[candidate]);
+    if (field) {
+      this.focusField(field);
+    }
+  }
+
+  private focusField(field: ProfileField | PasswordField): void {
+    this.element.nativeElement
+      .querySelector<HTMLInputElement>(`input[formControlName="${field}"]`)
+      ?.focus();
   }
 }
 
@@ -380,5 +450,20 @@ function passwordMaximumLengthMessage(field: PasswordField): string {
       return 'A nova senha deve ter no máximo 128 caracteres.';
     case 'newPasswordConfirmation':
       return 'A confirmação deve ter no máximo 128 caracteres.';
+  }
+}
+
+function profileApiValidationMessage(field: ProfileField): string {
+  return field === 'name' ? 'Revise o nome informado.' : 'Revise o email informado.';
+}
+
+function passwordApiValidationMessage(field: PasswordField): string {
+  switch (field) {
+    case 'currentPassword':
+      return 'A senha atual está incorreta.';
+    case 'newPassword':
+      return 'Revise a nova senha informada.';
+    case 'newPasswordConfirmation':
+      return 'Revise a confirmação da nova senha.';
   }
 }

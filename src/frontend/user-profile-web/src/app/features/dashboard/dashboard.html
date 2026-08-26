@@ -1,15 +1,15 @@
 <section class="dashboard-page" aria-labelledby="dashboard-title">
   <mat-card appearance="outlined">
     <mat-card-header>
-      <mat-card-title id="dashboard-title">Dashboard</mat-card-title>
+      <h1 mat-card-title id="dashboard-title">Início</h1>
     </mat-card-header>
 
     <mat-card-content>
       @if (profiles.loading()) {
         <p class="loading-message" role="status" aria-live="polite">Carregando seu perfil…</p>
       } @else if (profiles.profile(); as profile) {
-        <h1>Boas-vindas, {{ profile.name }}!</h1>
-        <p>Seu perfil está disponível para consulta.</p>
+        <h2 class="welcome-title">Boas-vindas, {{ profile.name }}!</h2>
+        <p>Consulte ou atualize seus dados no perfil.</p>
       } @else if (profiles.errorStatus() !== null) {
         <div class="error-message" role="alert" aria-live="assertive">
           <p>

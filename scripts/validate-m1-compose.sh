@@ -8,16 +8,52 @@ cd "$repository_root"
 
 review_tmp=$(mktemp -d)
 stack_started=0
+run_succeeded=0
 COMPOSE_PROJECT_NAME="user-profile-m4-smoke-$$"
 export COMPOSE_PROJECT_NAME
 
+collect_failure_diagnostics() {
+  failure_status=$1
+  failure_artifacts_root="${SMOKE_FAILURE_ARTIFACTS_DIR:-$repository_root/artifacts/ci/smoke}"
+  failure_artifacts_dir="$failure_artifacts_root/$COMPOSE_PROJECT_NAME"
+  mkdir -p "$failure_artifacts_dir"
+
+  printf 'project=%s\nexit_status=%s\nstack_started=%s\n' \
+    "$COMPOSE_PROJECT_NAME" "$failure_status" "$stack_started" \
+    >"$failure_artifacts_dir/context.txt"
+  docker compose config --services \
+    >"$failure_artifacts_dir/compose-services.txt" 2>&1 || true
+  docker compose config --images \
+    >"$failure_artifacts_dir/compose-images.txt" 2>&1 || true
+
+  if [ "$stack_started" -eq 1 ]; then
+    docker compose ps --all \
+      >"$failure_artifacts_dir/compose-ps.txt" 2>&1 || true
+    docker compose logs --no-color api web \
+      >"$review_tmp/failure-logs" 2>&1 || true
+    sed -E \
+      -e 's/(Bearer[[:space:]]+)[A-Za-z0-9._-]+/\1[REDACTED]/g' \
+      -e 's/("(accessToken|password|passwordConfirmation|currentPassword|newPassword|newPasswordConfirmation|passwordHash)"[[:space:]]*:[[:space:]]*")[^"]*"/\1[REDACTED]"/g' \
+      -e 's/([?&]password=)[^&[:space:]]+/\1[REDACTED]/g' \
+      "$review_tmp/failure-logs" \
+      >"$failure_artifacts_dir/compose.log"
+  fi
+}
+
 cleanup() {
+  cleanup_status=$?
+
+  if [ "$run_succeeded" -eq 0 ]; then
+    collect_failure_diagnostics "$cleanup_status" || true
+  fi
+
   if [ "$stack_started" -eq 1 ]; then
     docker compose down --volumes --remove-orphans >/dev/null 2>&1 || true
   fi
 
   rm -f -- \
     "$review_tmp/body" \
+    "$review_tmp/failure-logs" \
     "$review_tmp/headers" \
     "$review_tmp/invalid-login-body" \
     "$review_tmp/logs" \
@@ -25,6 +61,8 @@ cleanup() {
     "$review_tmp/oversized" \
     "$review_tmp/request"
   rmdir "$review_tmp" 2>/dev/null || true
+
+  return "$cleanup_status"
 }
 
 fail() {
@@ -96,14 +134,25 @@ grep -Fqx 'FROM mcr.microsoft.com/dotnet/sdk:10.0.400-noble AS build' \
   src/backend/UserProfile.Api/Dockerfile || fail 'unexpected .NET SDK image'
 grep -Fqx 'FROM mcr.microsoft.com/dotnet/aspnet:10.0.11-noble AS final' \
   src/backend/UserProfile.Api/Dockerfile || fail 'unexpected ASP.NET runtime image'
-grep -Fqx 'FROM node:24.19.0-bookworm-slim AS build' \
+grep -Fqx 'FROM node:24.19.0-bookworm-slim AS dependencies' \
   src/frontend/user-profile-web/Dockerfile || fail 'unexpected Node image'
 grep -Fqx 'FROM nginx:1.30.4-alpine3.24-slim' \
   src/frontend/user-profile-web/Dockerfile || fail 'unexpected Nginx image'
+grep -Fqx 'FROM mcr.microsoft.com/playwright:v1.62.0-noble' \
+  tests/e2e/Dockerfile || fail 'unexpected Playwright image'
+grep -Eq '^[[:space:]]+image:[[:space:]]+ruby:3\.4\.10-slim-bookworm$' \
+  compose.yaml || fail 'unexpected Ruby contract-validator image'
 
 if grep -Eq '^FROM .*:(latest|stable|lts)([[:space:]]|$)' \
-  src/backend/UserProfile.Api/Dockerfile src/frontend/user-profile-web/Dockerfile; then
+  src/backend/UserProfile.Api/Dockerfile \
+  src/frontend/user-profile-web/Dockerfile \
+  tests/e2e/Dockerfile; then
   fail 'floating Docker image tag found'
+fi
+
+if grep -Eq '^[[:space:]]+image:[[:space:]]+.*:(latest|stable|lts)([[:space:]]|$)' \
+  compose.yaml; then
+  fail 'floating Compose image tag found'
 fi
 
 if grep -Eq '^[A-Za-z_][A-Za-z0-9_]*=.+$' .env.example; then
@@ -122,6 +171,10 @@ fi
 
 grep -Eq 'client_max_body_size[[:space:]]+1m;' \
   src/frontend/user-profile-web/nginx.conf || fail 'Nginx request-body limit is not explicit'
+grep -Eq 'proxy_connect_timeout[[:space:]]+2s;' \
+  src/frontend/user-profile-web/nginx.conf || fail 'Nginx connect timeout is not explicit'
+grep -Eq 'proxy_read_timeout[[:space:]]+30s;' \
+  src/frontend/user-profile-web/nginx.conf || fail 'Nginx response timeout is not explicit'
 grep -Eq 'error_page[[:space:]]+413[[:space:]]+=[[:space:]]+@payload_too_large;' \
   src/frontend/user-profile-web/nginx.conf || fail 'Nginx does not map 413 to ProblemDetails'
 
@@ -483,5 +536,6 @@ docker compose stop api >/dev/null
 request '/health' '503' 'application/problem+json'
 grep -Fq '"status":503' "$review_tmp/body" || fail 'upstream failure body is not ProblemDetails'
 
+run_succeeded=1
 printf '%s\n' \
   'M1+M2+M3+M4 Compose OK: same origin, registration, login, profile/password updates, auth failures, persistence, 413/415, safe logs and upstream 503 verified'

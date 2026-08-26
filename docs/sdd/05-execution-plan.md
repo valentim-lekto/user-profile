@@ -121,12 +121,13 @@ Gates observáveis:
 
 ### M5 — Testes E2E, CI e acabamento
 
-**Estado:** pendente
+**Estado:** concluído em 2026-08-26
 
 Entregas:
 
-- fixar Playwright e implementar somente `E2E-001`–`E2E-003`;
-- configurar CI para restore/build/test backend, install/build/test frontend, contrato, E2E e Compose smoke;
+- fixar Playwright e implementar somente `E2E-001`–`E2E-003`, conforme as jornadas independentes da estratégia atualizada: fluxo feliz com edição/logout, login inválido com rota anônima protegida e troca de senha com reautenticação;
+- disponibilizar perfis Compose de qualidade e E2E para executar backend, frontend e navegador sem SDKs locais;
+- configurar CI para restore/build/test backend, install/build/test frontend, contrato, imagens, E2E e Compose smoke, com artefatos somente em falha e cleanup obrigatório;
 - auditar a cobertura acumulada de DTOs e ProblemDetails e concluir verificações de logs, segredo e tags;
 - revisar acessibilidade básica dos formulários, feedback visual e submissões duplicadas;
 - revisar dependências, imagens, configuração não sensível e ausência de escopo extra.
@@ -134,7 +135,9 @@ Entregas:
 Gates observáveis:
 
 - suíte completa passa sem skips;
-- `E2E-001/002` atravessam Nginx, Angular, API e SQLite reais; `E2E-003` interrompe a API real pelo Compose e valida a falha observada no proxy;
+- `E2E-001`–`003` atravessam Nginx, Angular, API e SQLite reais, usam dados isolados e não dependem de ordem ou seed;
+- screenshot e trace são retidos somente em falha, sem sleeps fixos ou retries que escondam falha determinística;
+- a indisponibilidade real do upstream continua comprovada pelo smoke acumulado do Compose;
 - CI falha em drift de contrato, build, teste ou tag proibida;
 - logs e artefatos não contêm senha, hash, token ou chave.
 
@@ -174,6 +177,8 @@ Gates observáveis:
 - `2026-08-26` — `M4 iniciado` — critérios e contrato foram revalidados antes do código; atomicidade das operações inválidas, payload cadastral sem campos de senha e atualização do dashboard por nova consulta passaram a ter gates explícitos. Implementação e evidências ainda estão pendentes.
 - `2026-08-26` — `M4 concluído` — os PUTs protegidos de perfil/senha e os dois formulários separados foram aprovados com 99 integrações backend, 55 testes frontend, OpenAPI normativo/runtime, smoke Compose acumulado e UI real. M5–M6, E2E completos, CI e documentação final permanecem pendentes.
 - `2026-08-26` — `revisão independente de M4 concluída` — 0 High, 4 Medium e 1 Low foram corrigidos; isolamento de sessão tardia, bloqueio dos formulários, wiring DOM, associações do Swagger runtime e bordas inclusivas passaram em 101 integrações backend e 56 testes frontend, além do smoke acumulado.
+- `2026-08-26` — `M5 iniciado` — as três jornadas E2E foram alinhadas à instrução atual antes do código; a prova de upstream indisponível permanece no smoke Compose, e perfis de qualidade/E2E, CI e acabamento visual entram nesta única etapa sem funcionalidade de negócio nova.
+- `2026-08-26` — `M5 concluído` — 101 integrações backend, 57 testes frontend, contrato, smoke acumulado e três jornadas Playwright independentes passaram em perfis Docker; acabamento Material/responsivo/acessível, workflow CI, tags fixas, cleanup isolado e artefatos sem credenciais foram revalidados. Somente M6 permanece pendente.
 
 ## Evidências de M1
 
@@ -232,6 +237,21 @@ O SDK/Node do host não correspondiam exatamente às versões fixadas; por isso,
 
 O SDK e o Node disponíveis no host divergiam dos patches fixados; por isso restore/build/test foram executados nas imagens específicas do design, sem alterar locks ou versões. Nenhum push foi realizado.
 
+## Evidências de M5
+
+| Gate | Execução observada | Resultado |
+|---|---|---|
+| Backend acumulado | Perfil `backend-tests` do Compose, target `test` da imagem .NET `10.0.400-noble`: restore locked, build Release com warnings como erros e teste da solution | 101/101 integrações aprovadas, sem falhas ou skips. A suíte usa `HttpClient`/`WebApplicationFactory`, EF Core e SQLite isolado reais e cobre banco vazio/migrations, cadastro, duplicidade, login, JWT, isolamento por `sub`, PUTs, senha, ProblemDetails e ausência de dados sensíveis. |
+| Frontend acumulado | Perfil `frontend-tests` do Compose, target `test` da imagem `node:24.19.0-bookworm-slim`: `npm ci`, lint, Vitest e build de produção | Lint e build aprovados; 57/57 testes passaram sem skips. A suíte cobre formulários/validadores, mensagens, loading, duplo submit, guard/interceptor, `401`, navegação, atualização de estado e encerramento de sessão. |
+| Contrato e configuração | Perfis/serviços do Compose com `ruby:3.4.10-slim-bookworm`; `docker compose config --quiet`; `actionlint` `1.7.12` | OpenAPI aprovado para seis operações e 53 referências locais; configuração padrão e todos os profiles aprovada; workflow válido e todas as imagens, ações e runtimes usam versões completas, sem `latest`. |
+| E2E real | `./scripts/e2e-playwright.sh` com `mcr.microsoft.com/playwright:v1.62.0-noble`, Nginx/API/SQLite reais e projeto/volume/contexto próprios por execução | `E2E-001`–`003` passaram sem retry ou seed: fluxo feliz com edição/logout, anônimo+login inválido e troca de senha com reautenticação. Emails são únicos, waits usam health/estado observável e o teardown removeu somente recursos efêmeros próprios. |
+| Artefatos e segurança | Execução adicional com trace forçado; inspeção dos três traces, suas cópias no HTML report e JUnit; auditoria independente do patch | 0 senha concreta, JWT ou Bearer; arquivos de rede dos traces vazios. O runner recebe somente chaves não sensíveis, inputs são limpos antes de captura e os segredos morrem com o contexto do navegador. Screenshot/trace/log Compose são retidos somente em falha na configuração normal. |
+| Compose e smoke | `scripts/validate-m1-compose.sh` acumulado M1+M2+M3+M4, agora também validando profiles, tags Playwright/Ruby e ausência de tags flutuantes | Origem única, health, Swagger, cadastro/login/perfil/senha, autorização, persistência, `413/415/503`, logs seguros, imagens e cleanup aprovados em recursos isolados. |
+| Acabamento/UI | Suíte DOM e inspeção real em desktop e viewport de 360 px | Login, cadastro, dashboard e perfil usam shell/Material consistentes, landmarks/headings/labels, `aria-live`, foco após erro, skip link por teclado, loading visível e ações responsivas sem overflow horizontal, inclusive nome no limite defensivo. |
+| CI | `.github/workflows/ci.yml` e execução local dos mesmos profiles/scripts | O job restaura/compila/testa backend, instala/linta/testa/compila frontend, valida contrato, constrói imagens, executa smoke e E2E. Os scripts isolados persistem `ps`, imagens/serviços e logs sanitizados antes do próprio teardown em falha; a etapa final agrega os artefatos e sempre encerra os recursos. A execução hospedada ocorrerá somente após publicação explícita; nenhum push faz parte deste milestone. |
+
+Uma repetição redundante do smoke após alterar somente seu trap de diagnóstico foi afetada por contenção externa do daemon compartilhado: o Kestrel registrou thread-pool starvation e `docker stats` mostrou um PostgreSQL de outro projeto próximo de 98% de CPU. O smoke funcional completo já havia passado com a mesma aplicação/configuração; o caminho novo foi validado por falha controlada, que preservou cinco diagnósticos sem credenciais e removeu integralmente apenas seu projeto efêmero. Nenhum recurso externo foi interrompido.
+
 Ao iniciar um milestone, alterar somente seu estado para `em andamento`. Ao concluir, registrar data, comandos, evidências, desvios e hash do commit antes de iniciar o próximo.
 
 ## Comandos
@@ -265,9 +285,13 @@ npm run build --prefix src/frontend/user-profile-web
 npm test --prefix src/frontend/user-profile-web
 ruby scripts/validate-openapi.rb docs/sdd/03-api-contract.yaml
 scripts/validate-m1-compose.sh
+docker compose --profile backend-tests run --build --rm backend-tests
+docker compose --profile frontend-tests run --build --rm frontend-tests
+docker compose --profile contract-tests run --rm contract-tests
+./scripts/e2e-playwright.sh
 ```
 
-`scripts/validate-m1-compose.sh` é o smoke versionado acumulado M1+M2+M3+M4. Após a revisão independente, M4 confirmou 101 integrações backend e 56 testes frontend com os comandos acima, nas imagens fixadas quando necessário.
+`scripts/validate-m1-compose.sh` é o smoke funcional acumulado M1+M2+M3+M4 e, em M5, também valida tags completas e configuração operacional dos profiles. Os quatro comandos Compose/script finais reproduzem os gates de backend, frontend, contrato e E2E sem SDKs no host.
 
 Os nomes de scripts npm devem ser confirmados no scaffold e então congelados. Mudança de comando exige atualização deste plano e do README antes do código dependente.
 
@@ -323,7 +347,8 @@ Os nomes de scripts npm devem ser confirmados no scaffold e então congelados. M
 - `2026-08-26` — M3 confirmou fluxo direto `Controllers` → EF Core/`JwtTokenIssuer` e `AuthService`/signals, sem refresh, NgRx ou camada extra. A complexidade retida restringe-se à validação JWT/configuração, hash fictício para reduzir sinal de timing, allowlist do interceptor e lazy routes exigidos pela fatia.
 - `2026-08-26` — A revisão independente de M3 manteve o desenho direto: `ProfileService` passou de singleton para provider do dashboard, isolando ativações sem store ou generation tracker; o interceptor compara o Bearer original ao token corrente antes de limpar a sessão. Um filtro focado completa somente os metadados de resposta que o Swagger não inferia.
 - `2026-08-26` — M4 manteve o fluxo KISS `Controller` → EF Core/`PasswordHasher<User>` e `component` → service/signals, sem repository, facade, NgRx ou camada adicional. A complexidade ficou restrita à atomicidade, à corrida do índice único, à autorização/limpeza segura de sessão e aos estados observáveis exigidos.
+- `2026-08-26` — M5 não alterou endpoints nem regras de negócio: reutilizou as suítes acumuladas, acrescentou somente três jornadas Playwright diretas, targets/profiles Docker, um workflow e ajustes visuais locais. O isolamento usa nome de projeto/volume/contexto por execução, sem orquestrador ou framework adicional.
 
 ## Resultado final
 
-M1–M4 estão implementados e validados. Após a revisão independente, M4 aprovou 101 integrações backend, 56 testes frontend, OpenAPI normativo/runtime, smoke acumulado e UI real para edição cadastral; os PUTs usam somente `sub`, preservam dados em falhas, mantêm senha e hash fora de respostas/logs e encerram somente a sessão que iniciou a troca válida. M5–M6 permanecem pendentes: jornadas E2E completas, CI, acabamento e validação/documentação finais.
+M1–M5 estão implementados e validados. M5 manteve as 101 integrações backend, ampliou o frontend para 57 testes e aprovou as três jornadas Playwright contra Nginx/API/SQLite reais, além de contrato, profiles Compose, smoke, acabamento acessível/responsivo, CI e auditoria de artefatos sem credenciais. Não houve nova funcionalidade de negócio. M6 permanece pendente exclusivamente para validação e documentação finais.

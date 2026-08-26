@@ -91,10 +91,22 @@ describe('Register', () => {
 
     component.form.controls.password.setValue('valid-password');
     component.form.controls.passwordConfirmation.setValue('different-password');
+    component.form.controls.passwordConfirmation.markAsTouched();
     expect(component.form.hasError('passwordsMismatch')).toBe(true);
+    harness.detectChanges();
+    const confirmation = harness.routeNativeElement?.querySelector<HTMLInputElement>(
+      'input[formControlName="passwordConfirmation"]',
+    );
+    expect(confirmation?.getAttribute('aria-invalid')).toBe('true');
+    expect(confirmation?.getAttribute('aria-errormessage')).toBe(
+      'register-password-mismatch',
+    );
 
     component.form.controls.passwordConfirmation.setValue('valid-password');
     expect(component.form.hasError('passwordsMismatch')).toBe(false);
+    harness.detectChanges();
+    expect(confirmation?.getAttribute('aria-invalid')).toBe('false');
+    expect(confirmation?.hasAttribute('aria-errormessage')).toBe(false);
 
     component.form.controls.password.setValue('p'.repeat(128));
     component.form.controls.passwordConfirmation.setValue('p'.repeat(128));
@@ -127,6 +139,21 @@ describe('Register', () => {
     expect(pageText).toContain('Informe um email válido.');
     expect(pageText).toContain('A senha deve ter pelo menos 6 caracteres.');
     expect(pageText).toContain('A confirmação deve ser idêntica à senha.');
+    const headings = harness.routeNativeElement?.querySelectorAll('h1') ?? [];
+    expect(headings).toHaveLength(1);
+    expect(headings[0]?.textContent).toContain('Criar conta');
+    expect(document.activeElement?.getAttribute('formControlName')).toBe('name');
+
+    const confirmation = harness.routeNativeElement?.querySelector<HTMLInputElement>(
+      'input[formControlName="passwordConfirmation"]',
+    );
+    expect(confirmation?.getAttribute('aria-invalid')).toBe('true');
+    expect(confirmation?.getAttribute('aria-errormessage')).toBe(
+      'register-password-mismatch',
+    );
+    expect(
+      harness.routeNativeElement?.querySelector('#register-password-mismatch')?.textContent,
+    ).toContain('A confirmação deve ser idêntica à senha.');
     expect(router.url).toBe('/register');
     http.expectNone('/api/auth/register');
   });
@@ -179,7 +206,7 @@ describe('Register', () => {
       {
         title: 'Bad Request',
         status: 400,
-        errors: { email: ['Este email não pode ser utilizado.'] },
+        errors: { email: ['Email must be valid.'] },
       },
       { status: 400, statusText: 'Bad Request' },
     );
@@ -188,8 +215,10 @@ describe('Register', () => {
     harness.detectChanges();
 
     expect(router.url).toBe('/register');
-    expect(harness.routeNativeElement?.textContent).toContain('Este email não pode ser utilizado.');
+    expect(harness.routeNativeElement?.textContent).toContain('Revise o email informado.');
+    expect(harness.routeNativeElement?.textContent).not.toContain('Email must be valid.');
     expect(component.form.controls.email.hasError('api')).toBe(true);
+    expect(document.activeElement?.getAttribute('formControlName')).toBe('email');
   });
 
   it('shows a clear conflict error and allows a corrected retry', async () => {
@@ -208,6 +237,7 @@ describe('Register', () => {
     expect(harness.routeNativeElement?.querySelector('[role="alert"]')?.textContent).toContain(
       'Já existe uma conta cadastrada com este email',
     );
+    expect(document.activeElement?.getAttribute('formControlName')).toBe('email');
 
     component.form.controls.email.setValue('another@example.test');
     const retry = component.submit();

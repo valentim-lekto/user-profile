@@ -9,5 +9,5 @@ import { RouterOutlet } from '@angular/router';
   styleUrl: './app.scss'
 })
 export class App {
-  protected readonly appName = 'User Profile';
+  protected readonly appName = 'Perfil do usuário';
 }

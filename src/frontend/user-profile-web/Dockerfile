@@ -1,9 +1,19 @@
-FROM node:24.19.0-bookworm-slim AS build
+FROM node:24.19.0-bookworm-slim AS dependencies
 
 WORKDIR /app
 
 COPY package.json package-lock.json ./
 RUN npm ci
+
+FROM dependencies AS test
+
+COPY angular.json eslint.config.js tsconfig.json tsconfig.app.json tsconfig.spec.json ./
+COPY public ./public
+COPY src ./src
+
+CMD ["sh", "-ec", "npm run lint && npm test && npm run build"]
+
+FROM dependencies AS build
 
 COPY angular.json tsconfig.json tsconfig.app.json ./
 COPY public ./public

@@ -48,6 +48,8 @@ Verificação realizada em 2026-08-24. Foram escolhidas versões estáveis e sup
 | Angular Material | `22.1.3` | Alinhada à linha do framework. | Dependência exata e `package-lock.json`. |
 | Angular ESLint | `22.1.0` | Linha estável alinhada ao Angular 22. | Dependência de desenvolvimento exata e `package-lock.json`. |
 | Vitest | `4.1.11` | Patch estável fora da faixa afetada por `GHSA-5xrq-8626-4rwp`. | Dependência de desenvolvimento exata e `package-lock.json`. |
+| Playwright | `1.62.0` | Release estável verificada no M5; pacote e imagem devem permanecer na mesma versão. | `@playwright/test` exato, lock npm e `mcr.microsoft.com/playwright:v1.62.0-noble`. |
+| Ruby do validador OpenAPI | `3.4.10` | Runtime estável usado somente pelo perfil de contrato. | `ruby:3.4.10-slim-bookworm`. |
 | Node.js | `24.19.0` LTS | Compatível com Angular 22 (`^24.15.0`) e em LTS. | `node:24.19.0-bookworm-slim`. |
 | Nginx | `1.30.4` estável | Linha estável da imagem oficial. | `nginx:1.30.4-alpine3.24-slim`. |
 | Runtime da API | ASP.NET `10.0.11` | Mesma atualização de segurança da aplicação. | `mcr.microsoft.com/dotnet/aspnet:10.0.11-noble`. |
@@ -60,6 +62,8 @@ Fontes oficiais consultadas:
 - [política de releases do Angular](https://angular.dev/reference/releases) e [compatibilidade Angular–Node](https://angular.dev/reference/versions);
 - [pacotes oficiais do Angular ESLint](https://www.npmjs.com/org/angular-eslint);
 - [advisory oficial do Vitest](https://github.com/advisories/GHSA-5xrq-8626-4rwp);
+- [documentação oficial da imagem Docker do Playwright](https://playwright.dev/docs/docker);
+- [manifesto oficial da imagem Ruby](https://github.com/docker-library/official-images/blob/master/library/ruby);
 - [releases suportadas do Node.js](https://nodejs.org/en/about/previous-releases), [manifesto oficial da imagem Node](https://github.com/docker-library/official-images/blob/master/library/node) e [manifesto oficial da imagem Nginx](https://github.com/docker-library/official-images/blob/master/library/nginx).
 
 O scaffold de M1 reconfirmou as tags exatas ao construir as imagens. Uma atualização posterior exige mudança explícita deste documento e validação completa; não se deve substituir silenciosamente uma tag por alias flutuante.
@@ -89,7 +93,7 @@ src/
 tests/
   backend/
     UserProfile.Api.IntegrationTests/ # único projeto de integração do backend
-  e2e/                                # reservado às jornadas de M5
+  e2e/                                # três jornadas Playwright de M5
 ```
 
 Os testes focados de frontend permanecem no workspace Angular. As poucas jornadas
@@ -259,8 +263,10 @@ O token fica somente em `sessionStorage`. O estado de autenticação é um signa
 - `compose.yaml` terá serviços `web` e `api` e um volume nomeado para `/data`; SQLite não cria um terceiro contêiner.
 - `web` é uma imagem multi-stage: Node compila o Angular e Nginx serve o resultado.
 - `api` é uma imagem multi-stage: SDK publica e runtime ASP.NET executa como usuário não-root; `/data` é preparado com permissão de escrita para esse usuário antes de receber o volume.
+- Perfis opt-in do Compose executam restore/build/test do backend, `npm ci`/lint/test/build do frontend, contrato OpenAPI e as três jornadas Playwright sem exigir SDKs no host. Esses serviços não publicam portas nem alteram a pilha padrão.
+- Cada execução E2E recebe projeto Compose, contexto de navegador, volume e diretório de artefatos próprios. Emails são únicos; senhas sintéticas são geradas e mantidas dentro do contexto do navegador, e o runner Playwright recebe somente chaves não sensíveis. Relatórios JUnit/HTML são sempre gravados; screenshot e trace minimizado, sem snapshots, sources ou attachments, são retidos somente em falha. Os traps de E2E e smoke persistem `ps`, imagens/serviços e logs sanitizados do projeto efêmero antes do teardown quando há falha; o cleanup remove apenas seus próprios recursos.
 - `web` publica `8080:8080`; `api` expõe `8080` apenas para a rede interna.
-- Nginx escuta em `8080`, encaminha `/api/`, `/swagger/` e `/health` para `http://api:8080`, converte falha de conexão/timeout do upstream em `503 application/problem+json`, converte corpo acima de 1 MiB em `413 application/problem+json` e serve a SPA nas demais rotas.
+- Nginx escuta em `8080`, encaminha `/api/`, `/swagger/` e `/health` para `http://api:8080`, usa timeout explícito de conexão de 2 segundos e de resposta de 30 segundos, converte falha de conexão/timeout do upstream em `503 application/problem+json`, converte corpo acima de 1 MiB em `413 application/problem+json` e serve a SPA nas demais rotas. A janela de resposta acomoda o primeiro hash de senha em runners Docker sob contenção sem criar retry; indisponibilidade de conexão continua falhando rapidamente.
 - Existe um único health check do Compose no serviço `web`: `wget -q -O /dev/null http://127.0.0.1:8080/health`, usando o BusyBox presente na imagem Alpine. `web` depende de `api` com `condition: service_started`; como a probe atravessa Nginx, API e a consulta SQLite, `docker compose up --wait` só conclui quando a pilha inteira está saudável, sem instalar cliente HTTP na imagem da API.
 - Tags completas listadas neste documento serão copiadas literalmente; `latest`, `lts`, `stable` ou apenas major/minor são proibidos.
 

@@ -23,7 +23,7 @@ Validar os comportamentos e riscos principais com a menor suíte capaz de fornec
 | Especificação | Parser/linter OpenAPI e checagens de rastreabilidade | Sintaxe, operações, segurança, schemas, IDs e ausência de escopo extra. |
 | Integração backend | `UserProfile.Api.IntegrationTests`, `WebApplicationFactory` e `HttpClient` | Pipeline HTTP real em processo, SQLite real, migrations, autenticação, persistência e ProblemDetails. |
 | Frontend focado | Runner padrão do Angular, TestBed, Reactive Forms e `HttpTestingController` | Validações, signals, estados de UI, services, guard, interceptor e navegação. |
-| E2E | Playwright, fixado na implementação | Poucas jornadas completas pelo Nginx e API reais. |
+| E2E | Playwright `1.62.0` | Três jornadas completas pelo Nginx e API reais. |
 | Operação | Docker Compose e verificações HTTP em checkout limpo | Build, origem única, health, volume, configuração e instruções do README. |
 
 `WebApplicationFactory` exercita o pipeline ASP.NET completo sem abrir socket externo. As jornadas E2E e a validação Docker cobrem o tráfego TCP real e o proxy Nginx.
@@ -95,11 +95,11 @@ Os testes de frontend não reimplementam criptografia, EF ou validação JWT. Se
 
 | ID | Jornada | Abrangência |
 |---|---|---|
-| `E2E-001` | Cadastrar → ver sucesso no login → autenticar → ver saudação → editar nome/email → recarregar e confirmar persistência. | Caminho feliz principal. |
-| `E2E-002` | Login inválido → login válido → alterar senha → confirmar sessão encerrada → senha antiga falha → nova senha autentica. | Erros, senha e sessão. |
-| `E2E-003` | Abrir rota protegida sem token; depois de autenticar, parar realmente o serviço `api`, recarregar o dashboard e verificar que o proxy respondeu `503 application/problem+json` e a tela exibiu indisponibilidade. | Guard, proxy, `API-ERROR-01` e estado de indisponibilidade. |
+| `E2E-001` | Cadastrar → ver sucesso no login → autenticar → ver saudação → editar nome/email → consultar novamente o dashboard → encerrar a sessão. | Caminho feliz principal, persistência da edição e logout. |
+| `E2E-002` | Abrir uma rota protegida sem token e confirmar o redirecionamento; tentar login com credenciais não reconhecidas e permanecer no login com a mensagem genérica. | Guard, credenciais inválidas e ausência de sessão. |
+| `E2E-003` | Cadastrar e autenticar uma conta própria → alterar a senha → confirmar sessão encerrada → senha antiga falhar → senha nova autenticar e abrir o dashboard. | Senha, encerramento de sessão e nova autenticação. |
 
-As jornadas usam a origem publicada pelo Nginx e não chamam a API diretamente para preparar estado. Dados são criados pelo cadastro, sem seed. `E2E-003` controla o serviço pelo Compose e observa a falha real do proxy; não intercepta nem simula a chamada no browser.
+As jornadas usam a origem publicada pelo Nginx e não chamam a API diretamente para preparar estado. Cada uma cria seus próprios dados pela interface, usa email único gerado em runtime, abre contexto de navegador isolado e não depende de ordem ou seed compartilhado. Senhas sintéticas são geradas e mantidas no próprio contexto do navegador; chamadas registradas pelo Playwright recebem somente chaves não sensíveis, e os campos são limpos antes de eventual captura de falha. Playwright executa sem retries ocultos, grava screenshot e trace minimizado somente quando há falha e espera estados observáveis, nunca pausas fixas. A indisponibilidade real da API e o `503 ProblemDetails` do proxy permanecem cobertos por `OPS-COMPOSE-001`, sem criar uma quarta jornada.
 
 ## Validação de especificação e contrato
 
@@ -131,6 +131,7 @@ divergência quebra o build.
 | `OPS-PERSIST-001` | Criar usuário, recriar serviços sem remover volume e autenticar novamente. | `OPS-DOCKER-03` |
 | `OPS-TAGS-001` | Dockerfiles não contêm `latest` nem tags incompletas e usam as versões do design. | `OPS-DOCKER-02` |
 | `OPS-SECRET-001` | Compose inicia sem segredo versionado; `.env.example` é opcional e não contém valor utilizável; o smoke envia marcadores sintéticos em query/body/header, usa uma senha sintética no fluxo válido e comprova que logs da API/Nginx não contêm esses valores nem o JWT observado; a auditoria acumulada final também cobre hash e chave. | `SEC-SECRET-01`, `SEC-LOG-01` |
+| `CI-001` | O workflow executa contrato, restore/build/test backend, `npm ci`/lint/test/build frontend, build das imagens, Compose saudável e `E2E-001`–`003`; cada script isolado persiste o diagnóstico sanitizado de seu próprio projeto antes do teardown em falha, e a etapa final agrega os artefatos e sempre encerra os recursos. A validação de M5 força a criação dos traces e reprova qualquer senha sintética ou JWT. | `TECH-BACKEND-01`, `TECH-FRONTEND-01`, `TEST-FLOW-01`, `OPS-DOCKER-02`, `SEC-LOG-01` |
 | `DOC-RUN-001` | Uma pessoa segue o README em ambiente limpo e reproduz comandos, URLs e cadastro de dados. | `DOC-RUN-01` |
 | `DOC-EXPLAIN-001` | Walkthrough manual cobre ADRs, fluxo `sub`, senha/JWT, proxy/SQLite, estados do frontend e um caminho rastreado de requisito até teste, com resultado resumido. | `AI-EXPLAIN-01` |
 
@@ -142,7 +143,7 @@ divergência quebra o build.
 | M2 | `BE-REG-*`, `FE-REG-*`, `BE-ERR-001/002`, `BE-OAS-001`, parcela M2 de `OPS-COMPOSE-001`/`OPS-SECRET-001`, assertion aplicável de `BE-DTO-001` e regressão dos gates M1. |
 | M3 | `BE-LOGIN-*`, `BE-AUTH-*`, `BE-CONFIG-001`, `BE-PROF-001/002`, `TECH-BACKEND-001`, parte de `.env.example`/logs de `OPS-SECRET-001`, `FE-LOGIN-*`, `FE-GUARD-*`, `FE-INT-*`, `FE-DASH-*`, `FE-WIRE-*` e assertions aplicáveis de `BE-ERR-001`/`BE-DTO-001`. |
 | M4 | `BE-PROF-003/004/005/006`, `BE-PASS-*`, `FE-PROF-*`, `FE-PASS-*`, parcela M4 de `OPS-COMPOSE-001`/`OPS-SECRET-001` e assertions aplicáveis de `BE-ERR-001`/`BE-DTO-001`. |
-| M5 | `E2E-*`, suíte acumulada completa, CI, `OPS-TAGS-001`, auditorias de log/segredo e build de produção. |
+| M5 | `E2E-*`, `CI-001`, suíte acumulada completa, perfis Compose para qualidade/E2E sem SDKs no host, `OPS-TAGS-001`, auditorias de log/segredo e build de produção. |
 | M6 | Reexecução de `TECH-*`, `OPS-*`, `DOC-RUN-001`, `DOC-EXPLAIN-001`, `SPEC-TRACE-001`, revisão manual e execução completa em checkout limpo. |
 
 ## Política de cobertura
@@ -157,3 +158,4 @@ Não será fixado percentual arbitrário. A cobertura é orientada à matriz e a
 - Falhas produzem evidência suficiente sem imprimir valores sensíveis.
 - A matriz de rastreabilidade reflete os IDs implementados e seu estado real.
 - O gate de M4 também reexecuta `OPS-COMPOSE-001` de forma acumulada: os dois PUTs, preservação após falhas, senha antiga/nova, persistência após recriar a API, logs seguros e cleanup isolado devem passar; a interface real cobre o fluxo cadastral e a inspeção dos dois formulários sem antecipar as jornadas Playwright de M5.
+- O gate de M5 executa as três jornadas independentes contra a origem Nginx real, sem chamadas de preparação à API, e comprova que os mesmos comandos de backend, frontend e E2E podem rodar por perfis do Compose sem SDKs instalados no host.

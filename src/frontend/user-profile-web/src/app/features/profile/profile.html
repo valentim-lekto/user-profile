@@ -20,7 +20,7 @@
     <div class="profile-sections">
       <mat-card appearance="outlined" aria-labelledby="personal-data-title">
         <mat-card-header>
-          <mat-card-title id="personal-data-title">Dados pessoais</mat-card-title>
+          <h2 mat-card-title id="personal-data-title">Dados pessoais</h2>
           <mat-card-subtitle>Altere seu nome e email.</mat-card-subtitle>
         </mat-card-header>
 
@@ -90,7 +90,7 @@
 
       <mat-card appearance="outlined" aria-labelledby="password-title">
         <mat-card-header>
-          <mat-card-title id="password-title">Alterar senha</mat-card-title>
+          <h2 mat-card-title id="password-title">Alterar senha</h2>
           <mat-card-subtitle>Você precisará entrar novamente após a alteração.</mat-card-subtitle>
         </mat-card-header>
 
@@ -140,6 +140,10 @@
                 formControlName="newPasswordConfirmation"
                 autocomplete="new-password"
                 maxlength="128"
+                [errorStateMatcher]="newPasswordConfirmationErrorStateMatcher"
+                [attr.aria-errormessage]="
+                  newPasswordConfirmationMismatch() ? 'profile-password-mismatch' : null
+                "
                 (input)="clearPasswordApiFieldError('newPasswordConfirmation')"
               />
               @if (passwordFieldError('newPasswordConfirmation'); as error) {
@@ -147,11 +151,8 @@
               }
             </mat-form-field>
 
-            @if (
-              passwordForm.controls.newPasswordConfirmation.touched &&
-              passwordForm.hasError('passwordsMismatch')
-            ) {
-              <p class="field-error" role="alert">
+            @if (newPasswordConfirmationMismatch()) {
+              <p id="profile-password-mismatch" class="field-error" role="alert">
                 A confirmação deve ser idêntica à nova senha.
               </p>
             }

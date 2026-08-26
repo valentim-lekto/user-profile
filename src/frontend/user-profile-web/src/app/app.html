@@ -1,9 +1,11 @@
 <a class="skip-link" href="#main-content">Ir para o conteúdo</a>
 
-<mat-toolbar class="app-toolbar" aria-label="Cabeçalho da aplicação">
-  <span>{{ appName }}</span>
-</mat-toolbar>
+<header>
+  <mat-toolbar class="app-toolbar" aria-label="Cabeçalho da aplicação">
+    <span>{{ appName }}</span>
+  </mat-toolbar>
+</header>
 
-<main id="main-content" class="app-content">
+<main id="main-content" class="app-content" tabindex="-1">
   <router-outlet></router-outlet>
 </main>

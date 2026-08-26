@@ -1,7 +1,7 @@
 <section class="register-page" aria-labelledby="register-title">
   <mat-card appearance="outlined">
     <mat-card-header>
-      <mat-card-title id="register-title">Criar conta</mat-card-title>
+      <h1 mat-card-title id="register-title">Criar conta</h1>
       <mat-card-subtitle>Preencha seus dados para começar.</mat-card-subtitle>
     </mat-card-header>
 
@@ -66,6 +66,10 @@
             formControlName="passwordConfirmation"
             autocomplete="new-password"
             maxlength="128"
+            [errorStateMatcher]="passwordConfirmationErrorStateMatcher"
+            [attr.aria-errormessage]="
+              passwordConfirmationMismatch() ? 'register-password-mismatch' : null
+            "
             (input)="clearApiFieldError('passwordConfirmation')"
           />
           @if (fieldError('passwordConfirmation'); as error) {
@@ -73,10 +77,10 @@
           }
         </mat-form-field>
 
-        @if (
-          form.controls.passwordConfirmation.touched && form.hasError('passwordsMismatch')
-        ) {
-          <p class="field-error" role="alert">A confirmação deve ser idêntica à senha.</p>
+        @if (passwordConfirmationMismatch()) {
+          <p id="register-password-mismatch" class="field-error" role="alert">
+            A confirmação deve ser idêntica à senha.
+          </p>
         }
 
         @if (apiError(); as error) {

@@ -42,6 +42,10 @@
   display: grid;
   gap: 1rem;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+
+  > mat-card {
+    min-width: 0;
+  }
 }
 
 mat-card-content {
@@ -51,6 +55,11 @@ mat-card-content {
 .form-content {
   display: grid;
   gap: 0.5rem;
+
+  mat-form-field {
+    min-width: 0;
+    width: 100%;
+  }
 }
 
 .success-message,
@@ -89,4 +98,19 @@ mat-card-content {
 .loading-message {
   color: var(--mat-sys-primary);
   margin: 0 0 0.5rem;
+}
+
+@media (max-width: 30rem) {
+  .page-heading {
+    align-items: stretch;
+    flex-direction: column;
+
+    a {
+      width: 100%;
+    }
+  }
+
+  mat-card-actions button {
+    width: 100%;
+  }
 }

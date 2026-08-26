@@ -30,8 +30,13 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('mat-toolbar')?.textContent).toContain('User Profile');
-    expect(compiled.querySelector('main')).not.toBeNull();
+    expect(compiled.querySelector('header mat-toolbar')?.textContent).toContain(
+      'Perfil do usuário',
+    );
+    expect(compiled.querySelector<HTMLAnchorElement>('.skip-link')?.getAttribute('href')).toBe(
+      '#main-content',
+    );
+    expect(compiled.querySelector('main')?.getAttribute('tabindex')).toBe('-1');
     expect(compiled.querySelector('router-outlet')).not.toBeNull();
   });
 

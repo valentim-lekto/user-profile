@@ -42,5 +42,65 @@ services:
       retries: 30
       start_period: 5s
 
+  backend-tests:
+    profiles: ["backend-tests"]
+    image: user-profile-backend-tests:0.1.0
+    build:
+      context: .
+      dockerfile: src/backend/UserProfile.Api/Dockerfile
+      target: test
+
+  frontend-tests:
+    profiles: ["frontend-tests"]
+    image: user-profile-frontend-tests:0.1.0
+    build:
+      context: src/frontend/user-profile-web
+      dockerfile: Dockerfile
+      target: test
+
+  contract-tests:
+    profiles: ["contract-tests"]
+    image: ruby:3.4.10-slim-bookworm
+    working_dir: /workspace
+    volumes:
+      - .:/workspace:ro
+    command: ruby scripts/validate-openapi.rb docs/sdd/03-api-contract.yaml
+
+  web-e2e:
+    profiles: ["e2e"]
+    image: user-profile-web:0.1.0
+    build:
+      context: src/frontend/user-profile-web
+      dockerfile: Dockerfile
+    depends_on:
+      api:
+        condition: service_started
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - -q
+        - -O
+        - /dev/null
+        - http://127.0.0.1:8080/health
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 5s
+
+  e2e:
+    profiles: ["e2e"]
+    image: user-profile-e2e-tests:0.1.0
+    build:
+      context: tests/e2e
+      dockerfile: Dockerfile
+    depends_on:
+      web-e2e:
+        condition: service_healthy
+    environment:
+      E2E_BASE_URL: http://web-e2e:8080
+    volumes:
+      - "${E2E_ARTIFACTS_DIR:-./artifacts/e2e}:/artifacts"
+
 volumes:
   user-profile-data:

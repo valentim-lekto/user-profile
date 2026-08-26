@@ -1,7 +1,8 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, ElementRef, inject, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { ErrorStateMatcher } from '@angular/material/core';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { Router, RouterLink } from '@angular/router';
@@ -22,6 +23,13 @@ const API_FIELDS: Record<string, RegisterField> = {
   passwordconfirmation: 'passwordConfirmation',
 };
 
+const REGISTER_FIELDS: readonly RegisterField[] = [
+  'name',
+  'email',
+  'password',
+  'passwordConfirmation',
+];
+
 @Component({
   selector: 'app-register',
   imports: [
@@ -36,6 +44,7 @@ const API_FIELDS: Record<string, RegisterField> = {
   styleUrl: './register.scss',
 })
 export class Register {
+  private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly formBuilder = inject(NonNullableFormBuilder);
   private readonly router = inject(Router);
 
@@ -56,6 +65,13 @@ export class Register {
     { validators: passwordsMatch },
   );
 
+  protected readonly passwordConfirmationErrorStateMatcher: ErrorStateMatcher = {
+    isErrorState: (control, form) =>
+      !!control &&
+      (control.invalid || this.form.hasError('passwordsMismatch')) &&
+      (control.touched || form?.submitted === true),
+  };
+
   async submit(): Promise<void> {
     if (this.registration.loading()) {
       return;
@@ -65,6 +81,7 @@ export class Register {
 
     if (this.form.invalid) {
       this.form.markAllAsTouched();
+      this.focusFirstInvalidField();
       return;
     }
 
@@ -105,9 +122,8 @@ export class Register {
   }
 
   protected fieldError(field: RegisterField): string | null {
-    const apiError = this.apiFieldErrors()[field]?.[0];
-    if (apiError) {
-      return apiError;
+    if (this.apiFieldErrors()[field]) {
+      return apiValidationMessage(field);
     }
 
     const control = this.form.controls[field];
@@ -134,6 +150,13 @@ export class Register {
     return null;
   }
 
+  protected passwordConfirmationMismatch(): boolean {
+    return (
+      this.form.controls.passwordConfirmation.touched &&
+      this.form.hasError('passwordsMismatch')
+    );
+  }
+
   private applyApiProblem(problem: ProblemDetails | null): void {
     if (problem?.status === 400) {
       const fieldErrors = mapFieldErrors(problem.errors);
@@ -147,6 +170,8 @@ export class Register {
 
       if (Object.keys(fieldErrors).length === 0) {
         this.apiError.set('Revise os dados informados e tente novamente.');
+      } else {
+        this.focusFirstApiField(fieldErrors);
       }
 
       return;
@@ -154,6 +179,7 @@ export class Register {
 
     if (problem?.status === 409) {
       this.apiError.set('Já existe uma conta cadastrada com este email.');
+      this.focusField('email');
       return;
     }
 
@@ -166,13 +192,38 @@ export class Register {
   }
 
   private clearApiErrors(): void {
-    for (const field of Object.keys(API_FIELDS) as string[]) {
-      const mappedField = API_FIELDS[field];
-      this.clearApiFieldError(mappedField);
+    for (const field of REGISTER_FIELDS) {
+      this.clearApiFieldError(field);
     }
 
     this.apiFieldErrors.set({});
     this.apiError.set(null);
+  }
+
+  private focusFirstInvalidField(): void {
+    const field = REGISTER_FIELDS.find((candidate) => this.form.controls[candidate].invalid);
+
+    if (field) {
+      this.focusField(field);
+      return;
+    }
+
+    if (this.form.hasError('passwordsMismatch')) {
+      this.focusField('passwordConfirmation');
+    }
+  }
+
+  private focusFirstApiField(errors: ApiFieldErrors): void {
+    const field = REGISTER_FIELDS.find((candidate) => errors[candidate]);
+    if (field) {
+      this.focusField(field);
+    }
+  }
+
+  private focusField(field: RegisterField): void {
+    this.element.nativeElement
+      .querySelector<HTMLInputElement>(`input[formControlName="${field}"]`)
+      ?.focus();
   }
 }
 
@@ -229,5 +280,18 @@ function maximumLengthMessage(field: RegisterField): string {
       return 'A senha deve ter no máximo 128 caracteres.';
     case 'passwordConfirmation':
       return 'A confirmação deve ter no máximo 128 caracteres.';
+  }
+}
+
+function apiValidationMessage(field: RegisterField): string {
+  switch (field) {
+    case 'name':
+      return 'Revise o nome informado.';
+    case 'email':
+      return 'Revise o email informado.';
+    case 'password':
+      return 'Revise a senha informada.';
+    case 'passwordConfirmation':
+      return 'Revise a confirmação da senha.';
   }
 }

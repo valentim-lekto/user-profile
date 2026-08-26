@@ -17,6 +17,26 @@ RUN dotnet publish UserProfile.Api.csproj \
     --output /app/publish \
     /p:UseAppHost=false
 
+FROM mcr.microsoft.com/dotnet/sdk:10.0.400-noble AS test
+WORKDIR /src
+
+COPY global.json UserProfile.sln ./
+COPY src/backend/UserProfile.Api/UserProfile.Api.csproj \
+     src/backend/UserProfile.Api/packages.lock.json \
+     src/backend/UserProfile.Api/
+COPY tests/backend/UserProfile.Api.IntegrationTests/UserProfile.Api.IntegrationTests.csproj \
+     tests/backend/UserProfile.Api.IntegrationTests/packages.lock.json \
+     tests/backend/UserProfile.Api.IntegrationTests/
+
+RUN dotnet restore UserProfile.sln --locked-mode
+
+COPY src/backend/UserProfile.Api/ src/backend/UserProfile.Api/
+COPY tests/backend/UserProfile.Api.IntegrationTests/ tests/backend/UserProfile.Api.IntegrationTests/
+
+RUN dotnet build UserProfile.sln --configuration Release --no-restore --property:TreatWarningsAsErrors=true
+
+CMD ["dotnet", "test", "UserProfile.sln", "--configuration", "Release", "--no-build", "--no-restore", "--verbosity", "minimal"]
+
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.11-noble AS final
 WORKDIR /app
 
