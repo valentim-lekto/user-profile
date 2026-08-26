@@ -12,6 +12,9 @@ namespace UserProfile.Api.IntegrationTests.Infrastructure;
 
 public sealed class ApiFactory : WebApplicationFactory<Program>
 {
+    private static readonly DateTimeOffset FixedUtcNow =
+        new(2026, 8, 24, 12, 0, 0, TimeSpan.Zero);
+
     private readonly int databaseTimeoutSeconds;
     private readonly IInterceptor? dbInterceptor;
     private readonly string testDirectory = Path.Combine(
@@ -31,6 +34,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 
     public string DatabasePath => Path.Combine(testDirectory, "user-profile.db");
 
+    public DateTimeOffset UtcNow => FixedUtcNow;
+
     public static ApiFactory WithDatabaseTimeout(int seconds) => new(seconds, null);
 
     public static ApiFactory WithInterceptor(IInterceptor interceptor) => new(30, interceptor);
@@ -47,9 +52,12 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             });
         });
 
-        if (dbInterceptor is not null)
+        builder.ConfigureServices(services =>
         {
-            builder.ConfigureServices(services =>
+            services.RemoveAll<TimeProvider>();
+            services.AddSingleton<TimeProvider>(new FixedTimeProvider(FixedUtcNow));
+
+            if (dbInterceptor is not null)
             {
                 services.RemoveAll<IDbContextOptionsConfiguration<UserProfileDbContext>>();
                 services.AddDbContext<UserProfileDbContext>(options =>
@@ -58,8 +66,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
                         $"Data Source={DatabasePath};Default Timeout={databaseTimeoutSeconds};Pooling=False");
                     options.AddInterceptors(dbInterceptor);
                 });
-            });
-        }
+            }
+        });
     }
 
     protected override void Dispose(bool disposing)
@@ -70,5 +78,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         {
             Directory.Delete(testDirectory, recursive: true);
         }
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
     }
 }

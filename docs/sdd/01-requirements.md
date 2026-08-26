@@ -45,7 +45,7 @@ A solução deve fornecer:
 | ID | Requisito |
 |---|---|
 | `FR-REG-01` | O cadastro deve solicitar Nome, Email, Senha e Confirmação de Senha. |
-| `FR-REG-02` | Após remover espaços externos, nome deve ser obrigatório e ter entre 3 e 200 caracteres; email deve ser obrigatório, ter no máximo 320 caracteres e seguir a política comum documentada (uma única `@`, conteúdo sem espaços nos dois lados e domínio com ponto). Senha deve ser obrigatória e ter entre 6 e 128 caracteres; a confirmação deve ser obrigatória, respeitar o mesmo limite e coincidir exatamente com a senha. |
+| `FR-REG-02` | Após remover espaços externos, nome deve ser obrigatório e ter ao menos 3 caracteres; email deve ser obrigatório e válido; senha deve ser obrigatória e ter ao menos 6 caracteres; a confirmação deve ser obrigatória e coincidir exatamente com a senha. Os limites defensivos e a política de email testável são decisões internas de `PREM-INPUT-01`, não requisitos originais. |
 | `FR-REG-03` | O sistema deve impedir mais de uma conta com o mesmo email conforme a regra de unicidade de `PREM-EMAIL-01`. |
 | `FR-REG-04` | O sistema deve informar sucesso ou erro após o cadastro. No sucesso, deve redirecionar ao login sem autenticar automaticamente. |
 | `FR-LOGIN-01` | O login deve solicitar email e senha. |
@@ -92,9 +92,9 @@ IDs publicados não devem ser renumerados nem reutilizados para outro comportame
 | ID | Critério |
 |---|---|
 | `AC-REG-01` | Dados válidos criam uma conta, exibem confirmação, redirecionam ao login e não criam sessão autenticada. |
-| `AC-REG-02` | Nome ausente ou, após remoção de espaços externos, fora do intervalo de 3 a 200 caracteres impede a criação do usuário e exibe o erro correspondente. |
-| `AC-REG-03` | Email ausente, fora da política comum ou maior que 320 caracteres após remoção de espaços externos impede a criação do usuário e exibe o erro correspondente nas duas camadas. |
-| `AC-REG-04` | Senha ausente ou fora do intervalo de 6 a 128 caracteres, confirmação ausente/maior que 128 caracteres ou confirmação divergente impede a criação do usuário e exibe o erro correspondente. |
+| `AC-REG-02` | Nome ausente ou, após remoção de espaços externos, com menos de 3 caracteres impede a criação do usuário e exibe o erro correspondente. |
+| `AC-REG-03` | Email ausente ou fora da política explícita de validade impede a criação do usuário e exibe o erro correspondente nas duas camadas. |
+| `AC-REG-04` | Senha ausente ou com menos de 6 caracteres, confirmação ausente/com menos de 6 caracteres ou confirmação divergente impede a criação do usuário e exibe o erro correspondente. |
 | `AC-REG-05` | Um email que, após remoção de espaços externos e comparação sem diferença de caixa, pertença a outra conta é rejeitado e nenhum segundo usuário é criado. |
 | `AC-REG-06` | Uma falha de cadastro é apresentada como estado de erro, sem redirecionamento ao dashboard. |
 
@@ -157,6 +157,8 @@ IDs publicados não devem ser renumerados nem reutilizados para outro comportame
 Estas premissas refinam a solução, mas não são requisitos originais do desafio.
 `PREM-DATA-02` preserva o ID publicado, porém é uma decisão interna de design
 introduzida em `b184432` e agora formalizada no ADR-0002; não veio do enunciado.
+`PREM-INPUT-01` registra separadamente os refinamentos defensivos introduzidos em
+M2, para que não sejam apresentados como requisitos originais do desafio.
 
 | ID | Premissa |
 |---|---|
@@ -167,7 +169,8 @@ introduzida em `b184432` e agora formalizada no ADR-0002; não veio do enunciado
 | `PREM-DATA-02` | Como decisão interna de design, `User` persistirá `Id`, `Name`, `Email`, `NormalizedEmail`, `PasswordHash`, `CreatedAtUtc` e `UpdatedAtUtc`; o índice de `NormalizedEmail` será único. |
 | `PREM-FE-01` | O Angular será standalone, em strict mode, com Reactive Forms e Angular Material. |
 | `PREM-LANG-01` | Identificadores e código serão escritos em inglês; README e documentos SDD, em português. |
-| `PREM-EMAIL-01` | A unicidade de email ignora espaços externos e diferenças de caixa. |
+| `PREM-EMAIL-01` | Para emails aceitos por `PREM-INPUT-01`, a unicidade ignora espaços externos e diferenças de caixa. |
+| `PREM-INPUT-01` | Como decisão interna defensiva, nome é limitado a 200 caracteres após `Trim`; email é limitado a 320 caracteres após `Trim` e aceita somente a política ASCII explícita do design; entradas de senha são limitadas a 128 caracteres. Senhas não são aparadas: todos os caracteres, inclusive espaços, são significativos. Nomes JSON são camelCase e sensíveis a caixa. O proxy limita corpos HTTP a 1 MiB. |
 | `PREM-REG-01` | Cadastro bem-sucedido redireciona ao login com mensagem de sucesso e não autentica automaticamente. |
 | `PREM-PASS-01` | Alterar senha exige senha atual, nova senha e confirmação; no sucesso, o frontend encerra a sessão. |
 | `PREM-PROF-01` | Atualização de nome/email e alteração de senha serão operações separadas. |

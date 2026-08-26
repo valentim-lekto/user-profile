@@ -38,12 +38,12 @@ expected_operations = {
   ["/api/auth/register", "post"] => {
     "operationId" => "registerUser", "security" => [],
     "requestSchema" => "RegisterRequest", "success" => ["201", "MessageResponse"],
-    "responses" => %w[201 400 409 500 503]
+    "responses" => %w[201 400 409 413 415 500 503]
   },
   ["/api/auth/login", "post"] => {
     "operationId" => "loginUser", "security" => [],
     "requestSchema" => "LoginRequest", "success" => ["200", "LoginResponse"],
-    "responses" => %w[200 400 500 503]
+    "responses" => %w[200 400 413 415 500 503]
   },
   ["/api/profile", "get"] => {
     "operationId" => "getCurrentProfile", "security" => [{ "bearerAuth" => [] }],
@@ -53,12 +53,12 @@ expected_operations = {
   ["/api/profile", "put"] => {
     "operationId" => "updateCurrentProfile", "security" => [{ "bearerAuth" => [] }],
     "requestSchema" => "UpdateProfileRequest", "success" => ["200", "ProfileResponse"],
-    "responses" => %w[200 400 401 404 409 500 503]
+    "responses" => %w[200 400 401 404 409 413 415 500 503]
   },
   ["/api/profile/password", "put"] => {
     "operationId" => "changeCurrentPassword", "security" => [{ "bearerAuth" => [] }],
     "requestSchema" => "ChangePasswordRequest", "success" => ["200", "MessageResponse"],
-    "responses" => %w[200 400 401 404 500 503]
+    "responses" => %w[200 400 401 404 413 415 500 503]
   },
   ["/health", "get"] => {
     "operationId" => "getHealth", "security" => [],
@@ -117,8 +117,8 @@ request_expectations = {
   "RegisterRequest" => {
     "required" => %w[name email password passwordConfirmation],
     "rules" => {
-      "name" => { "type" => "string", "minLength" => 3, "maxLength" => 200 },
-      "email" => { "type" => "string", "format" => "email", "pattern" => '^[^@\s]+@[^@\s]+\.[^@\s]+$', "minLength" => 1, "maxLength" => 320 },
+      "name" => { "type" => "string", "x-trim" => true, "x-min-length-after-trim" => 3, "x-max-length-after-trim" => 200 },
+      "email" => { "type" => "string", "pattern" => '^\s*[\x21-\x3F\x41-\x7E]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\s*$', "x-trim" => true, "x-min-length-after-trim" => 1, "x-max-length-after-trim" => 320, "x-pattern-after-trim" => '^[\x21-\x3F\x41-\x7E]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$' },
       "password" => { "type" => "string", "format" => "password", "minLength" => 6, "maxLength" => 128, "writeOnly" => true },
       "passwordConfirmation" => { "type" => "string", "format" => "password", "minLength" => 6, "maxLength" => 128, "writeOnly" => true }
     }
@@ -126,15 +126,15 @@ request_expectations = {
   "LoginRequest" => {
     "required" => %w[email password],
     "rules" => {
-      "email" => { "type" => "string", "format" => "email", "pattern" => '^[^@\s]+@[^@\s]+\.[^@\s]+$', "minLength" => 1, "maxLength" => 320 },
+      "email" => { "type" => "string", "pattern" => '^\s*[\x21-\x3F\x41-\x7E]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\s*$', "x-trim" => true, "x-min-length-after-trim" => 1, "x-max-length-after-trim" => 320, "x-pattern-after-trim" => '^[\x21-\x3F\x41-\x7E]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$' },
       "password" => { "type" => "string", "format" => "password", "minLength" => 1, "maxLength" => 128, "writeOnly" => true }
     }
   },
   "UpdateProfileRequest" => {
     "required" => %w[name email],
     "rules" => {
-      "name" => { "type" => "string", "minLength" => 3, "maxLength" => 200 },
-      "email" => { "type" => "string", "format" => "email", "pattern" => '^[^@\s]+@[^@\s]+\.[^@\s]+$', "minLength" => 1, "maxLength" => 320 }
+      "name" => { "type" => "string", "x-trim" => true, "x-min-length-after-trim" => 3, "x-max-length-after-trim" => 200 },
+      "email" => { "type" => "string", "pattern" => '^\s*[\x21-\x3F\x41-\x7E]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\s*$', "x-trim" => true, "x-min-length-after-trim" => 1, "x-max-length-after-trim" => 320, "x-pattern-after-trim" => '^[\x21-\x3F\x41-\x7E]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$' }
     }
   },
   "ChangePasswordRequest" => {
@@ -145,6 +145,14 @@ request_expectations = {
       "newPasswordConfirmation" => { "type" => "string", "format" => "password", "minLength" => 6, "maxLength" => 128, "writeOnly" => true }
     }
   }
+}.freeze
+
+forbidden_request_rules = {
+  ["RegisterRequest", "name"] => %w[minLength maxLength],
+  ["RegisterRequest", "email"] => %w[format minLength maxLength],
+  ["LoginRequest", "email"] => %w[format minLength maxLength],
+  ["UpdateProfileRequest", "name"] => %w[minLength maxLength],
+  ["UpdateProfileRequest", "email"] => %w[format minLength maxLength]
 }.freeze
 
 request_expectations.each do |schema_name, expected|
@@ -164,6 +172,11 @@ request_expectations.each do |schema_name, expected|
       assert_contract property[rule] == value,
                       "Unexpected #{rule} for #{schema_name}.#{property_name}"
     end
+
+    forbidden_request_rules.fetch([schema_name, property_name], []).each do |rule|
+      assert_contract !property.key?(rule),
+                      "#{schema_name}.#{property_name} must model #{rule} after trim, not on the raw JSON value"
+    end
   end
 
   assert_contract schema.fetch("properties").keys.none? { |name| name.casecmp?("userId") },
@@ -179,7 +192,7 @@ response_expectations = {
   },
   "ProfileResponse" => {
     "name" => { "type" => "string", "minLength" => 3, "maxLength" => 200 },
-    "email" => { "type" => "string", "format" => "email", "pattern" => '^[^@\s]+@[^@\s]+\.[^@\s]+$', "maxLength" => 320 }
+    "email" => { "type" => "string", "format" => "email", "pattern" => '^[\x21-\x3F\x41-\x7E]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$', "maxLength" => 320 }
   },
   "HealthResponse" => {
     "status" => { "type" => "string", "enum" => ["Healthy"] }

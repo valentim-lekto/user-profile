@@ -4,7 +4,7 @@ import {
   ValidatorFn,
 } from '@angular/forms';
 
-export const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+export const EMAIL_PATTERN = /^[\x21-\x3F\x41-\x7E]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
 
 export function trimmedLength(minLength: number, maxLength: number): ValidatorFn {
   return (control: AbstractControl): ValidationErrors | null => {

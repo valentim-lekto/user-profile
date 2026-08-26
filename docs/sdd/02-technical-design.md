@@ -122,7 +122,7 @@ Entidade única `User`:
 |---|---|---|---|
 | `Id` | `Guid` | `TEXT`, chave primária | Gerado pelo backend. |
 | `Name` | `string` | `TEXT NOT NULL` | Remover espaços externos; validar comprimento entre 3 e 200 após essa remoção. |
-| `Email` | `string` | `TEXT NOT NULL` | Remover espaços externos, limitar a 320 caracteres, validar uma única `@`/ausência de espaços/domínio com ponto e preservar a caixa restante para exibição. |
+| `Email` | `string` | `TEXT NOT NULL` | Remover espaços externos, limitar a 320 caracteres, aceitar somente a política ASCII explícita com uma única `@` e domínio com ponto, e preservar a caixa restante para exibição. |
 | `NormalizedEmail` | `string` | `TEXT NOT NULL` | `Email.Trim().ToUpperInvariant()`; índice único. |
 | `PasswordHash` | `string` | `TEXT NOT NULL` | Produzido e verificado por `PasswordHasher<User>`; nunca retornado ou logado. |
 | `CreatedAtUtc` | `DateTime` | `TEXT NOT NULL` | Instante UTC definido na criação. |
@@ -136,8 +136,10 @@ M2 e M4 sem ampliar o contrato HTTP.
 
 ### Normalização e unicidade
 
+- `PREM-INPUT-01` é uma decisão interna defensiva de M2, não requisito original: nome/email/senhas têm limites superiores `200/320/128`, request bodies têm limite de 1 MiB e emails aceitos ficam no subconjunto ASCII definido abaixo.
 - Cadastro, login e alteração de email calculam `NormalizedEmail` da mesma forma.
 - `Email` armazena o valor aparado para exibição; `NormalizedEmail` existe apenas para busca e unicidade.
+- Como todo email aceito é ASCII, `Email.Trim().ToUpperInvariant()` produz uma chave canônica sem as lacunas de case folding Unicode que permitiriam duas contas equivalentes, como `ß` e `ẞ`.
 - O índice único `UX_Users_NormalizedEmail` é a garantia autoritativa contra corrida.
 - Uma consulta prévia pode melhorar a mensagem, mas violação do índice também deve ser convertida em `409 Conflict`.
 - Na edição, o próprio email normalizado é permitido; somente outro usuário gera conflito.
@@ -164,11 +166,11 @@ O contrato normativo está em [`03-api-contract.yaml`](03-api-contract.yaml). A 
 
 | Operação | Autenticação | Sucesso | Erros esperados |
 |---|---|---|---|
-| `POST /api/auth/register` | Pública | `201` com mensagem, sem token | `400`, `409`, `500`, `503` |
-| `POST /api/auth/login` | Pública | `200` com JWT curto | `400` genérico, `500`, `503` |
+| `POST /api/auth/register` | Pública | `201` com mensagem, sem token | `400`, `409`, `413`, `415`, `500`, `503` |
+| `POST /api/auth/login` | Pública | `200` com JWT curto | `400` genérico, `413`, `415`, `500`, `503` |
 | `GET /api/profile` | Bearer | `200` com nome e email | `401`, `404`, `500`, `503` |
-| `PUT /api/profile` | Bearer | `200` com nome e email atualizados | `400`, `401`, `404`, `409`, `500`, `503` |
-| `PUT /api/profile/password` | Bearer | `200` com mensagem, sem novo token | `400`, `401`, `404`, `500`, `503` |
+| `PUT /api/profile` | Bearer | `200` com nome e email atualizados | `400`, `401`, `404`, `409`, `413`, `415`, `500`, `503` |
+| `PUT /api/profile/password` | Bearer | `200` com mensagem, sem novo token | `400`, `401`, `404`, `413`, `415`, `500`, `503` |
 | `GET /health` | Pública | `200` | `503`, `500` |
 
 Não existe endpoint de dashboard: a tela usa `GET /api/profile`. Não existe endpoint de logout, refresh, perfil por ID ou qualquer operação fora do escopo.
@@ -180,10 +182,11 @@ Não existe endpoint de dashboard: a tela usa `GET /api/profile`. Não existe en
 - Login: `email`, `password`.
 - Perfil: `name`, `email`.
 - Senha: `currentPassword`, `newPassword`, `newPasswordConfirmation`.
-- Nome é validado após `Trim`, com 3 a 200 caracteres; email após `Trim`, com máximo de 320 e o mesmo padrão explícito no DataAnnotations e no Reactive Form (`^[^@\s]+@[^@\s]+\.[^@\s]+$`); senha não é aparada nem normalizada e aceita 6 a 128 caracteres nas operações que definem uma senha nova.
+- Nome é validado após `Trim`, com 3 a 200 caracteres. Email é validado após `Trim`, tem no máximo 320 caracteres e usa nas duas camadas o padrão ASCII `^[\x21-\x3F\x41-\x7E]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$`; o schema de request modela separadamente a remoção de espaços externos para não aplicar limites JSON ao valor bruto errado.
+- Senha não é aparada nem normalizada e aceita 6 a 128 caracteres nas operações que definem uma senha nova. Todos os caracteres são significativos; uma senha composta somente por espaços é válida se respeitar o comprimento, pois adicionar regra de complexidade seria novo requisito.
 - Entradas de senha existentes, como login e senha atual, também são limitadas a 128 caracteres antes do `PasswordHasher`, evitando trabalho desnecessário com payloads defensivamente grandes.
 - A confirmação deve corresponder exatamente à senha correspondente.
-- DTOs de request rejeitam propriedades JSON não mapeadas com `400`; os schemas OpenAPI usam `additionalProperties: false`.
+- DTOs de request rejeitam propriedades JSON não mapeadas ou com caixa diferente do nome camelCase normativo com `400`; os schemas OpenAPI usam `additionalProperties: false`.
 - Nenhuma operação de perfil define `userId` em path, query, header ou body. Um `userId` extra no corpo é rejeitado, e valores arbitrários em query/header nunca participam da resolução de identidade.
 - Nenhuma resposta contém `PasswordHash`, senha, `NormalizedEmail` ou ID do usuário.
 
@@ -196,7 +199,8 @@ Não existe endpoint de dashboard: a tela usa `GET /api/profile`. Não existe en
 - Toda resposta `401` dos recursos protegidos inclui obrigatoriamente `WWW-Authenticate: Bearer`; Bearer ausente, inválido ou expirado usa `401 ProblemDetails`, e o middleware deve manter cabeçalho e formato.
 - Senha atual incorreta em sessão válida usa `400 ValidationProblemDetails`, não é confundida com falha do JWT.
 - Exceções não tratadas são convertidas em `500 ProblemDetails` sem detalhes internos.
-- Erros gerados pelo pipeline sob `/api`, como JSON malformado, media type não suportado, rota inexistente ou método não permitido, também usam `application/problem+json`.
+- Erros gerados pelo pipeline sob `/api`, como JSON malformado, media type não suportado (`415`), rota inexistente ou método não permitido, também usam `application/problem+json`.
+- O Nginx limita o corpo da requisição a 1 MiB e converte sua rejeição `413` em `application/problem+json`; ela é uma barreira de transporte anterior à validação dos campos, não um substituto para os limites `200/320/128` da API.
 - Se o Nginx não conseguir conectar à API ou atingir o timeout do upstream, converte apenas seus `502`/`504` de transporte em `503 ProblemDetails`; respostas já produzidas pela API são preservadas.
 
 O `409` público de cadastro necessariamente revela que o email normalizado já existe. Esse risco de enumeração é aceito nesta demonstração porque `AC-REG-05` e `AC-REG-06` exigem rejeição e feedback de erro observável; login continua usando corpo genérico e nenhum dado adicional do usuário é exposto.
@@ -251,7 +255,7 @@ O token fica somente em `sessionStorage`. O estado de autenticação é um signa
 - `web` é uma imagem multi-stage: Node compila o Angular e Nginx serve o resultado.
 - `api` é uma imagem multi-stage: SDK publica e runtime ASP.NET executa como usuário não-root; `/data` é preparado com permissão de escrita para esse usuário antes de receber o volume.
 - `web` publica `8080:8080`; `api` expõe `8080` apenas para a rede interna.
-- Nginx escuta em `8080`, encaminha `/api/`, `/swagger/` e `/health` para `http://api:8080`, converte falha de conexão/timeout do upstream em `503 application/problem+json` e serve a SPA nas demais rotas.
+- Nginx escuta em `8080`, encaminha `/api/`, `/swagger/` e `/health` para `http://api:8080`, converte falha de conexão/timeout do upstream em `503 application/problem+json`, converte corpo acima de 1 MiB em `413 application/problem+json` e serve a SPA nas demais rotas.
 - Existe um único health check do Compose no serviço `web`: `wget -q -O /dev/null http://127.0.0.1:8080/health`, usando o BusyBox presente na imagem Alpine. `web` depende de `api` com `condition: service_started`; como a probe atravessa Nginx, API e a consulta SQLite, `docker compose up --wait` só conclui quando a pilha inteira está saudável, sem instalar cliente HTTP na imagem da API.
 - Tags completas listadas neste documento serão copiadas literalmente; `latest`, `lts`, `stable` ou apenas major/minor são proibidos.
 
@@ -269,7 +273,7 @@ Configurações previstas:
 | `Jwt__LifetimeMinutes` | Não | `15`; mudança exige revisão deste design. |
 | `Jwt__SigningKey` | Sim | Base64 de ao menos 32 bytes aleatórios; fallback aleatório somente quando ausente em `Development`. |
 
-Logs estruturados podem registrar rota, status, duração e um identificador de correlação gerado para a requisição, mas nunca corpo de requests de autenticação, token, senha, hash ou chave. Respostas `ProblemDetails` não incluem stack trace, SQL nem caminhos internos.
+Logs estruturados podem registrar método, rota sem query string, status, duração e um identificador de correlação gerado para a requisição, mas nunca argumentos da URL, corpo de requests de autenticação, cabeçalho de autorização, token, senha, hash ou chave. O access log do Nginx usa `$uri`, nunca `$request`/`$request_uri`/`$args`, e os diagnostics de acesso padrão do ASP.NET Core que incluem `QueryString` ficam abaixo do nível habilitado. Respostas `ProblemDetails` não incluem stack trace, SQL nem caminhos internos.
 
 ## Decisões registradas
 

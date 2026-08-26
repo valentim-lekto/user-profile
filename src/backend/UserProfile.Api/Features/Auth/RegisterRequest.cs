@@ -4,7 +4,7 @@ namespace UserProfile.Api.Features.Auth;
 
 public sealed class RegisterRequest
 {
-    public const string EmailPattern = @"^[^@\s]+@[^@\s]+\.[^@\s]+$";
+    public const string EmailPattern = @"^[\x21-\x3F\x41-\x7E]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$";
 
     private string? name;
     private string? email;
@@ -26,11 +26,11 @@ public sealed class RegisterRequest
         init => email = value?.Trim();
     }
 
-    [Required(ErrorMessage = "Password is required.")]
+    [Required(AllowEmptyStrings = true, ErrorMessage = "Password is required.")]
     [StringLength(128, MinimumLength = 6, ErrorMessage = "Password must be between 6 and 128 characters.")]
     public string? Password { get; init; }
 
-    [Required(ErrorMessage = "Password confirmation is required.")]
+    [Required(AllowEmptyStrings = true, ErrorMessage = "Password confirmation is required.")]
     [StringLength(128, MinimumLength = 6, ErrorMessage = "Password confirmation must be between 6 and 128 characters.")]
     [Compare(nameof(Password), ErrorMessage = "Password confirmation must match password.")]
     public string? PasswordConfirmation { get; init; }

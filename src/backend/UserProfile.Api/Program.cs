@@ -46,6 +46,7 @@ builder.Services
     })
     .AddJsonOptions(options =>
     {
+        options.JsonSerializerOptions.PropertyNameCaseInsensitive = false;
         options.JsonSerializerOptions.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
     });
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();

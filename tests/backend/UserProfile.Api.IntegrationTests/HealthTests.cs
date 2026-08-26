@@ -194,7 +194,7 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
             ["Auth"],
             registerOperation.GetProperty("tags").EnumerateArray().Select(tag => tag.GetString()));
         Assert.Equal(
-            ["201", "400", "409", "500", "503"],
+            ["201", "400", "409", "413", "415", "500", "503"],
             registerOperation
                 .GetProperty("responses")
                 .EnumerateObject()
@@ -228,13 +228,27 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
                 .Select(property => property.GetString())
                 .Order());
         var registerProperties = registerSchema.GetProperty("properties");
-        Assert.Equal(3, registerProperties.GetProperty("name").GetProperty("minLength").GetInt32());
-        Assert.Equal(200, registerProperties.GetProperty("name").GetProperty("maxLength").GetInt32());
-        Assert.Equal("email", registerProperties.GetProperty("email").GetProperty("format").GetString());
-        Assert.Equal(320, registerProperties.GetProperty("email").GetProperty("maxLength").GetInt32());
+        var nameProperty = registerProperties.GetProperty("name");
+        Assert.False(nameProperty.TryGetProperty("minLength", out _));
+        Assert.False(nameProperty.TryGetProperty("maxLength", out _));
+        Assert.False(nameProperty.TryGetProperty("format", out _));
+        Assert.True(nameProperty.GetProperty("x-trim").GetBoolean());
+        Assert.Equal(3, nameProperty.GetProperty("x-min-length-after-trim").GetInt32());
+        Assert.Equal(200, nameProperty.GetProperty("x-max-length-after-trim").GetInt32());
+
+        var emailProperty = registerProperties.GetProperty("email");
+        Assert.False(emailProperty.TryGetProperty("minLength", out _));
+        Assert.False(emailProperty.TryGetProperty("maxLength", out _));
+        Assert.False(emailProperty.TryGetProperty("format", out _));
+        Assert.Equal(
+            RegisterRequestSchemaFilter.RawEmailPattern,
+            emailProperty.GetProperty("pattern").GetString());
+        Assert.True(emailProperty.GetProperty("x-trim").GetBoolean());
+        Assert.Equal(1, emailProperty.GetProperty("x-min-length-after-trim").GetInt32());
+        Assert.Equal(320, emailProperty.GetProperty("x-max-length-after-trim").GetInt32());
         Assert.Equal(
             RegisterRequest.EmailPattern,
-            registerProperties.GetProperty("email").GetProperty("pattern").GetString());
+            emailProperty.GetProperty("x-pattern-after-trim").GetString());
         Assert.Equal(6, registerProperties.GetProperty("password").GetProperty("minLength").GetInt32());
         Assert.Equal(128, registerProperties.GetProperty("password").GetProperty("maxLength").GetInt32());
         Assert.Equal(

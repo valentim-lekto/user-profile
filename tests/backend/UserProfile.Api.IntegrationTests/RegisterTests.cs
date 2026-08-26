@@ -22,12 +22,10 @@ public sealed class RegisterTests(ApiFactory factory) : IClassFixture<ApiFactory
         var password = CreatePassword();
         var email = $"  {new string('a', 307)}@Example.Test  ";
         Assert.Equal(320, email.Trim().Length);
-        var before = DateTime.UtcNow;
 
         using var response = await client.PostAsJsonAsync(
             "/api/auth/register",
             new RegistrationPayload("  Ana Example  ", email, password, password));
-        var after = DateTime.UtcNow;
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
@@ -52,10 +50,41 @@ public sealed class RegisterTests(ApiFactory factory) : IClassFixture<ApiFactory
         Assert.Equal(email.Trim(), user.Email);
         Assert.Equal(normalizedEmail, user.NormalizedEmail);
         Assert.NotEqual(Guid.Empty, user.Id);
-        Assert.NotEqual(default, user.CreatedAtUtc);
+        Assert.Equal(factory.UtcNow.UtcDateTime, user.CreatedAtUtc);
         Assert.Equal(user.CreatedAtUtc, user.UpdatedAtUtc);
-        Assert.InRange(user.CreatedAtUtc, before.AddSeconds(-1), after.AddSeconds(1));
         Assert.NotEqual(password, user.PasswordHash);
+
+        var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<User>>();
+        Assert.NotEqual(
+            PasswordVerificationResult.Failed,
+            passwordHasher.VerifyHashedPassword(user, user.PasswordHash, password));
+    }
+
+    [Theory]
+    [InlineData(3, 6)]
+    [InlineData(200, 128)]
+    public async Task InclusiveNameAndPasswordBoundsAreAccepted(
+        int nameLength,
+        int passwordLength)
+    {
+        using var client = factory.CreateClient();
+        var name = new string('n', nameLength);
+        var email = CreateEmail();
+        var password = new string(' ', passwordLength);
+
+        using var response = await client.PostAsJsonAsync(
+            "/api/auth/register",
+            new RegistrationPayload(name, email, password, password));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<UserProfileDbContext>();
+        var user = await dbContext.Users
+            .AsNoTracking()
+            .SingleAsync(candidate => candidate.NormalizedEmail == email.ToUpperInvariant());
+        Assert.Equal(name, user.Name);
+        Assert.Equal(factory.UtcNow.UtcDateTime, user.CreatedAtUtc);
 
         var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<User>>();
         Assert.NotEqual(
@@ -71,11 +100,15 @@ public sealed class RegisterTests(ApiFactory factory) : IClassFixture<ApiFactory
     [InlineData("invalid-email", "email")]
     [InlineData("email-without-domain-dot", "email")]
     [InlineData("email-with-inner-space", "email")]
+    [InlineData("unicode-lowercase-local-email", "email")]
+    [InlineData("unicode-uppercase-local-email", "email")]
+    [InlineData("unicode-domain-email", "email")]
     [InlineData("long-email", "email")]
     [InlineData("missing-password", "password")]
     [InlineData("short-password", "password")]
     [InlineData("long-password", "password")]
     [InlineData("missing-confirmation", "passwordConfirmation")]
+    [InlineData("short-confirmation", "passwordConfirmation")]
     [InlineData("long-confirmation", "passwordConfirmation")]
     [InlineData("different-confirmation", "passwordConfirmation")]
     public async Task InvalidRegistrationReturnsValidationProblemDetails(
@@ -106,6 +139,26 @@ public sealed class RegisterTests(ApiFactory factory) : IClassFixture<ApiFactory
             ["password"] = password,
             ["passwordConfirmation"] = password,
             ["userId"] = Guid.NewGuid()
+        };
+
+        using var response = await client.PostAsJsonAsync("/api/auth/register", payload);
+
+        await AssertValidationProblemAsync(response);
+        Assert.Equal(countBefore, await CountUsersAsync());
+    }
+
+    [Fact]
+    public async Task IncorrectJsonPropertyCasingReturnsValidationProblemDetails()
+    {
+        using var client = factory.CreateClient();
+        var countBefore = await CountUsersAsync();
+        var password = CreatePassword();
+        var payload = new Dictionary<string, object?>
+        {
+            ["Name"] = "Ana Example",
+            ["Email"] = CreateEmail(),
+            ["Password"] = password,
+            ["PasswordConfirmation"] = password
         };
 
         using var response = await client.PostAsJsonAsync("/api/auth/register", payload);
@@ -366,6 +419,15 @@ public sealed class RegisterTests(ApiFactory factory) : IClassFixture<ApiFactory
             case "email-with-inner-space":
                 payload["email"] = "ana @example.test";
                 break;
+            case "unicode-lowercase-local-email":
+                payload["email"] = "straße@example.test";
+                break;
+            case "unicode-uppercase-local-email":
+                payload["email"] = "STRAẞE@example.test";
+                break;
+            case "unicode-domain-email":
+                payload["email"] = "ana@exämple.test";
+                break;
             case "long-email":
                 payload["email"] = $"{new string('a', 309)}@example.test";
                 break;
@@ -382,6 +444,9 @@ public sealed class RegisterTests(ApiFactory factory) : IClassFixture<ApiFactory
                 break;
             case "missing-confirmation":
                 payload.Remove("passwordConfirmation");
+                break;
+            case "short-confirmation":
+                payload["passwordConfirmation"] = "12345";
                 break;
             case "long-confirmation":
                 payload["passwordConfirmation"] = new string('p', 129);

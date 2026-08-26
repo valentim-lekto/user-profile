@@ -511,3 +511,179 @@ Consolidação: o High e 11 Medium foram corrigidos; `REV-M1-020` é o único Me
 - A execução com volume Docker padrão deve ser repetida após liberar espaço na VM; o erro observado é ambiental, mas o volume principal local pode exigir manutenção pelo responsável.
 - Ciclo de vida de timestamps será provado nos fluxos de M2/M4; persistência após recriação permanece pendente até haver usuário em M2/M6.
 - Cadastro, autenticação/JWT, dashboard, perfil, senha, E2E, CI e README final continuam corretamente pendentes em M2–M6.
+
+## 2026-08-25 — Revisão independente de M2
+
+- **Etapa revisada:** M2 — cadastro vertical Angular → Nginx → API → SQLite.
+- **Commit revisado:** `c02b67f9ea9eca043d99fc0c1d1234e300eb2981` (`b21e01cc2e93bddd532e6552dd5a1141f8fd3b7a` como base).
+- **Escopo:** diff integral de 33 arquivos; todos os documentos `docs/sdd/` e ADRs; backend, frontend, testes, OpenAPI, scripts, Dockerfiles, Compose, Nginx, locks e evidências runtime.
+- **Critérios examinados:** `FR-REG-01`–`04`, `AC-REG-01`–`06`, `FR-ERR-01`, `API-ERROR-01`, `SEC-LOG-01`, `TECH-*`, `OPS-DOCKER-01`–`03`, `DOC-SDD-01`, `DOC-TRACE-01`, `TEST-FLOW-01`, `PREM-DATA-02`, `PREM-EMAIL-01`, `PREM-REG-01` e os refinamentos formalizados em `PREM-INPUT-01`.
+
+### Achados confirmados e decisões
+
+As localizações abaixo descrevem o commit revisado antes das correções. Foram confirmados 1 achado High, 10 Medium e 5 Low; todos foram corrigidos nesta revisão.
+
+#### `REV-M2-001` — High — unicidade de email podia ser contornada por caixa Unicode
+
+- **Localização:** `RegisterRequest.cs`, `AuthController.Register`, índice `UX_Users_NormalizedEmail` e testes de duplicidade.
+- **Evidência:** o padrão aceitava Unicode, mas `ToUpperInvariant()` não produz full case-fold: `straße@example.test` e `STRAẞE@example.test` geravam chaves diferentes e o índice binário permitia duas contas equivalentes sem diferença de caixa.
+- **Impacto:** violação de `FR-REG-03`, `AC-REG-05` e `PREM-EMAIL-01`, com identidade duplicada.
+- **Correção mínima:** explicitar uma política ASCII comum no SDD/OpenAPI/backend/frontend e rejeitar Unicode antes da normalização, sem introduzir dependência de canonicalização Unicode.
+- **Decisão:** corrigido com `PREM-INPUT-01`, padrão ASCII compartilhado e regressões para `ß`, `ẞ` e domínio Unicode.
+
+#### `REV-M2-002` — Medium — OpenAPI aplicava limites ao JSON bruto em vez do valor após `Trim`
+
+- **Localização:** schemas `RegisterRequest`/`LoginRequest`/`UpdateProfileRequest`, schema filter e cadastro válido de 320 caracteres após aparar.
+- **Evidência:** a API aceitava nome/email aparados, inclusive email com 324 caracteres brutos e 320 após `Trim`; `minLength`/`maxLength`/`format` no valor bruto do OpenAPI rejeitavam esse mesmo request.
+- **Impacto:** contrato normativo e clientes gerados divergiam do runtime.
+- **Correção mínima:** remover constraints raw contraditórias e publicar `x-trim`, limites/padrão pós-`Trim` e um pattern raw tolerante somente a espaços externos.
+- **Decisão:** corrigido no SDD, OpenAPI, validador, schema filter e `BE-OAS-001`.
+
+#### `REV-M2-003` — Medium — `415 ProblemDetails` real estava ausente do contrato
+
+- **Localização:** teste `UnsupportedMediaTypeReturnsProblemDetails`, `AuthController`, OpenAPI e validador.
+- **Evidência:** `text/plain` já retornava `415 application/problem+json`, mas contrato/Swagger enumeravam apenas `201/400/409/500/503` no cadastro.
+- **Impacto:** consumidores e documentação desconheciam uma resposta observável.
+- **Correção mínima:** declarar `415` em todas as operações JSON planejadas e na metadata/testes da operação M2.
+- **Decisão:** corrigido no design, OpenAPI, controller, validador e Swagger runtime.
+
+#### `REV-M2-004` — Medium — limites defensivos eram apresentados como requisitos originais
+
+- **Localização:** `01-requirements.md`, design, plano e matriz.
+- **Evidência:** `200/320/128` surgiram na implementação M2, enquanto o challenge exige somente mínimos e email válido; a documentação dizia que eram derivados do enunciado.
+- **Impacto:** perda de proveniência e rastreabilidade SDD.
+- **Correção mínima:** preservar os limites, mas classificá-los como refinamento interno explícito.
+- **Decisão:** corrigido com `PREM-INPUT-01` e vínculos em requisitos, design, testes, plano e matriz.
+
+#### `REV-M2-005` — Medium — política defensiva não alcançava testes futuros
+
+- **Localização:** limites de login/senha atual/nova no OpenAPI/design versus `BE-LOGIN-*`, `BE-PASS-*` e frontend planejados.
+- **Evidência:** campos futuros tinham máximo 128/320 no contrato, mas nenhuma prova futura rejeitava os valores longos.
+- **Impacto:** M3/M4 poderiam implementar contrato diferente com gates verdes.
+- **Correção mínima:** ligar os limites a `PREM-INPUT-01` e incluir bordas negativas nos cenários futuros.
+- **Decisão:** corrigido na estratégia de testes, plano e matriz sem antecipar código de M3/M4.
+
+#### `REV-M2-006` — Medium — evidência Compose/persistência de M2 não era reproduzível
+
+- **Localização:** narrativa de curls em `05-execution-plan.md`/`06-traceability.md` e antigo `scripts/validate-m1-compose.sh`.
+- **Evidência:** o script versionado cobria somente M1; não criava usuário, não verificava `201/400/409` nem recriava a API.
+- **Impacto:** regressões do caminho Nginx → cadastro → SQLite e da persistência não quebrariam um gate repetível.
+- **Correção mínima:** tornar o script um smoke acumulado M1+M2 em projeto/volume efêmeros, com cleanup próprio.
+- **Decisão:** corrigido; o script final passou com cadastro, colisão normalizada e novo `409` após recriar a API.
+
+#### `REV-M2-007` — Medium — senha só com espaços divergiria entre frontend e backend
+
+- **Localização:** DataAnnotations de `RegisterRequest`, validators Angular e semântica de senha não aparada.
+- **Evidência:** Angular/contrato aceitavam seis espaços, mas `[Required]` do backend os tratava como ausência.
+- **Impacto:** request permitido na UI falhava na API.
+- **Correção mínima:** manter todos os caracteres significativos, aceitar qualquer valor não vazio com 6–128 caracteres e testar as bordas.
+- **Decisão:** corrigido com `AllowEmptyStrings`, `StringLength` autoritativo e testes de seis/128 espaços; nenhuma regra de complexidade foi inventada.
+
+#### `REV-M2-008` — Medium — query strings podiam expor credenciais nos dois logs HTTP
+
+- **Localização:** `appsettings.json` e formato de access log padrão do Nginx.
+- **Evidência:** `Microsoft.AspNetCore.Hosting.Diagnostics=Information` registrava `Path` mais `QueryString`; o formato Nginx herdado usava a request line, também com query.
+- **Impacto:** senha/token enviados acidentalmente na URL poderiam persistir nos logs, contra `SEC-LOG-01`.
+- **Correção mínima:** elevar diagnostics do ASP.NET a `Warning`, registrar no Nginx somente método/`$uri` e provar com marcadores sintéticos em query, body e Authorization.
+- **Decisão:** corrigido em configuração/design/smoke; nenhum marcador apareceu nos logs dos contêineres.
+
+#### `REV-M2-009` — Medium — corpo acima de 1 MiB retornava `413` HTML do Nginx
+
+- **Localização:** `nginx.conf`, OpenAPI e erro público da origem única.
+- **Evidência:** o limite default de 1 MiB existia sem declaração nem `error_page`; a rejeição anterior à API usava HTML e status não documentado.
+- **Impacto:** quebra de `API-ERROR-01` e do parser uniforme do frontend.
+- **Correção mínima:** fixar `client_max_body_size 1m`, mapear `413` para ProblemDetails, documentar e exercitar pela origem publicada.
+- **Decisão:** corrigido; o smoke aprovou `413 application/problem+json` com payload de 1 MiB + 1 byte.
+
+#### `REV-M2-010` — Medium — teste frontend não provava o feedback local renderizado
+
+- **Localização:** `register.spec.ts` versus os `mat-error` de `register.html`.
+- **Evidência:** os asserts consultavam apenas `FormControl.hasError`; remover as mensagens da tela manteria a suíte verde.
+- **Impacto:** `AC-REG-02`–`04` poderiam regredir sem falha observável.
+- **Correção mínima:** submeter formulário inválido pelo DOM, verificar as quatro mensagens e confirmar ausência de request HTTP.
+- **Decisão:** corrigido com um teste de interação; 13/13 testes frontend passaram.
+
+#### `REV-M2-011` — Medium — bordas inclusivas válidas não eram provadas
+
+- **Localização:** `RegisterTests.cs` e `register.spec.ts`.
+- **Evidência:** havia rejeição de `2/201` e `5/129`, mas não sucesso explícito de nome `3/200` e senha `6/128` nas duas camadas.
+- **Impacto:** off-by-one regressivo poderia rejeitar dados válidos sem quebrar a suíte.
+- **Correção mínima:** adicionar theories/asserts positivos nas bordas inclusivas, incluindo espaços significativos.
+- **Decisão:** corrigido; as bordas passaram no backend e frontend.
+
+#### `REV-M2-012` — Low — nomes JSON não eram realmente case-sensitive
+
+- **Localização:** opções JSON de `Program.cs` e `additionalProperties: false` do OpenAPI.
+- **Evidência:** `UnmappedMemberHandling.Disallow` coexistia com `PropertyNameCaseInsensitive=true`; `Name`/`EMAIL` ainda eram aceitos.
+- **Impacto:** runtime mais permissivo que os nomes normativos e ambiguidade em campos duplicados.
+- **Correção mínima:** desabilitar case-insensitive e testar casing incorreto sem persistência.
+- **Decisão:** corrigido por ser direto e de baixo risco.
+
+#### `REV-M2-013` — Low — estratégia prometia relógio controlável, mas usava janela do relógio real
+
+- **Localização:** `ApiFactory` e assert de timestamps do cadastro.
+- **Evidência:** o teste comparava `DateTime.UtcNow` antes/depois em vez de substituir `TimeProvider`.
+- **Impacto:** pequena fonte de flakiness e prova inexata de `PREM-DATA-02`.
+- **Correção mínima:** registrar um `TimeProvider` fixo na factory e afirmar o instante exato.
+- **Decisão:** corrigido; os testes de sucesso usam o relógio fixo.
+
+#### `REV-M2-014` — Low — contagem documental dos casos de validação estava errada
+
+- **Localização:** evidência `BE-REG-002` em `06-traceability.md`.
+- **Evidência:** a matriz dizia 12 cenários, mas a theory original já possuía 14; após as regressões, passou a 18.
+- **Impacto:** evidência auditável imprecisa.
+- **Correção mínima:** registrar a contagem descoberta real e separar os testes de JSON.
+- **Decisão:** corrigido para 18 cenários, mais propriedade desconhecida e casing incorreto.
+
+#### `REV-M2-015` — Low — bloqueio `REV-M1-020` não tinha supersessão no log
+
+- **Localização:** seção de M1 deste arquivo versus plano/matriz após a execução original de M2.
+- **Evidência:** documentos posteriores diziam que o volume padrão funcionou, mas o único registro autoritativo ainda terminava em “bloqueado”.
+- **Impacto:** histórico internamente contraditório.
+- **Correção mínima:** preservar o relato original e adicionar resolução posterior, sem reescrever a revisão M1.
+- **Decisão:** encerrado por esta seção: a execução original de M2 e o smoke acumulado pós-correções aprovaram volumes Docker normais; o último usou volume isolado e o removeu integralmente.
+
+#### `REV-M2-016` — Low — resposta segura era usada como evidência de logs seguros
+
+- **Localização:** `BE-ERR-002` e linha de segurança de `06-traceability.md`.
+- **Evidência:** o teste procurava dados internos somente no corpo `500`; ele não inspecionava stdout/stderr da API/Nginx.
+- **Impacto:** `SEC-LOG-01` era marcado com evidência que não exercitava logs.
+- **Correção mínima:** limitar `BE-ERR-002` à resposta e atribuir logs ao smoke `OPS-SECRET-001`.
+- **Decisão:** corrigido na estratégia/matriz; o smoke executável comprovou a nova associação.
+
+Consolidação: 1 High, 10 Medium e 5 Low confirmados e corrigidos; nenhum achado desta revisão ficou aberto ou bloqueado.
+
+### Candidatos rejeitados e decisões conscientes
+
+- Email internacional não foi mantido: restringir explicitamente a ASCII é a menor correção segura para a unicidade exigida; full Unicode case-fold adicionaria dependência/semântica não pedidas.
+- Senhas compostas por espaços permanecem válidas quando têm 6–128 caracteres porque senha não é aparada e não há requisito de complexidade; proibi-las seria nova regra de produto.
+- O `409` por email existente continua uma consequência aceita de `AC-REG-05/06`, não um achado novo.
+- Fluxo direto Controller → EF/hasher e component → service foi preservado; não foram criados repository, domínio genérico ou hooks de produção.
+
+### Comandos e resultados
+
+| Comando/check | Resultado |
+|---|---|
+| `pwd`, `git status --short --branch`, `git log --oneline -5` | Raiz correta; `main` inicialmente limpo; M2/commit/base identificados. |
+| `git diff b21e01c c02b67f`, leitura integral de SDD/ADRs/código/testes/configuração | Diff integral de 33 arquivos examinado por três eixos independentes. |
+| Baseline backend na imagem .NET `10.0.400` | 29/29 integrações aprovadas antes das correções. |
+| Baseline frontend na imagem Node `24.19.0` | Lint, 12/12 testes, build de 494,56 kB e 0 vulnerabilidades antes das correções. |
+| Prova isolada de `ToUpperInvariant()` com `straße`/`STRAẞE` | Chaves normalizadas distintas e comparação ordinal ignore-case falsa; confirmou `REV-M2-001`. |
+| Primeira compilação corretiva | Restore locked passou; build encontrou somente o nome inexistente `Status413ContentTooLarge`, trocado diretamente por `Status413PayloadTooLarge`. |
+| Imagem `mcr.microsoft.com/dotnet/sdk:10.0.400-noble`: restore locked, build e test | Restore aprovado; build com 0 warnings/0 erros; 36/36 integrações descobertas e aprovadas. |
+| Imagem `node:24.19.0-bookworm-slim`: `npm ci`, lint, test e build | 0 vulnerabilidades; lint aprovado; 13/13 testes; bundle 494,59 kB bruto. |
+| `ruby scripts/validate-openapi.rb docs/sdd/03-api-contract.yaml` | `SPEC-OAS-001`–`005` aprovados para seis operações e 52 referências locais. |
+| Contrato copiado para `/private/tmp` com `operationId` do cadastro mutado | Rejeitado com `Unexpected operationId for POST /api/auth/register`, como esperado. |
+| `sh -n scripts/validate-m1-compose.sh`, `docker compose config --quiet` | Sintaxe e configuração base aprovadas. |
+| `scripts/validate-m1-compose.sh` | Exit 0: projeto/volume efêmeros aprovaram API interna/não-root, SPA, health, Swagger, `404`, cadastro `201`, validação `400`, conflito `409`, `413/415`, logs, persistência após recriar a API e upstream `503`. |
+| Inspeção Docker posterior filtrada por `user-profile-m2-smoke-17663` | Nenhum contêiner, volume ou rede remanescente. |
+| Checagem read-only de IDs/links e padrões AWS/GitHub/OpenAI/private-key | 91 definições únicas e rastreadas, 13 Markdown verificados sem link local quebrado e nenhum padrão de segredo real encontrado. |
+| `git diff --check` e revisão do diff corretivo | Aprovados durante a correção; repetição final registrada antes do commit. |
+
+### Cleanup e riscos restantes
+
+- O smoke removeu apenas seu projeto, volume e rede efêmeros; o volume normal do repositório não foi usado nem alterado. Imagens versionadas `user-profile-api:0.1.0`/`user-profile-web:0.1.0` foram reconstruídas como parte do gate e permanecem reutilizáveis.
+- `REV-M1-020` está encerrado; `REV-M1-015`–`017` continuam Low e adiados para M5 pelas justificativas históricas.
+- A política ASCII exclui emails internacionalizados e o padrão é deliberadamente simples; ampliar isso exige decisão de produto/canonicalização própria.
+- Login/JWT/`sub`, dashboard, perfil, troca de senha, E2E, CI e README final permanecem corretamente fora de M2 e pendentes em M3–M6.
+- O nível `crit` do error log Nginx reduz detalhe operacional para impedir request lines com argumentos; access logs ainda preservam método, path e status. Qualquer ampliação deve continuar sem query, body ou Authorization.

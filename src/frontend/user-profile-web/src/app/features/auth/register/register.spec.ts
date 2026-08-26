@@ -42,6 +42,9 @@ describe('Register', () => {
     component.form.controls.name.setValue('  ab  ');
     expect(component.form.controls.name.hasError('minlength')).toBe(true);
 
+    component.form.controls.name.setValue('Ana');
+    expect(component.form.controls.name.valid).toBe(true);
+
     component.form.controls.name.setValue(`  ${'n'.repeat(200)}  `);
     expect(component.form.controls.name.valid).toBe(true);
 
@@ -64,6 +67,12 @@ describe('Register', () => {
     component.form.controls.email.setValue('ana @example.test');
     expect(component.form.controls.email.hasError('email')).toBe(true);
 
+    component.form.controls.email.setValue('ß@example.test');
+    expect(component.form.controls.email.hasError('email')).toBe(true);
+
+    component.form.controls.email.setValue('ẞ@example.test');
+    expect(component.form.controls.email.hasError('email')).toBe(true);
+
     component.form.controls.email.setValue('e'.repeat(321));
     expect(component.form.controls.email.hasError('maxlength')).toBe(true);
   });
@@ -74,6 +83,12 @@ describe('Register', () => {
     expect(component.form.controls.password.hasError('minlength')).toBe(true);
     expect(component.form.controls.passwordConfirmation.hasError('minlength')).toBe(true);
 
+    component.form.controls.password.setValue(' '.repeat(6));
+    component.form.controls.passwordConfirmation.setValue(' '.repeat(6));
+    expect(component.form.controls.password.valid).toBe(true);
+    expect(component.form.controls.passwordConfirmation.valid).toBe(true);
+    expect(component.form.hasError('passwordsMismatch')).toBe(false);
+
     component.form.controls.password.setValue('valid-password');
     component.form.controls.passwordConfirmation.setValue('different-password');
     expect(component.form.hasError('passwordsMismatch')).toBe(true);
@@ -81,10 +96,39 @@ describe('Register', () => {
     component.form.controls.passwordConfirmation.setValue('valid-password');
     expect(component.form.hasError('passwordsMismatch')).toBe(false);
 
+    component.form.controls.password.setValue('p'.repeat(128));
+    component.form.controls.passwordConfirmation.setValue('p'.repeat(128));
+    expect(component.form.controls.password.valid).toBe(true);
+    expect(component.form.controls.passwordConfirmation.valid).toBe(true);
+    expect(component.form.hasError('passwordsMismatch')).toBe(false);
+
     component.form.controls.password.setValue('p'.repeat(129));
     component.form.controls.passwordConfirmation.setValue('p'.repeat(129));
     expect(component.form.controls.password.hasError('maxlength')).toBe(true);
     expect(component.form.controls.passwordConfirmation.hasError('maxlength')).toBe(true);
+  });
+
+  it('shows local validation messages and does not submit an invalid form', () => {
+    component.form.setValue({
+      name: 'ab',
+      email: 'ana@example',
+      password: 'short',
+      passwordConfirmation: 'different',
+    });
+    harness.detectChanges();
+
+    const form = harness.routeNativeElement?.querySelector<HTMLFormElement>('form');
+    expect(form).not.toBeNull();
+    form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    harness.detectChanges();
+
+    const pageText = harness.routeNativeElement?.textContent ?? '';
+    expect(pageText).toContain('O nome deve ter pelo menos 3 caracteres.');
+    expect(pageText).toContain('Informe um email válido.');
+    expect(pageText).toContain('A senha deve ter pelo menos 6 caracteres.');
+    expect(pageText).toContain('A confirmação deve ser idêntica à senha.');
+    expect(router.url).toBe('/register');
+    http.expectNone('/api/auth/register');
   });
 
   it('shows loading, blocks duplicate submission and redirects to login with success', async () => {

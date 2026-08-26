@@ -69,6 +69,10 @@ paths:
           $ref: '#/components/responses/ValidationProblem'
         '409':
           $ref: '#/components/responses/EmailConflictProblem'
+        '413':
+          $ref: '#/components/responses/PayloadTooLargeProblem'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaTypeProblem'
         '500':
           $ref: '#/components/responses/UnexpectedProblem'
         '503':
@@ -117,6 +121,10 @@ paths:
                     accessToken: <JWT-issued-at-runtime>
         '400':
           $ref: '#/components/responses/LoginValidationProblem'
+        '413':
+          $ref: '#/components/responses/PayloadTooLargeProblem'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaTypeProblem'
         '500':
           $ref: '#/components/responses/UnexpectedProblem'
         '503':
@@ -215,6 +223,10 @@ paths:
           $ref: '#/components/responses/CurrentUserNotFoundProblem'
         '409':
           $ref: '#/components/responses/EmailConflictProblem'
+        '413':
+          $ref: '#/components/responses/PayloadTooLargeProblem'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaTypeProblem'
         '500':
           $ref: '#/components/responses/UnexpectedProblem'
         '503':
@@ -273,6 +285,10 @@ paths:
           $ref: '#/components/responses/BearerUnauthorizedProblem'
         '404':
           $ref: '#/components/responses/CurrentUserNotFoundProblem'
+        '413':
+          $ref: '#/components/responses/PayloadTooLargeProblem'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaTypeProblem'
         '500':
           $ref: '#/components/responses/UnexpectedProblem'
         '503':
@@ -331,17 +347,19 @@ components:
       properties:
         name:
           type: string
-          minLength: 3
-          maxLength: 200
           description: Nome após remoção de espaços externos.
+          x-trim: true
+          x-min-length-after-trim: 3
+          x-max-length-after-trim: 200
           example: Ana Example
         email:
           type: string
-          format: email
-          pattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
-          minLength: 1
-          maxLength: 320
-          description: Email após remoção de espaços externos.
+          pattern: '^\s*[\x21-\x3F\x41-\x7E]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\s*$'
+          description: Email ASCII validado após remoção de espaços externos.
+          x-trim: true
+          x-min-length-after-trim: 1
+          x-max-length-after-trim: 320
+          x-pattern-after-trim: '^[\x21-\x3F\x41-\x7E]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$'
           example: ana@example.test
         password:
           type: string
@@ -368,10 +386,12 @@ components:
       properties:
         email:
           type: string
-          format: email
-          pattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
-          minLength: 1
-          maxLength: 320
+          pattern: '^\s*[\x21-\x3F\x41-\x7E]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\s*$'
+          description: Email ASCII validado após remoção de espaços externos.
+          x-trim: true
+          x-min-length-after-trim: 1
+          x-max-length-after-trim: 320
+          x-pattern-after-trim: '^[\x21-\x3F\x41-\x7E]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$'
           example: ana@example.test
         password:
           type: string
@@ -407,7 +427,7 @@ components:
         email:
           type: string
           format: email
-          pattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+          pattern: '^[\x21-\x3F\x41-\x7E]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$'
           maxLength: 320
           example: ana@example.test
     UpdateProfileRequest:
@@ -419,17 +439,19 @@ components:
       properties:
         name:
           type: string
-          minLength: 3
-          maxLength: 200
           description: Nome após remoção de espaços externos.
+          x-trim: true
+          x-min-length-after-trim: 3
+          x-max-length-after-trim: 200
           example: Ana Updated
         email:
           type: string
-          format: email
-          pattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
-          minLength: 1
-          maxLength: 320
-          description: Email após remoção de espaços externos.
+          pattern: '^\s*[\x21-\x3F\x41-\x7E]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\s*$'
+          description: Email ASCII validado após remoção de espaços externos.
+          x-trim: true
+          x-min-length-after-trim: 1
+          x-max-length-after-trim: 320
+          x-pattern-after-trim: '^[\x21-\x3F\x41-\x7E]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$'
           example: ana.updated@example.test
     ChangePasswordRequest:
       type: object
@@ -570,6 +592,30 @@ components:
                 title: Conflict
                 status: 409
                 detail: An account with this email already exists.
+    PayloadTooLargeProblem:
+      description: O corpo HTTP ultrapassa o limite de 1 MiB da origem publicada.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          examples:
+            payloadTooLarge:
+              value:
+                title: Payload Too Large
+                status: 413
+                detail: The request body is too large.
+    UnsupportedMediaTypeProblem:
+      description: O media type do corpo não é application/json.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          examples:
+            unsupportedMediaType:
+              value:
+                title: Unsupported Media Type
+                status: 415
+                detail: The request content type is not supported.
     BearerUnauthorizedProblem:
       description: Bearer ausente, inválido ou expirado.
       headers:

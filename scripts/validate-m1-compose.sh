@@ -8,18 +8,26 @@ cd "$repository_root"
 
 review_tmp=$(mktemp -d)
 stack_started=0
+COMPOSE_PROJECT_NAME="user-profile-m2-smoke-$$"
+export COMPOSE_PROJECT_NAME
 
 cleanup() {
   if [ "$stack_started" -eq 1 ]; then
-    docker compose down >/dev/null 2>&1 || true
+    docker compose down --volumes --remove-orphans >/dev/null 2>&1 || true
   fi
 
-  rm -f -- "$review_tmp/body" "$review_tmp/headers" "$review_tmp/nginx"
+  rm -f -- \
+    "$review_tmp/body" \
+    "$review_tmp/headers" \
+    "$review_tmp/logs" \
+    "$review_tmp/nginx" \
+    "$review_tmp/oversized" \
+    "$review_tmp/request"
   rmdir "$review_tmp" 2>/dev/null || true
 }
 
 fail() {
-  printf 'M1 Compose validation failed: %s\n' "$1" >&2
+  printf 'M1+M2 Compose validation failed: %s\n' "$1" >&2
   exit 1
 }
 
@@ -27,11 +35,13 @@ request() {
   request_path=$1
   expected_status=$2
   expected_media_type=$3
+  shift 3
 
-  actual_status=$(curl --silent --show-error --max-time 15 \
+  actual_status=$(curl --silent --show-error --max-time 30 \
     --output "$review_tmp/body" \
     --dump-header "$review_tmp/headers" \
     --write-out '%{http_code}' \
+    "$@" \
     "http://127.0.0.1:8080$request_path")
 
   [ "$actual_status" = "$expected_status" ] ||
@@ -43,6 +53,33 @@ request() {
 
   [ "$actual_media_type" = "$expected_media_type" ] ||
     fail "$request_path returned media type $actual_media_type instead of $expected_media_type"
+}
+
+post_json() {
+  post_path=$1
+  post_status=$2
+  post_body=$3
+
+  printf '%s' "$post_body" >"$review_tmp/request"
+  request "$post_path" "$post_status" 'application/problem+json' \
+    --request POST \
+    --header 'Content-Type: application/json' \
+    --data-binary "@$review_tmp/request"
+}
+
+wait_for_health() {
+  health_attempt=0
+  while [ "$health_attempt" -lt 60 ]; do
+    if curl --silent --fail --max-time 3 \
+      --output /dev/null http://127.0.0.1:8080/health; then
+      return 0
+    fi
+
+    health_attempt=$((health_attempt + 1))
+    sleep 2
+  done
+
+  fail 'health did not recover after recreating the API'
 }
 
 trap cleanup EXIT HUP INT TERM
@@ -72,8 +109,27 @@ if grep -Eq '^[A-Za-z_][A-Za-z0-9_]*=.+$' .env.example; then
   fail '.env.example contains a usable value'
 fi
 
+if grep -Eq '\$(request|request_uri|args|query_string|request_body|http_authorization)([^A-Za-z0-9_]|$)' \
+  src/frontend/user-profile-web/nginx.conf; then
+  fail 'Nginx logging references request data that can contain credentials'
+fi
+
+if grep -Eq '"Microsoft\.AspNetCore\.Hosting\.Diagnostics"[[:space:]]*:[[:space:]]*"(Trace|Debug|Information)"' \
+  src/backend/UserProfile.Api/appsettings.json; then
+  fail 'ASP.NET request diagnostics can log query strings at the configured level'
+fi
+
+grep -Eq 'client_max_body_size[[:space:]]+1m;' \
+  src/frontend/user-profile-web/nginx.conf || fail 'Nginx request-body limit is not explicit'
+grep -Eq 'error_page[[:space:]]+413[[:space:]]+=[[:space:]]+@payload_too_large;' \
+  src/frontend/user-profile-web/nginx.conf || fail 'Nginx does not map 413 to ProblemDetails'
+
 stack_started=1
 docker compose up --build --detach --wait --wait-timeout "${M1_COMPOSE_WAIT_TIMEOUT:-300}"
+
+data_volume="${COMPOSE_PROJECT_NAME}_user-profile-data"
+docker volume inspect "$data_volume" >/dev/null 2>&1 ||
+  fail 'the isolated SQLite volume was not created'
 
 api_container_id=$(docker compose ps -q api)
 published_api_ports=$(docker inspect --format \
@@ -96,16 +152,85 @@ grep -Fq '"status":"Healthy"' "$review_tmp/body" || fail 'health body is unexpec
 request '/swagger/index.html' '200' 'text/html'
 request '/swagger/v1/swagger.json' '200' 'application/json'
 grep -Fq '"/health"' "$review_tmp/body" || fail 'runtime OpenAPI omits /health'
+grep -Fq '"/api/auth/register"' "$review_tmp/body" || fail 'runtime OpenAPI omits registration'
 
 request '/api/not-implemented' '404' 'application/problem+json'
 grep -Fq '"status":404' "$review_tmp/body" || fail '404 body is not ProblemDetails'
 
+smoke_suffix="$(date +%s)-$$"
+smoke_email="m2-smoke-$smoke_suffix@example.test"
+smoke_password="M2-smoke-$smoke_suffix-Aa1!"
+registration_payload=$(printf \
+  '{"name":"M2 Smoke","email":"%s","password":"%s","passwordConfirmation":"%s"}' \
+  "$smoke_email" "$smoke_password" "$smoke_password")
+
+printf '%s' "$registration_payload" >"$review_tmp/request"
+request '/api/auth/register' '201' 'application/json' \
+  --request POST \
+  --header 'Content-Type: application/json' \
+  --data-binary "@$review_tmp/request"
+grep -Fq '"message"' "$review_tmp/body" || fail 'registration response is unexpected'
+
+post_json '/api/auth/register' '400' '{}'
+grep -Fq '"status":400' "$review_tmp/body" || fail 'invalid registration is not ProblemDetails'
+
+uppercase_email=$(printf '%s' "$smoke_email" | tr '[:lower:]' '[:upper:]')
+duplicate_payload=$(printf \
+  '{"name":"M2 Duplicate","email":"  %s  ","password":"%s","passwordConfirmation":"%s"}' \
+  "$uppercase_email" "$smoke_password" "$smoke_password")
+post_json '/api/auth/register' '409' "$duplicate_payload"
+grep -Fq '"status":409' "$review_tmp/body" || fail 'duplicate registration is not ProblemDetails'
+
+printf '%s' 'not-json' >"$review_tmp/request"
+request '/api/auth/register' '415' 'application/problem+json' \
+  --request POST \
+  --header 'Content-Type: text/plain' \
+  --data-binary "@$review_tmp/request"
+grep -Fq '"status":415' "$review_tmp/body" || fail 'unsupported media type is not ProblemDetails'
+
+query_marker="M2_QUERY_MARKER_$smoke_suffix"
+body_marker="M2_BODY_MARKER_$smoke_suffix"
+header_marker="M2_HEADER_MARKER_$smoke_suffix"
+marker_payload=$(printf \
+  '{"name":"M2 Marker","email":"marker-%s@example.test","password":"%s","passwordConfirmation":"different"}' \
+  "$smoke_suffix" "$body_marker")
+printf '%s' "$marker_payload" >"$review_tmp/request"
+request "/api/auth/register?password=$query_marker" '400' 'application/problem+json' \
+  --request POST \
+  --header 'Content-Type: application/json' \
+  --header "Authorization: Bearer $header_marker" \
+  --data-binary "@$review_tmp/request"
+
+sleep 1
+docker compose logs --no-color >"$review_tmp/logs"
+if grep -Fq -- "$query_marker" "$review_tmp/logs" ||
+  grep -Fq -- "$body_marker" "$review_tmp/logs" ||
+  grep -Fq -- "$header_marker" "$review_tmp/logs"; then
+  fail 'a synthetic query, body or header marker was exposed in container logs'
+fi
+
+dd if=/dev/zero of="$review_tmp/oversized" bs=1048577 count=1 2>/dev/null
+request '/api/auth/register' '413' 'application/problem+json' \
+  --request POST \
+  --header 'Content-Type: application/json' \
+  --data-binary "@$review_tmp/oversized"
+grep -Fq '"status":413' "$review_tmp/body" || fail 'oversized request is not ProblemDetails'
+
 docker compose exec -T web nginx -T >"$review_tmp/nginx" 2>&1
 grep -Eq 'error_page[[:space:]]+502[[:space:]]+504[[:space:]]+=[[:space:]]+@service_unavailable;' \
   "$review_tmp/nginx" || fail 'Nginx does not map both 502 and 504'
+grep -Eq 'error_page[[:space:]]+413[[:space:]]+=[[:space:]]+@payload_too_large;' \
+  "$review_tmp/nginx" || fail 'rendered Nginx config does not map 413'
+
+docker compose up --detach --force-recreate api >/dev/null
+wait_for_health
+post_json '/api/auth/register' '409' "$duplicate_payload"
+grep -Fq '"status":409' "$review_tmp/body" ||
+  fail 'registration did not persist after recreating the API'
 
 docker compose stop api >/dev/null
 request '/health' '503' 'application/problem+json'
 grep -Fq '"status":503' "$review_tmp/body" || fail 'upstream failure body is not ProblemDetails'
 
-printf 'M1 Compose OK: same origin, internal API, health, Swagger, 404 and upstream 503 verified\n'
+printf '%s\n' \
+  'M1+M2 Compose OK: same origin, registration, validation, conflicts, persistence, 413/415, safe logs and upstream 503 verified'
