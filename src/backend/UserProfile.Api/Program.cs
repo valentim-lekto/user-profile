@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Metadata;
 using Microsoft.EntityFrameworkCore;
@@ -8,6 +9,7 @@ using Microsoft.OpenApi;
 using UserProfile.Api.Configuration;
 using UserProfile.Api.Data;
 using UserProfile.Api.Features.Auth;
+using UserProfile.Api.Security;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -51,6 +53,17 @@ builder.Services
     });
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
+builder.Services.AddSingleton(serviceProvider => JwtOptions.Load(
+    serviceProvider.GetRequiredService<IConfiguration>(),
+    serviceProvider.GetRequiredService<IHostEnvironment>()));
+builder.Services.AddSingleton<JwtTokenIssuer>();
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer();
+builder.Services
+    .AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+    .Configure<JwtOptions, TimeProvider>(JwtBearerConfiguration.Configure);
+builder.Services.AddAuthorization();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -63,11 +76,20 @@ builder.Services.AddSwaggerGen(options =>
     options.NonNullableReferenceTypesAsRequired();
     options.UseInlineDefinitionsForEnums();
     options.SchemaFilter<RegisterRequestSchemaFilter>();
+    options.AddSecurityDefinition("bearerAuth", new OpenApiSecurityScheme
+    {
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        Description = "JWT curto emitido pelo login."
+    });
+    options.OperationFilter<BearerSecurityOperationFilter>();
 });
 builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>("sqlite");
 
 var app = builder.Build();
+_ = app.Services.GetRequiredService<JwtOptions>();
 
 await using (var scope = app.Services.CreateAsyncScope())
 {
@@ -79,6 +101,8 @@ app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseSwagger();
 app.UseSwaggerUI();
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapControllers();
 
 app.Run();

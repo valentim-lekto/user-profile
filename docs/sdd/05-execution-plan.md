@@ -77,16 +77,16 @@ Gates observáveis:
 
 ### M3 — Login e dashboard
 
-**Estado:** pendente
+**Estado:** concluído em 2026-08-26
 
 Entregas:
 
 - implementar emissão/validação JWT, chave externa Base64 de ao menos 32 bytes, falha fechada para configuração inválida e fallback aleatório somente quando ausente em `Development`;
 - completar em `.env.example` os nomes de configuração JWT introduzidos neste milestone, mantendo somente placeholders não utilizáveis;
-- implementar `POST /api/auth/login` com `400 ValidationProblemDetails` genérico para credenciais inválidas e sem refresh token;
+- implementar `POST /api/auth/login` com `400 ValidationProblemDetails` para payload inválido, `401 ProblemDetails` idêntico para email inexistente/senha incorreta e sem refresh token;
 - implementar sessão em `sessionStorage`, functional interceptor com allowlist apenas para URLs relativas protegidas e functional route guard;
-- implementar `GET /api/profile` resolvendo exclusivamente o claim `sub`;
-- implementar login e dashboard com boas-vindas, navegação e estados de UI;
+- implementar `GET /api/profile` resolvendo exclusivamente o claim `sub` e retornando somente ID imutável, nome e email;
+- implementar login e dashboard com boas-vindas, logout, navegação protegida e estados de UI; `/profile` recebe apenas um placeholder protegido como destino, sem antecipar os formulários do M4;
 - implementar `BE-LOGIN-*`, `BE-AUTH-*`, `BE-CONFIG-001`, `BE-PROF-001/002`, `TECH-BACKEND-001`, `FE-LOGIN-*`, `FE-GUARD-*`, `FE-INT-*` e `FE-DASH-*`, sempre verificando ProblemDetails, challenge Bearer obrigatório nos recursos protegidos e os DTOs da fatia.
 
 Gates observáveis:
@@ -166,6 +166,8 @@ Gates observáveis:
 - `2026-08-25` — `revisão independente de M1 concluída` — commit `8db5592` auditado; 1 High, 12 Medium e 11 Low confirmados. O High e 11 Medium foram corrigidos; 1 Medium operacional ficou bloqueado naquele momento pela VM Docker sem espaço e foi encerrado em M2; 8 Low triviais foram corrigidos e 3 Low adiados com justificativa em [`review-log.md`](review-log.md).
 - `2026-08-25` — `implementação original de M2 concluída` — cadastro vertical Angular → Nginx → Controller → SQLite entregue com hash Identity, duplicidade normalizada/concorrente e estados acessíveis; a execução então observada registrou 29 integrações backend, 12 testes frontend e smoke no volume Docker padrão.
 - `2026-08-25` — `revisão independente de M2 concluída` — o commit `c02b67f` foi auditado; 1 High, 10 Medium e 5 Low foram confirmados e corrigidos. `PREM-INPUT-01`, email ASCII, validação pós-`Trim`, JSON case-sensitive, `413/415 ProblemDetails`, política de logs e smoke acumulado M1+M2 foram revalidados com 36 integrações backend, 13 testes frontend e runtime Docker isolado; detalhes em [`review-log.md`](review-log.md).
+- `2026-08-26` — `M3 iniciado` — contrato atualizado antes do código para refletir a instrução explícita desta fatia: credenciais não reconhecidas usam `401` genérico e `ProfileResponse` contém somente `id`, `name` e `email`.
+- `2026-08-26` — `M3 concluído` — login/JWT, proteção de rotas/endpoints, sessão em `sessionStorage`, dashboard e placeholder protegido de perfil foram validados por 69 integrações backend, 42 testes frontend, OpenAPI normativo, smoke Compose isolado e UI real. M4–M6, E2E completos e CI permanecem pendentes.
 
 ## Evidências de M1
 
@@ -198,6 +200,18 @@ A baseline anterior à revisão registrava 29 integrações backend e 12 testes 
 | Cleanup | Trap do smoke com `docker compose down --volumes --remove-orphans`; inspeção somente leitura posterior | Contêineres, rede e volume `user-profile-m2-smoke-17663_*` foram removidos; o volume normal do repositório não participou da execução. |
 
 Na execução original de M2, o bloqueio ambiental registrado na revisão de M1 não se repetiu. O smoke acumulado pós-correções confirmou novamente a configuração em volume Docker normal isolado, encerrando documentalmente `REV-M1-020`. A autenticação posterior à recriação continua reservada a M3; em M2, a persistência é comprovada pela colisão normalizada após recriar a API.
+
+## Evidências de M3
+
+| Gate | Execução observada | Resultado |
+|---|---|---|
+| Backend | Imagem `mcr.microsoft.com/dotnet/sdk:10.0.400-noble`: restore locked, build e `dotnet test UserProfile.sln -p:RestoreLockedMode=true --verbosity minimal`, com `TreatWarningsAsErrors` | Restore e build aprovados sem warnings; 69/69 integrações aprovadas, sem falhas ou skips. A suíte cobre login normalizado, JWT válido/inválido/expirado, issuer/audience/assinatura/algoritmo, `sub`, DTO mínimo, resposta `401` idêntica e configuração da chave. |
+| Frontend | Imagem `node:24.19.0-bookworm-slim`: `npm ci`, `npm run lint`, `npm test` e `npm run build` | 494 pacotes instalados, 0 vulnerabilidades, lint aprovado, 42/42 testes aprovados e build sem warnings (317,28 kB bruto; 87,60 kB estimado). Os testes cobrem formulário, interceptor, guard, limpeza em `401`, dashboard e logout. |
+| Contrato | `ruby scripts/validate-openapi.rb docs/sdd/03-api-contract.yaml` | OpenAPI normativo aprovado para seis operações e 53 referências locais; requests/responses, Bearer, `401`/challenge e `ProfileResponse` permaneceram coerentes com a fatia. |
+| Compose e segurança | `docker compose config --quiet`; `scripts/validate-m1-compose.sh` em projeto/volume isolados | Configuração aprovada. O smoke acumulado M1+M2+M3 validou origem única, cadastro, login normalizado, `401` byte-idêntico para email inexistente/senha errada, challenge Bearer, perfil exclusivamente pelo `sub` com DTO exato, `413/415`, ausência dos marcadores e do primeiro JWT nos logs, recriação da API com novo token e persistência, `503` do proxy e cleanup dos recursos efêmeros. |
+| UI real | `http://localhost:8080` no Compose padrão, encerrado com `docker compose down --remove-orphans` sem volumes | Guard anônimo, erro genérico de login, login válido/dashboard com nome, navegação ao placeholder de perfil, logout e reproteção foram observados; console sem warnings/erros. O volume nomeado padrão foi preservado. |
+
+O SDK/Node do host não correspondiam exatamente às versões fixadas; por isso, as validações de build/teste foram executadas nas imagens Docker fixadas pelo design. Não houve desvio de versão, segredo real ou remoção de recursos de outros projetos.
 
 Ao iniciar um milestone, alterar somente seu estado para `em andamento`. Ao concluir, registrar data, comandos, evidências, desvios e hash do commit antes de iniciar o próximo.
 
@@ -234,7 +248,7 @@ ruby scripts/validate-openapi.rb docs/sdd/03-api-contract.yaml
 scripts/validate-m1-compose.sh
 ```
 
-`scripts/validate-m1-compose.sh` é o smoke versionado acumulado M1+M2. A revisão independente confirmou 36 integrações backend e 13 testes frontend com os comandos acima.
+`scripts/validate-m1-compose.sh` é o smoke versionado acumulado M1+M2+M3. A validação de M3 confirmou 69 integrações backend e 42 testes frontend com os comandos acima, nas imagens fixadas quando necessário.
 
 Os nomes de scripts npm devem ser confirmados no scaffold e então congelados. Mudança de comando exige atualização deste plano e do README antes do código dependente.
 
@@ -244,7 +258,7 @@ Os nomes de scripts npm devem ser confirmados no scaffold e então congelados. M
 - `/health` só fica saudável após migrations e acesso ao SQLite.
 - Cadastro cria dados sem autenticar; login cria sessão curta; dashboard consulta a API.
 - Rotas e endpoints protegidos rejeitam ausência, adulteração ou expiração do token.
-- Toda resposta `401` de recurso protegido inclui challenge Bearer obrigatório; login inválido usa `400` genérico; indisponibilidade do upstream chega ao browser como `503 ProblemDetails`.
+- Toda resposta `401` inclui challenge Bearer obrigatório; login inválido usa corpo genérico equivalente para email inexistente/senha incorreta, enquanto indisponibilidade do upstream chega ao browser como `503 ProblemDetails`.
 - Perfil do usuário A nunca consulta ou altera o usuário B.
 - Atualizações persistem após recriar serviços mantendo o volume.
 - Respostas e logs nunca expõem campos sensíveis.
@@ -286,7 +300,9 @@ Os nomes de scripts npm devem ser confirmados no scaffold e então congelados. M
 - `2026-08-25` — A revisão de M2 alinhou contrato e gates para `413/415 ProblemDetails`; o smoke versionado foi definido como acumulado M1+M2 e a prova de que logs não contêm marcadores de query/body/header pertence a `OPS-SECRET-001`, enquanto `BE-ERR-002` prova somente a segurança da resposta `500`.
 - `2026-08-25` — M2 manteve o fluxo direto `AuthController` → EF Core/`PasswordHasher<User>`; o índice único é a autoridade e somente a violação SQLite `2067` vira `409`. A única instrumentação adicional é uma barreira em interceptor exclusivo dos testes para provar a corrida sem hook de produção.
 - `2026-08-25` — O frontend de M2 criou somente cadastro, service/signals e um placeholder de login para receber o aviso; JWT, sessão, guard, interceptor e login funcional permanecem em M3.
+- `2026-08-26` — A instrução explícita de M3 substituiu a decisão documental anterior de `400` para credenciais não reconhecidas por `401 ProblemDetails` genérico com challenge Bearer e passou a exigir `id` em `ProfileResponse`; payload estruturalmente inválido permanece `400` e nenhum request recebe `userId`.
+- `2026-08-26` — M3 confirmou fluxo direto `Controllers` → EF Core/`JwtTokenIssuer` e `AuthService`/signals, sem refresh, NgRx ou camada extra. A complexidade retida restringe-se à validação JWT/configuração, hash fictício para reduzir sinal de timing, allowlist do interceptor e lazy routes exigidos pela fatia.
 
 ## Resultado final
 
-M1 e M2 estão implementados e validados, inclusive a resolução do bloqueio antigo do volume Docker. A revisão de M2 aprovou 36 integrações backend, 13 testes frontend, contrato/runtime e smoke acumulado com persistência, `413/415` e logs seguros. M3–M6 permanecem pendentes: login funcional, JWT, dashboard, edição de perfil/senha, jornadas E2E e CI não foram implementados.
+M1, M2 e M3 estão implementados e validados, inclusive a resolução do bloqueio antigo do volume Docker. M3 aprovou 69 integrações backend, 42 testes frontend, OpenAPI normativo, smoke acumulado e UI real para login/JWT/dashboard; o fluxo preserva perfil por `sub`, DTO mínimo e não registrou os marcadores sintéticos nem o JWT inspecionado. M4–M6 permanecem pendentes: edição de perfil/senha, jornadas E2E completas, CI e validação/documentação finais.

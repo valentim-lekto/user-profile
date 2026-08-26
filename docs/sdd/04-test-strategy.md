@@ -49,12 +49,12 @@ Validar os comportamentos e riscos principais com a menor suíte capaz de fornec
 | `BE-REG-003` | Emails ASCII com espaços externos ou caixa diferente colidem em `409`; emails Unicode que escapariam do `ToUpperInvariant` são rejeitados antes da normalização. | `AC-REG-05`, `PREM-EMAIL-01`, `PREM-INPUT-01` |
 | `BE-REG-004` | O índice único existe e uma violação concorrente é mapeada para `409`, sem segundo usuário. | `AC-REG-05` |
 | `BE-LOGIN-001` | Credenciais válidas retornam Bearer curto com `sub`, `jti`, `iat` e `exp`, sem refresh token. | `AC-LOGIN-01`, `SEC-SESSION-01` |
-| `BE-LOGIN-002` | Payload ausente/inválido ou acima dos limites defensivos, email inexistente e senha incorreta retornam o mesmo `400 ValidationProblemDetails` genérico, sem challenge Bearer e sem criar sessão. | `AC-LOGIN-02`, `PREM-INPUT-01`, `API-ERROR-01` |
+| `BE-LOGIN-002` | Payload ausente/inválido ou acima dos limites defensivos retorna `400 ValidationProblemDetails`; para payload válido, email inexistente e senha incorreta retornam o mesmo `401 ProblemDetails` genérico com challenge Bearer, sem indicar a credencial divergente nem criar sessão. | `AC-LOGIN-02`, `PREM-INPUT-01`, `API-ERROR-01` |
 | `BE-LOGIN-003` | Login usa a mesma normalização de email adotada no cadastro. | `PREM-EMAIL-01` |
 | `BE-AUTH-001` | Ausência, assinatura adulterada, issuer/audience inválidos e expiração retornam `401 ProblemDetails` com challenge Bearer. | `AC-DASH-02`, `SEC-AUTH-01`, `API-ERROR-01` |
 | `BE-AUTH-002` | Claims mínimas ausentes/malformadas retornam `401`; `sub` válido sem usuário retorna `404`; o GET do perfil existente é resolvido somente por `sub`. | `SEC-AUTH-01` |
 | `BE-CONFIG-001` | Chave externa Base64 de ao menos 32 bytes permite startup; ausência fora de `Development`, Base64 inválido ou valor curto falha; ausência em `Development` usa fallback aleatório; nenhum cenário registra a chave. | `SEC-AUTH-01`, `SEC-SECRET-01` |
-| `BE-PROF-001` | GET retorna somente nome/email do usuário indicado pelo `sub`. | `AC-DASH-01`, `AC-PROF-01` |
+| `BE-PROF-001` | GET retorna somente ID imutável, nome e email do usuário indicado pelo `sub`. | `AC-DASH-01`, `AC-PROF-01` |
 | `BE-PROF-002` | Dois usuários consultam apenas o próprio perfil; query/header arbitrários não influenciam o `sub` usado pelo GET. | `SEC-AUTH-01`, `AC-PROF-01` |
 | `BE-PROF-003` | PUT válido atualiza e persiste nome/email do usuário atual, preserva `CreatedAtUtc` e avança `UpdatedAtUtc`. | `AC-PROF-02`, `AC-PROF-05`, `PREM-DATA-02` |
 | `BE-PROF-004` | PUT aplica validações equivalentes ao cadastro. | `AC-PROF-03` |
@@ -64,12 +64,12 @@ Validar os comportamentos e riscos principais com a menor suíte capaz de fornec
 | `BE-PASS-002` | Nova senha ausente/curta/longa ou confirmação ausente/curta/longa/divergente retorna `400`; o hash não muda, a senha antiga continua autenticando e a nova não autentica. | `AC-PASS-03`, `PREM-INPUT-01` |
 | `BE-PASS-003` | Alteração válida retorna `200`, preserva `CreatedAtUtc`, avança `UpdatedAtUtc`; senha antiga falha e nova senha autentica. | `AC-PASS-04`, `PREM-DATA-02` |
 | `BE-PASS-004` | O endpoint de senha rejeita Bearer ausente/inválido; com dois usuários altera somente a senha indicada pelo `sub`, e rejeita `userId` extra no JSON. | `AC-DASH-02`, `SEC-AUTH-01` |
-| `BE-DTO-001` | Nenhuma resposta expõe senha, hash, email normalizado ou ID do usuário. | `AC-PROF-01`, `SEC-SECRET-01` |
+| `BE-DTO-001` | Nenhuma resposta expõe senha, hash ou email normalizado; somente `ProfileResponse` expõe o ID imutável previsto no contrato. | `AC-PROF-01`, `SEC-SECRET-01` |
 | `BE-ERR-001` | Erros previstos e gerados pelo pipeline, incluindo JSON malformado, media type não suportado `415`, rota `/api` inexistente e método não permitido, usam `ProblemDetails`/`ValidationProblemDetails` e `application/problem+json`; o `413` anterior à API é coberto por `OPS-COMPOSE-001`. | `API-ERROR-01` |
 | `BE-ERR-002` | Após startup saudável, cadastro contra SQLite bloqueado percorre o handler real e retorna `500` sem stack trace, SQL ou segredo na resposta. | `SEC-SECRET-01`, `API-ERROR-01` |
 | `BE-DB-001` | Startup aplica migrations a banco vazio; o schema real contém exatamente os sete campos definidos no ADR-0002 com tipo/nulabilidade/chave esperados, cria o índice único e não deixa mudança pendente entre modelo e snapshot. | `OPS-DOCKER-01`, `PREM-DATA-02`, ADR-0002 |
 | `BE-HEALTH-001` | `/health` retorna `200` após startup; com timeout padrão de 30 segundos na conexão da API, bloqueio exclusivo posterior retorna `503 application/problem+json` em menos de 5 segundos. Falha de migration é testada como falha de startup. | `OPS-DOCKER-01`, `API-ERROR-01` |
-| `BE-OAS-001` | O OpenAPI gerado em runtime contém somente as operações já implementadas; em M2, exatamente `/health` e `/api/auth/register`, com `operationId`, tags, respostas `413/415`, nomes obrigatórios, extensões de validação após `Trim`, padrão ASCII e senhas `format: password`/`writeOnly` coerentes com o contrato normativo. | `DOC-SDD-01`, `DOC-TRACE-01`, `SPEC-OAS-002`, `SPEC-OAS-004` |
+| `BE-OAS-001` | O OpenAPI gerado em runtime contém somente as operações já implementadas; em M3, exatamente `/health`, `/api/auth/register`, `/api/auth/login` e `GET /api/profile`, com segurança, status, schemas, extensões pós-`Trim`, JWT Bearer e DTOs coerentes com o contrato normativo. | `DOC-SDD-01`, `DOC-TRACE-01`, `SPEC-OAS-002`, `SPEC-OAS-003`, `SPEC-OAS-004` |
 
 ## Catálogo planejado — frontend
 
@@ -77,12 +77,12 @@ Validar os comportamentos e riscos principais com a menor suíte capaz de fornec
 |---|---|---|
 | `FE-REG-001` | Formulário tipado exige quatro campos, valida e exibe os erros locais, não envia payload inválido, prova limites inclusivos/máximos após o mesmo tratamento do backend, aceita espaços significativos em senha, aceita email ASCII válido exatamente em 320 caracteres, rejeita Unicode e as mesmas bordas de formato e exige igualdade das senhas. | `AC-REG-02`–`04`, `PREM-INPUT-01` |
 | `FE-REG-002` | Loading bloqueia nova submissão; `201` leva ao login com sucesso; erro permanece visível sem criar sessão. | `AC-REG-01`, `AC-REG-06`, `UI-STATE-01` |
-| `FE-LOGIN-001` | Formulário e service aplicam os limites defensivos de email/senha, tratam loading, bloqueiam submissão duplicada, exibem o `400` genérico de credenciais e tratam erro inesperado. | `AC-LOGIN-02`, `AC-LOGIN-03`, `PREM-INPUT-01` |
+| `FE-LOGIN-001` | Formulário e service aplicam os limites defensivos de email/senha, tratam loading, bloqueiam submissão duplicada, exibem o `401` genérico de credenciais e tratam validação `400`/erro inesperado. | `AC-LOGIN-02`, `AC-LOGIN-03`, `PREM-INPUT-01` |
 | `FE-LOGIN-002` | Sucesso grava token apenas em `sessionStorage` e navega ao dashboard. | `AC-LOGIN-01`, `SEC-SESSION-01` |
 | `FE-GUARD-001` | Guard permite sessão não expirada e bloqueia token ausente, malformado ou expirado. | `AC-DASH-02` |
 | `FE-INT-001` | Interceptor anexa Bearer somente às URLs relativas protegidas de perfil; não o anexa a login, cadastro, health, URL absoluta nem destino externo. | `SEC-AUTH-01`, `SEC-SESSION-01`, `SEC-SECRET-01` |
-| `FE-INT-002` | `401` de request com Bearer limpa sessão; o `400` do login público não dispara limpeza global e continua disponível para a tela. | `AC-LOGIN-02`, `AC-DASH-02` |
-| `FE-DASH-001` | Dashboard busca perfil, mostra loading/erro, saúda pelo nome retornado e navega ao perfil. | `AC-DASH-01`, `AC-DASH-03`, `AC-DASH-04` |
+| `FE-INT-002` | `401` de request que levava Bearer limpa sessão e conduz ao login; o `401` do login público não levava Bearer, não dispara limpeza global e continua disponível para a tela. | `AC-LOGIN-02`, `AC-DASH-02` |
+| `FE-DASH-001` | Dashboard busca perfil, mostra loading/erro, saúda pelo nome retornado, navega ao perfil e faz logout removendo somente o token da aplicação antes de voltar ao login. | `AC-DASH-01`, `AC-DASH-03`, `AC-DASH-04`, `SEC-SESSION-01` |
 | `FE-PROF-001` | Perfil carrega nome/email com estados de loading/erro e valida edição com as regras do cadastro. | `AC-PROF-01`, `AC-PROF-03`, `UI-STATE-01` |
 | `FE-PROF-002` | Atualização mostra loading, bloqueia submissão duplicada e apresenta feedback de sucesso/erro, incluindo `409`. | `AC-PROF-04`, `AC-PROF-05`, `UI-STATE-01` |
 | `FE-PASS-001` | Formulário separado exige senha atual, nova senha e confirmação, e aplica os limites defensivos `128` a todas as entradas. | `AC-PASS-01`, `AC-PASS-03`, `PREM-INPUT-01` |
@@ -108,7 +108,7 @@ As jornadas usam a origem publicada pelo Nginx e não chamam a API diretamente p
 | `SPEC-OAS-002` | Seis `operationId` únicos, cinco operações de negócio e `/health`; nenhuma rota fora de escopo. |
 | `SPEC-OAS-003` | Operações de perfil têm Bearer, não definem `userId` e seus request bodies rejeitam propriedades extras; públicas declaram `security: []`. |
 | `SPEC-OAS-004` | Campos obrigatórios, nomes case-sensitive, validações pós-`Trim`, limites, formatos e status coincidem com requisitos/design. |
-| `SPEC-OAS-005` | Erros referenciam ProblemDetails; operações JSON declaram `413/415`; todo `401` de operação protegida declara `WWW-Authenticate` como obrigatório; login inválido usa `400`; indisponibilidade declara `503`; respostas não contêm campos sensíveis. |
+| `SPEC-OAS-005` | Erros referenciam ProblemDetails; operações JSON declaram `413/415`; payload de login inválido usa `400`, credenciais não reconhecidas usam `401` genérico e todo `401` declara `WWW-Authenticate` como obrigatório; indisponibilidade declara `503`; respostas não contêm campos sensíveis além do ID imutável permitido em `ProfileResponse`. |
 | `SPEC-TRACE-001` | Cada requisito/critério aplicável possui linha em `06-traceability.md` e teste planejado. |
 
 `scripts/validate-openapi.rb` executa `SPEC-OAS-001`–`005` sobre o contrato
@@ -125,7 +125,7 @@ build.
 |---|---|---|
 | `TECH-BACKEND-001` | Solution/projetos e lock NuGet usam ASP.NET Core/C#, EF Core SQLite e JWT nas versões fixadas; restore locked e build passam. | `TECH-BACKEND-01` |
 | `TECH-FRONTEND-001` | `package.json`/lockfile usam Angular standalone/strict, Reactive Forms e Material nas versões fixadas; `npm ci` e build passam. | `TECH-FRONTEND-01` |
-| `OPS-COMPOSE-001` | `scripts/validate-m1-compose.sh` é o smoke acumulado M1+M2: em projeto/volume nomeado efêmero executa `docker compose up --build --wait` sem `.env` nem SDKs, valida origem única, `201/400/409/413/415`, recria a API preservando o volume e remove somente os recursos temporários ao final. | `OPS-DOCKER-01`, `OPS-DOCKER-02`, `OPS-DOCKER-03`, `API-ERROR-01` |
+| `OPS-COMPOSE-001` | `scripts/validate-m1-compose.sh` é o smoke acumulado M1+M2+M3: em projeto/volume nomeado efêmero executa `docker compose up --build --wait` sem `.env` nem SDKs, valida origem única, cadastro, login, `401` equivalente com Bearer, perfil por `sub`, `413/415`, ausência dos marcadores e do JWT observado nos logs, recria a API preservando o volume, renova a sessão e remove somente os recursos temporários ao final. | `OPS-DOCKER-01`, `OPS-DOCKER-02`, `OPS-DOCKER-03`, `API-ERROR-01` |
 | `OPS-ORIGIN-001` | O mesmo smoke verifica SPA, `/api/*`, `/swagger/*` e `/health` por `http://localhost:8080`, ausência de porta pública da API, `404 ProblemDetails`, upstream parado convertido em `503 ProblemDetails` e mapeamento explícito de `502`/`504`. | `API-ERROR-01`, ADR-0004 |
 | `OPS-PERSIST-001` | Criar usuário, recriar serviços sem remover volume e autenticar novamente. | `OPS-DOCKER-03` |
 | `OPS-TAGS-001` | Dockerfiles não contêm `latest` nem tags incompletas e usam as versões do design. | `OPS-DOCKER-02` |

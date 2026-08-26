@@ -1,0 +1,116 @@
+import { Component } from '@angular/core';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { TestBed } from '@angular/core/testing';
+import { Router, provideRouter } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
+import { AUTH_TOKEN_STORAGE_KEY } from '../../core/auth/auth.service';
+import { Dashboard } from './dashboard';
+
+@Component({ selector: 'app-login-stub', template: '' })
+class LoginStub {}
+
+@Component({ selector: 'app-profile-stub', template: '' })
+class ProfileStub {}
+
+describe('Dashboard', () => {
+  let harness: RouterTestingHarness;
+  let http: HttpTestingController;
+  let router: Router;
+
+  beforeEach(async () => {
+    sessionStorage.clear();
+    sessionStorage.setItem(
+      AUTH_TOKEN_STORAGE_KEY,
+      createToken(Math.floor(Date.now() / 1000) + 900),
+    );
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([
+          { path: 'dashboard', component: Dashboard },
+          { path: 'login', component: LoginStub },
+          { path: 'profile', component: ProfileStub },
+        ]),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+      ],
+    });
+
+    http = TestBed.inject(HttpTestingController);
+    router = TestBed.inject(Router);
+    harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/dashboard', Dashboard);
+  });
+
+  afterEach(() => {
+    http.verify();
+    sessionStorage.clear();
+  });
+
+  it('shows loading, then welcomes the user by the API name and offers profile navigation', async () => {
+    harness.detectChanges();
+    expect(harness.routeNativeElement?.querySelector('[role="status"]')?.textContent).toContain(
+      'Carregando seu perfil',
+    );
+
+    http.expectOne('/api/profile').flush({
+      id: '00000000-0000-4000-8000-000000000001',
+      name: 'Ana Example',
+      email: 'ana@example.test',
+    });
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+
+    expect(harness.routeNativeElement?.textContent).toContain('Boas-vindas, Ana Example!');
+    const profileLink = harness.routeNativeElement?.querySelector<HTMLAnchorElement>(
+      'a[href="/profile"]',
+    );
+    expect(profileLink).not.toBeNull();
+
+    profileLink?.click();
+    await harness.fixture.whenStable();
+    expect(router.url).toBe('/profile');
+  });
+
+  it('shows a clear error when the profile cannot be loaded', async () => {
+    http.expectOne('/api/profile').flush(
+      { title: 'Service Unavailable', status: 503 },
+      { status: 503, statusText: 'Service Unavailable' },
+    );
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+
+    expect(harness.routeNativeElement?.querySelector('[role="alert"]')?.textContent).toContain(
+      'O serviço está indisponível no momento',
+    );
+  });
+
+  it('removes the token and returns to login on logout', async () => {
+    sessionStorage.setItem('unrelated.test-key', 'preserve-me');
+    http.expectOne('/api/profile').flush({
+      id: '00000000-0000-4000-8000-000000000001',
+      name: 'Ana Example',
+      email: 'ana@example.test',
+    });
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+
+    const logoutButton = Array.from(
+      harness.routeNativeElement?.querySelectorAll<HTMLButtonElement>('button') ?? [],
+    ).find((button) => button.textContent?.includes('Sair'));
+    logoutButton?.click();
+    await harness.fixture.whenStable();
+
+    expect(sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBeNull();
+    expect(sessionStorage.getItem('unrelated.test-key')).toBe('preserve-me');
+    expect(router.url).toBe('/login');
+  });
+});
+
+function createToken(exp: number): string {
+  return `${encodeJwtPart({ alg: 'HS256' })}.${encodeJwtPart({ exp })}.synthetic`;
+}
+
+function encodeJwtPart(value: object): string {
+  return btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}

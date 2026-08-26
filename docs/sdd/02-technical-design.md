@@ -128,8 +128,9 @@ Entidade única `User`:
 | `CreatedAtUtc` | `DateTime` | `TEXT NOT NULL` | Instante UTC definido na criação. |
 | `UpdatedAtUtc` | `DateTime` | `TEXT NOT NULL` | Instante UTC atualizado a cada alteração persistida. |
 
-Não haverá seed obrigatório. ID, hash, email normalizado e timestamps são internos
-e não fazem parte dos DTOs públicos. Os timestamps são uma decisão interna do
+Não haverá seed obrigatório. Hash, email normalizado e timestamps são internos
+e não fazem parte dos DTOs públicos. O ID imutável aparece somente em
+`ProfileResponse`, junto de nome e email. Os timestamps são uma decisão interna do
 design registrada originalmente em `b184432` e formalizada no ADR-0002, não um
 requisito do enunciado; seu ciclo de vida será implementado e testado nas fatias
 M2 e M4 sem ampliar o contrato HTTP.
@@ -167,8 +168,8 @@ O contrato normativo está em [`03-api-contract.yaml`](03-api-contract.yaml). A 
 | Operação | Autenticação | Sucesso | Erros esperados |
 |---|---|---|---|
 | `POST /api/auth/register` | Pública | `201` com mensagem, sem token | `400`, `409`, `413`, `415`, `500`, `503` |
-| `POST /api/auth/login` | Pública | `200` com JWT curto | `400` genérico, `413`, `415`, `500`, `503` |
-| `GET /api/profile` | Bearer | `200` com nome e email | `401`, `404`, `500`, `503` |
+| `POST /api/auth/login` | Pública | `200` com JWT curto | `400` para payload inválido; `401` genérico para credenciais não reconhecidas; `413`, `415`, `500`, `503` |
+| `GET /api/profile` | Bearer | `200` com ID imutável, nome e email | `401`, `404`, `500`, `503` |
 | `PUT /api/profile` | Bearer | `200` com nome e email atualizados | `400`, `401`, `404`, `409`, `413`, `415`, `500`, `503` |
 | `PUT /api/profile/password` | Bearer | `200` com mensagem, sem novo token | `400`, `401`, `404`, `413`, `415`, `500`, `503` |
 | `GET /health` | Pública | `200` | `503`, `500` |
@@ -188,15 +189,15 @@ Não existe endpoint de dashboard: a tela usa `GET /api/profile`. Não existe en
 - A confirmação deve corresponder exatamente à senha correspondente.
 - DTOs de request rejeitam propriedades JSON não mapeadas ou com caixa diferente do nome camelCase normativo com `400`; os schemas OpenAPI usam `additionalProperties: false`.
 - Nenhuma operação de perfil define `userId` em path, query, header ou body. Um `userId` extra no corpo é rejeitado, e valores arbitrários em query/header nunca participam da resolução de identidade.
-- Nenhuma resposta contém `PasswordHash`, senha, `NormalizedEmail` ou ID do usuário.
+- Nenhuma resposta contém `PasswordHash`, senha ou `NormalizedEmail`. Somente `ProfileResponse` expõe o `Id` imutável exigido pela fatia M3; cadastro e login não devolvem ID.
 
 ### Erros
 
 - Erros usam `application/problem+json`.
 - Falhas de campos e regras de formulário usam `ValidationProblemDetails` com `errors` indexado pelo nome do campo.
 - Email duplicado usa `409 ProblemDetails`.
-- Login inválido usa `400 ValidationProblemDetails` com a mensagem genérica `Invalid email or password.` e não cria sessão. O endpoint público não anuncia challenge Bearer porque não aceita Bearer como credencial de login.
-- Toda resposta `401` dos recursos protegidos inclui obrigatoriamente `WWW-Authenticate: Bearer`; Bearer ausente, inválido ou expirado usa `401 ProblemDetails`, e o middleware deve manter cabeçalho e formato.
+- Payload de login ausente ou estruturalmente inválido usa `400 ValidationProblemDetails`. Email inexistente e senha incorreta usam o mesmo `401 ProblemDetails`, com a mensagem genérica `Invalid email or password.`, challenge `WWW-Authenticate: Bearer` e nenhuma sessão.
+- Toda resposta `401` inclui obrigatoriamente `WWW-Authenticate: Bearer`. Nos recursos protegidos, Bearer ausente, inválido ou expirado usa `401 ProblemDetails`, e o middleware deve manter cabeçalho e formato.
 - Senha atual incorreta em sessão válida usa `400 ValidationProblemDetails`, não é confundida com falha do JWT.
 - Exceções não tratadas são convertidas em `500 ProblemDetails` sem detalhes internos.
 - Erros gerados pelo pipeline sob `/api`, como JSON malformado, media type não suportado (`415`), rota inexistente ou método não permitido, também usam `application/problem+json`.
@@ -245,7 +246,7 @@ Essa regra concilia execução sem preparação manual com a proibição de vers
 | `/dashboard` | Guard | Consulta `/api/profile`, mostra boas-vindas com `name` e link para `/profile`. |
 | `/profile` | Guard | Consulta e altera nome/email; oferece formulário separado para senha. |
 
-Cada operação assíncrona expõe estado de carregamento, impede submissão duplicada e apresenta sucesso ou erro. O interceptor reage a `401` global somente quando a requisição levava Bearer; nesse caso limpa a sessão e conduz ao login. O `400` esperado do próprio login permanece disponível para a mensagem genérica da tela.
+Cada operação assíncrona expõe estado de carregamento, impede submissão duplicada e apresenta sucesso ou erro. O interceptor reage a `401` global somente quando a requisição levava Bearer; nesse caso limpa a sessão e conduz ao login. O `401` esperado do próprio login não levava Bearer, portanto permanece disponível para a mensagem genérica da tela e não dispara limpeza/navegação global.
 
 O token fica somente em `sessionStorage`. O estado de autenticação é um signal derivado da presença e do `exp` do token; decodificar o payload no cliente serve apenas à experiência de navegação.
 

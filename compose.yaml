@@ -10,6 +10,10 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_HTTP_PORTS: "8080"
       ConnectionStrings__Default: Data Source=/data/user-profile.db
+      Jwt__Issuer: "${Jwt__Issuer:-UserProfile.Api}"
+      Jwt__Audience: "${Jwt__Audience:-UserProfile.Web}"
+      Jwt__LifetimeMinutes: "${Jwt__LifetimeMinutes:-15}"
+      Jwt__SigningKey: "${Jwt__SigningKey:-}"
     expose:
       - "8080"
     volumes:

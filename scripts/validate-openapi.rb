@@ -43,7 +43,7 @@ expected_operations = {
   ["/api/auth/login", "post"] => {
     "operationId" => "loginUser", "security" => [],
     "requestSchema" => "LoginRequest", "success" => ["200", "LoginResponse"],
-    "responses" => %w[200 400 413 415 500 503]
+    "responses" => %w[200 400 401 413 415 500 503]
   },
   ["/api/profile", "get"] => {
     "operationId" => "getCurrentProfile", "security" => [{ "bearerAuth" => [] }],
@@ -191,6 +191,7 @@ response_expectations = {
     "accessToken" => { "type" => "string", "readOnly" => true }
   },
   "ProfileResponse" => {
+    "id" => { "type" => "string", "format" => "uuid", "readOnly" => true },
     "name" => { "type" => "string", "minLength" => 3, "maxLength" => 200 },
     "email" => { "type" => "string", "format" => "email", "pattern" => '^[\x21-\x3F\x41-\x7E]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$', "maxLength" => 320 }
   },
@@ -211,7 +212,9 @@ response_expectations.each do |schema_name, expected_rules|
   actual_properties = schema.fetch("properties").keys
   assert_contract actual_properties.sort == expected_rules.keys.sort,
                   "Unexpected properties for #{schema_name}"
-  assert_contract (actual_properties & sensitive_response_fields).empty?,
+  allowed_sensitive_fields = schema_name == "ProfileResponse" ? ["id"] : []
+  forbidden_sensitive_fields = sensitive_response_fields - allowed_sensitive_fields
+  assert_contract (actual_properties & forbidden_sensitive_fields).empty?,
                   "Sensitive field exposed by #{schema_name}"
 
   expected_rules.each do |property_name, rules|
@@ -255,8 +258,11 @@ expected_operations.each_key do |path, method|
 end
 
 assert_contract paths.dig("/api/auth/login", "post", "responses", "400", "$ref") ==
-                "#/components/responses/LoginValidationProblem",
-                "Invalid login must use 400 LoginValidationProblem"
+                "#/components/responses/ValidationProblem",
+                "Invalid login payload must use 400 ValidationProblem"
+assert_contract paths.dig("/api/auth/login", "post", "responses", "401", "$ref") ==
+                "#/components/responses/LoginUnauthorizedProblem",
+                "Unrecognized credentials must use 401 LoginUnauthorizedProblem"
 
 references = []
 walk = lambda do |value|

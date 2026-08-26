@@ -13,6 +13,7 @@ A API precisa autenticar por email e senha, proteger dashboard/perfil e identifi
 - Validar issuer, audience, assinatura e expiração, com tolerância de relógio de 30 segundos.
 - Desabilitar `MapInboundClaims`, exigir as quatro claims mínimas e ler diretamente o claim chamado `sub`; claim ausente ou malformada resulta em `401`.
 - Usar exclusivamente o `sub` validado como ID do usuário; contratos de perfil não recebem `userId`.
+- Retornar o mesmo `401 ProblemDetails` genérico para email inexistente e senha incorreta; o interceptor do frontend só limpa uma sessão quando o `401` veio de request que levava Bearer.
 - Armazenar o JWT em `sessionStorage`; não emitir refresh token.
 - Após trocar a senha, remover o token no frontend. Não haverá revogação server-side dos tokens já emitidos.
 - Exigir chave externa válida fora de `Development` e falhar o startup para chave ausente, malformada ou curta. Na demonstração, gerar uma chave aleatória por processo somente quando ela estiver ausente em `Development`, sem persistir ou logar o valor.

@@ -11,12 +11,14 @@ public sealed class RegisterRequestSchemaFilter : ISchemaFilter
 
     public void Apply(IOpenApiSchema schema, SchemaFilterContext context)
     {
-        if (context.Type != typeof(RegisterRequest) || schema is not OpenApiSchema requestSchema)
+        if (schema is not OpenApiSchema requestSchema ||
+            (context.Type != typeof(RegisterRequest) && context.Type != typeof(LoginRequest)))
         {
             return;
         }
 
-        if (FindProperty(requestSchema, "name") is { } name)
+        if (context.Type == typeof(RegisterRequest) &&
+            FindProperty(requestSchema, "name") is { } name)
         {
             MarkTrimmed(name, minimumLength: 3, maximumLength: 200);
         }
@@ -30,7 +32,10 @@ public sealed class RegisterRequestSchemaFilter : ISchemaFilter
         }
 
         MarkPassword(requestSchema, "password");
-        MarkPassword(requestSchema, "passwordConfirmation");
+        if (context.Type == typeof(RegisterRequest))
+        {
+            MarkPassword(requestSchema, "passwordConfirmation");
+        }
     }
 
     private static void MarkTrimmed(

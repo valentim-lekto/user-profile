@@ -6,6 +6,8 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using System.Security.Cryptography;
+using UserProfile.Api.Configuration;
 using UserProfile.Api.Data;
 
 namespace UserProfile.Api.IntegrationTests.Infrastructure;
@@ -17,6 +19,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 
     private readonly int databaseTimeoutSeconds;
     private readonly IInterceptor? dbInterceptor;
+    private readonly byte[] jwtSigningKey = RandomNumberGenerator.GetBytes(
+        JwtOptions.MinimumSigningKeyBytes * 2);
     private readonly string testDirectory = Path.Combine(
         Path.GetTempPath(),
         $"user-profile-api-tests-{Guid.NewGuid():N}");
@@ -36,6 +40,12 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 
     public DateTimeOffset UtcNow => FixedUtcNow;
 
+    public byte[] JwtSigningKey => jwtSigningKey.ToArray();
+
+    public string JwtIssuer => JwtOptions.DefaultIssuer;
+
+    public string JwtAudience => JwtOptions.DefaultAudience;
+
     public static ApiFactory WithDatabaseTimeout(int seconds) => new(seconds, null);
 
     public static ApiFactory WithInterceptor(IInterceptor interceptor) => new(30, interceptor);
@@ -48,7 +58,11 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:Default"] =
-                    $"Data Source={DatabasePath};Default Timeout={databaseTimeoutSeconds};Pooling=False"
+                    $"Data Source={DatabasePath};Default Timeout={databaseTimeoutSeconds};Pooling=False",
+                ["Jwt:SigningKey"] = Convert.ToBase64String(jwtSigningKey),
+                ["Jwt:Issuer"] = JwtIssuer,
+                ["Jwt:Audience"] = JwtAudience,
+                ["Jwt:LifetimeMinutes"] = JwtOptions.RequiredLifetimeMinutes.ToString()
             });
         });
 

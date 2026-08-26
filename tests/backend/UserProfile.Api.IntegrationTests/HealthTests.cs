@@ -170,7 +170,7 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
         using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync());
         var paths = document.RootElement.GetProperty("paths");
         Assert.Equal(
-            ["/api/auth/register", "/health"],
+            ["/api/auth/login", "/api/auth/register", "/api/profile", "/health"],
             paths.EnumerateObject().Select(path => path.Name).Order());
 
         var healthOperation = paths.GetProperty("/health").GetProperty("get");
@@ -189,6 +189,7 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var registerOperation = paths
             .GetProperty("/api/auth/register")
             .GetProperty("post");
+        Assert.False(registerOperation.TryGetProperty("security", out _));
         Assert.Equal("registerUser", registerOperation.GetProperty("operationId").GetString());
         Assert.Equal(
             ["Auth"],
@@ -201,6 +202,31 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
                 .Select(operationResponse => operationResponse.Name)
                 .Order());
 
+        var loginOperation = paths.GetProperty("/api/auth/login").GetProperty("post");
+        Assert.Equal("loginUser", loginOperation.GetProperty("operationId").GetString());
+        Assert.False(loginOperation.TryGetProperty("security", out _));
+        Assert.Equal(
+            ["200", "400", "401", "413", "415", "500", "503"],
+            loginOperation
+                .GetProperty("responses")
+                .EnumerateObject()
+                .Select(operationResponse => operationResponse.Name)
+                .Order());
+        AssertBearerChallengeHeader(loginOperation);
+
+        var profileOperation = paths.GetProperty("/api/profile").GetProperty("get");
+        Assert.Equal("getCurrentProfile", profileOperation.GetProperty("operationId").GetString());
+        Assert.Equal(
+            ["200", "401", "404", "500", "503"],
+            profileOperation
+                .GetProperty("responses")
+                .EnumerateObject()
+                .Select(operationResponse => operationResponse.Name)
+                .Order());
+        var profileSecurity = Assert.Single(profileOperation.GetProperty("security").EnumerateArray());
+        Assert.Empty(profileSecurity.GetProperty("bearerAuth").EnumerateArray());
+        AssertBearerChallengeHeader(profileOperation);
+
         var info = document.RootElement.GetProperty("info");
         Assert.Equal("User Profile API", info.GetProperty("title").GetString());
         Assert.Equal("1.0.0", info.GetProperty("version").GetString());
@@ -208,6 +234,13 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var schemas = document.RootElement
             .GetProperty("components")
             .GetProperty("schemas");
+        var bearerScheme = document.RootElement
+            .GetProperty("components")
+            .GetProperty("securitySchemes")
+            .GetProperty("bearerAuth");
+        Assert.Equal("http", bearerScheme.GetProperty("type").GetString());
+        Assert.Equal("bearer", bearerScheme.GetProperty("scheme").GetString());
+        Assert.Equal("JWT", bearerScheme.GetProperty("bearerFormat").GetString());
         var healthSchema = schemas.GetProperty(nameof(HealthResponse));
         Assert.Contains(
             healthSchema.GetProperty("required").EnumerateArray(),
@@ -269,6 +302,64 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
                 .GetProperty("passwordConfirmation")
                 .GetProperty("writeOnly")
                 .GetBoolean());
+
+        var loginSchema = schemas.GetProperty("LoginRequest");
+        Assert.False(loginSchema.GetProperty("additionalProperties").GetBoolean());
+        Assert.Equal(
+            ["email", "password"],
+            loginSchema
+                .GetProperty("required")
+                .EnumerateArray()
+                .Select(property => property.GetString())
+                .Order());
+        var loginProperties = loginSchema.GetProperty("properties");
+        Assert.Equal(
+            RegisterRequestSchemaFilter.RawEmailPattern,
+            loginProperties.GetProperty("email").GetProperty("pattern").GetString());
+        Assert.Equal(1, loginProperties.GetProperty("password").GetProperty("minLength").GetInt32());
+        Assert.Equal(128, loginProperties.GetProperty("password").GetProperty("maxLength").GetInt32());
+        Assert.True(loginProperties.GetProperty("password").GetProperty("writeOnly").GetBoolean());
+
+        var loginResponseSchema = schemas.GetProperty("LoginResponse");
+        Assert.Equal(
+            ["accessToken"],
+            loginResponseSchema
+                .GetProperty("required")
+                .EnumerateArray()
+                .Select(property => property.GetString()));
+        Assert.Equal(
+            ["accessToken"],
+            loginResponseSchema
+                .GetProperty("properties")
+                .EnumerateObject()
+                .Select(property => property.Name));
+
+        var profileSchema = schemas.GetProperty("ProfileResponse");
+        Assert.Equal(
+            ["email", "id", "name"],
+            profileSchema
+                .GetProperty("required")
+                .EnumerateArray()
+                .Select(property => property.GetString())
+                .Order());
+        var profileProperties = profileSchema.GetProperty("properties");
+        Assert.Equal(
+            ["email", "id", "name"],
+            profileProperties.EnumerateObject().Select(property => property.Name).Order());
+        Assert.Equal("uuid", profileProperties.GetProperty("id").GetProperty("format").GetString());
+    }
+
+    private static void AssertBearerChallengeHeader(JsonElement operation)
+    {
+        var header = operation
+            .GetProperty("responses")
+            .GetProperty("401")
+            .GetProperty("headers")
+            .GetProperty("WWW-Authenticate");
+        Assert.True(header.GetProperty("required").GetBoolean());
+        var schema = header.GetProperty("schema");
+        Assert.Equal("string", schema.GetProperty("type").GetString());
+        Assert.Equal("^Bearer(?: .*)?$", schema.GetProperty("pattern").GetString());
     }
 
     [Fact]

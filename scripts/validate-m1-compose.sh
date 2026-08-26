@@ -8,7 +8,7 @@ cd "$repository_root"
 
 review_tmp=$(mktemp -d)
 stack_started=0
-COMPOSE_PROJECT_NAME="user-profile-m2-smoke-$$"
+COMPOSE_PROJECT_NAME="user-profile-m3-smoke-$$"
 export COMPOSE_PROJECT_NAME
 
 cleanup() {
@@ -19,6 +19,7 @@ cleanup() {
   rm -f -- \
     "$review_tmp/body" \
     "$review_tmp/headers" \
+    "$review_tmp/invalid-login-body" \
     "$review_tmp/logs" \
     "$review_tmp/nginx" \
     "$review_tmp/oversized" \
@@ -27,7 +28,7 @@ cleanup() {
 }
 
 fail() {
-  printf 'M1+M2 Compose validation failed: %s\n' "$1" >&2
+  printf 'M1+M2+M3 Compose validation failed: %s\n' "$1" >&2
   exit 1
 }
 
@@ -153,15 +154,18 @@ request '/swagger/index.html' '200' 'text/html'
 request '/swagger/v1/swagger.json' '200' 'application/json'
 grep -Fq '"/health"' "$review_tmp/body" || fail 'runtime OpenAPI omits /health'
 grep -Fq '"/api/auth/register"' "$review_tmp/body" || fail 'runtime OpenAPI omits registration'
+grep -Fq '"/api/auth/login"' "$review_tmp/body" || fail 'runtime OpenAPI omits login'
+grep -Fq '"/api/profile"' "$review_tmp/body" || fail 'runtime OpenAPI omits profile'
+grep -Fq '"bearerAuth"' "$review_tmp/body" || fail 'runtime OpenAPI omits Bearer authentication'
 
 request '/api/not-implemented' '404' 'application/problem+json'
 grep -Fq '"status":404' "$review_tmp/body" || fail '404 body is not ProblemDetails'
 
 smoke_suffix="$(date +%s)-$$"
-smoke_email="m2-smoke-$smoke_suffix@example.test"
-smoke_password="M2-smoke-$smoke_suffix-Aa1!"
+smoke_email="m3-smoke-$smoke_suffix@example.test"
+smoke_password="M3-smoke-$smoke_suffix-Aa1!"
 registration_payload=$(printf \
-  '{"name":"M2 Smoke","email":"%s","password":"%s","passwordConfirmation":"%s"}' \
+  '{"name":"M3 Smoke","email":"%s","password":"%s","passwordConfirmation":"%s"}' \
   "$smoke_email" "$smoke_password" "$smoke_password")
 
 printf '%s' "$registration_payload" >"$review_tmp/request"
@@ -176,10 +180,66 @@ grep -Fq '"status":400' "$review_tmp/body" || fail 'invalid registration is not 
 
 uppercase_email=$(printf '%s' "$smoke_email" | tr '[:lower:]' '[:upper:]')
 duplicate_payload=$(printf \
-  '{"name":"M2 Duplicate","email":"  %s  ","password":"%s","passwordConfirmation":"%s"}' \
+  '{"name":"M3 Duplicate","email":"  %s  ","password":"%s","passwordConfirmation":"%s"}' \
   "$uppercase_email" "$smoke_password" "$smoke_password")
 post_json '/api/auth/register' '409' "$duplicate_payload"
 grep -Fq '"status":409' "$review_tmp/body" || fail 'duplicate registration is not ProblemDetails'
+
+login_payload=$(printf \
+  '{"email":"  %s  ","password":"%s"}' \
+  "$uppercase_email" "$smoke_password")
+printf '%s' "$login_payload" >"$review_tmp/request"
+request '/api/auth/login' '200' 'application/json' \
+  --request POST \
+  --header 'Content-Type: application/json' \
+  --data-binary "@$review_tmp/request"
+access_token=$(sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p' "$review_tmp/body")
+[ -n "$access_token" ] || fail 'valid login did not return an access token'
+
+missing_email_payload=$(printf \
+  '{"email":"missing-%s@example.test","password":"%s"}' \
+  "$smoke_suffix" "$smoke_password")
+printf '%s' "$missing_email_payload" >"$review_tmp/request"
+request '/api/auth/login' '401' 'application/problem+json' \
+  --request POST \
+  --header 'Content-Type: application/json' \
+  --data-binary "@$review_tmp/request"
+cp "$review_tmp/body" "$review_tmp/invalid-login-body"
+grep -Eiq '^WWW-Authenticate:[[:space:]]*Bearer' "$review_tmp/headers" ||
+  fail 'invalid login omits the Bearer challenge'
+
+wrong_password_payload=$(printf \
+  '{"email":"%s","password":"wrong-%s"}' \
+  "$smoke_email" "$smoke_suffix")
+printf '%s' "$wrong_password_payload" >"$review_tmp/request"
+request '/api/auth/login' '401' 'application/problem+json' \
+  --request POST \
+  --header 'Content-Type: application/json' \
+  --data-binary "@$review_tmp/request"
+cmp -s "$review_tmp/body" "$review_tmp/invalid-login-body" ||
+  fail 'unknown email and wrong password return different bodies'
+grep -Eiq '^WWW-Authenticate:[[:space:]]*Bearer' "$review_tmp/headers" ||
+  fail 'wrong-password login omits the Bearer challenge'
+
+request '/api/profile' '401' 'application/problem+json'
+grep -Eiq '^WWW-Authenticate:[[:space:]]*Bearer' "$review_tmp/headers" ||
+  fail 'unauthenticated profile omits the Bearer challenge'
+
+request '/api/profile' '401' 'application/problem+json' \
+  --header 'Authorization: Bearer synthetically-invalid-token'
+grep -Eiq '^WWW-Authenticate:[[:space:]]*Bearer' "$review_tmp/headers" ||
+  fail 'invalid-token profile omits the Bearer challenge'
+
+request '/api/profile?userId=00000000-0000-0000-0000-000000000000' '200' 'application/json' \
+  --header "Authorization: Bearer $access_token" \
+  --header 'X-User-Id: 00000000-0000-0000-0000-000000000000'
+grep -Fq "\"email\":\"$smoke_email\"" "$review_tmp/body" ||
+  fail 'profile was not resolved from the authenticated subject'
+grep -Fq '"id"' "$review_tmp/body" || fail 'profile response omits id'
+grep -Fq '"name":"M3 Smoke"' "$review_tmp/body" || fail 'profile response omits name'
+if grep -Eiq 'password|normalizedEmail|createdAt|updatedAt' "$review_tmp/body"; then
+  fail 'profile response exposes an internal field'
+fi
 
 printf '%s' 'not-json' >"$review_tmp/request"
 request '/api/auth/register' '415' 'application/problem+json' \
@@ -188,11 +248,11 @@ request '/api/auth/register' '415' 'application/problem+json' \
   --data-binary "@$review_tmp/request"
 grep -Fq '"status":415' "$review_tmp/body" || fail 'unsupported media type is not ProblemDetails'
 
-query_marker="M2_QUERY_MARKER_$smoke_suffix"
-body_marker="M2_BODY_MARKER_$smoke_suffix"
-header_marker="M2_HEADER_MARKER_$smoke_suffix"
+query_marker="M3_QUERY_MARKER_$smoke_suffix"
+body_marker="M3_BODY_MARKER_$smoke_suffix"
+header_marker="M3_HEADER_MARKER_$smoke_suffix"
 marker_payload=$(printf \
-  '{"name":"M2 Marker","email":"marker-%s@example.test","password":"%s","passwordConfirmation":"different"}' \
+  '{"name":"M3 Marker","email":"marker-%s@example.test","password":"%s","passwordConfirmation":"different"}' \
   "$smoke_suffix" "$body_marker")
 printf '%s' "$marker_payload" >"$review_tmp/request"
 request "/api/auth/register?password=$query_marker" '400' 'application/problem+json' \
@@ -205,8 +265,9 @@ sleep 1
 docker compose logs --no-color >"$review_tmp/logs"
 if grep -Fq -- "$query_marker" "$review_tmp/logs" ||
   grep -Fq -- "$body_marker" "$review_tmp/logs" ||
-  grep -Fq -- "$header_marker" "$review_tmp/logs"; then
-  fail 'a synthetic query, body or header marker was exposed in container logs'
+  grep -Fq -- "$header_marker" "$review_tmp/logs" ||
+  grep -Fq -- "$access_token" "$review_tmp/logs"; then
+  fail 'a synthetic query, body, header or JWT marker was exposed in container logs'
 fi
 
 dd if=/dev/zero of="$review_tmp/oversized" bs=1048577 count=1 2>/dev/null
@@ -228,9 +289,30 @@ post_json '/api/auth/register' '409' "$duplicate_payload"
 grep -Fq '"status":409' "$review_tmp/body" ||
   fail 'registration did not persist after recreating the API'
 
+request '/api/profile' '401' 'application/problem+json' \
+  --header "Authorization: Bearer $access_token"
+grep -Eiq '^WWW-Authenticate:[[:space:]]*Bearer' "$review_tmp/headers" ||
+  fail 'old process-token rejection omitted the Bearer challenge'
+
+printf '%s' "$login_payload" >"$review_tmp/request"
+request '/api/auth/login' '200' 'application/json' \
+  --request POST \
+  --header 'Content-Type: application/json' \
+  --data-binary "@$review_tmp/request"
+recreated_access_token=$(sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p' "$review_tmp/body")
+[ -n "$recreated_access_token" ] ||
+  fail 'persisted credentials could not create a new session after recreating the API'
+[ "$recreated_access_token" != "$access_token" ] ||
+  fail 'recreating the API did not rotate the process-local Development token'
+
+request '/api/profile' '200' 'application/json' \
+  --header "Authorization: Bearer $recreated_access_token"
+grep -Fq "\"email\":\"$smoke_email\"" "$review_tmp/body" ||
+  fail 'the persisted profile could not be read after recreating the API'
+
 docker compose stop api >/dev/null
 request '/health' '503' 'application/problem+json'
 grep -Fq '"status":503' "$review_tmp/body" || fail 'upstream failure body is not ProblemDetails'
 
 printf '%s\n' \
-  'M1+M2 Compose OK: same origin, registration, validation, conflicts, persistence, 413/415, safe logs and upstream 503 verified'
+  'M1+M2+M3 Compose OK: same origin, registration, login, protected profile, auth failures, persistence, 413/415, safe logs and upstream 503 verified'

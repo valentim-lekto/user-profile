@@ -20,14 +20,14 @@ Este diretório reúne os artefatos versionados do processo Spec-Driven Developm
 | Artefato | Finalidade | Estado |
 |---|---|---|
 | [`00-challenge.md`](00-challenge.md) | Preservar o enunciado, com requisitos originais e decisões aprovadas claramente separados. | Concluído nesta etapa. |
-| [`01-requirements.md`](01-requirements.md) | Definir escopo, atores, casos de uso, requisitos, critérios, premissas, exclusões e Definition of Done. | Atualizado na revisão de M2 com 18 premissas, incluindo os refinamentos internos de `PREM-INPUT-01`. |
-| [`02-technical-design.md`](02-technical-design.md) | Definir arquitetura, modelo de dados, segurança, frontend, operação e versões fixadas. | M1 e cadastro M2 implementados/validados após revisão; fatias M3–M6 pendentes. |
-| [`03-api-contract.yaml`](03-api-contract.yaml) | Definir requests, responses, schemas, autenticação e erros da API. | Semântica pós-`Trim`, email ASCII e `413/415` aprovados no contrato e no runtime M2. |
-| [`04-test-strategy.md`](04-test-strategy.md) | Definir integração, frontend, E2E, Docker e gates. | Gates M1+M2 aprovados, incluindo bordas observáveis, logs e smoke acumulado. |
-| [`05-execution-plan.md`](05-execution-plan.md) | Organizar a implementação incremental em M1–M6. | M1 e M2 concluídos; M3–M6 pendentes. |
-| [`06-traceability.md`](06-traceability.md) | Relacionar requisito, critério, design, milestone, teste e estado. | Evidências M1+M2 pós-revisão registradas; atualização contínua. |
+| [`01-requirements.md`](01-requirements.md) | Definir escopo, atores, casos de uso, requisitos, critérios, premissas, exclusões e Definition of Done. | Contrato M3 implementado: login `401` genérico e leitura de perfil com ID imutável pelo `sub`. |
+| [`02-technical-design.md`](02-technical-design.md) | Definir arquitetura, modelo de dados, segurança, frontend, operação e versões fixadas. | M1–M3 validados; JWT/configuração, sessão e same-origin observados. |
+| [`03-api-contract.yaml`](03-api-contract.yaml) | Definir requests, responses, schemas, autenticação e erros da API. | Contrato normativo M3 validado para seis operações e 53 referências locais. |
+| [`04-test-strategy.md`](04-test-strategy.md) | Definir integração, frontend, E2E, Docker e gates. | Gates M1–M3 aprovados; E2E completo e CI continuam em M5. |
+| [`05-execution-plan.md`](05-execution-plan.md) | Organizar a implementação incremental em M1–M6. | M1, M2 e M3 concluídos; M4–M6 pendentes. |
+| [`06-traceability.md`](06-traceability.md) | Relacionar requisito, critério, design, milestone, teste e estado. | Evidências M1–M3 registradas: 69 integrações backend, 42 testes frontend, Compose e UI real. |
 | [`review-log.md`](review-log.md) | Registrar revisão independente, achados, decisões, comandos e riscos. | Revisões independentes de design, M1 e M2 registradas. |
-| [`ai-usage.md`](ai-usage.md) | Definir e registrar de forma resumida o uso responsável de IA. | Uso de IA e revisões até M2 resumidos. |
+| [`ai-usage.md`](ai-usage.md) | Definir e registrar de forma resumida o uso responsável de IA. | Uso de IA, auditorias e validação até M3 resumidos. |
 
 ## Governança
 
@@ -49,8 +49,8 @@ Novas decisões relevantes devem criar ou substituir ADR; registrar apenas uma p
 
 | Item | Estado |
 |---|---|
-| Código, dependências, Dockerfiles e Compose | Walking skeleton M1 e cadastro vertical M2 concluídos/revisados; funcionalidades M3–M6 pendentes. |
-| Testes automatizados e evidências observadas | 36 integrações backend, 13 testes frontend, contrato/runtime e smoke acumulado M1+M2 aprovados, incluindo `413/415`, persistência e logs; M3–M6 pendentes. |
+| Código, dependências, Dockerfiles e Compose | Walking skeleton M1, cadastro M2 e login/autorização/dashboard M3 concluídos; M4–M6 pendentes. |
+| Testes automatizados e evidências observadas | 69 integrações backend e 42 testes frontend aprovados, além de OpenAPI, smoke Compose e UI real; E2E completo e CI permanecem pendentes. |
 | README de execução e validação na raiz | Planejado para M6. |
 | Atualização de estados da matriz e do plano | Obrigatória em cada milestone. |
 | ADRs adicionais | Criar somente se surgir nova decisão relevante. |

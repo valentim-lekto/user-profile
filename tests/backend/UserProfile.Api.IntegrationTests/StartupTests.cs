@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
+using System.Security.Cryptography;
+using UserProfile.Api.Configuration;
 
 namespace UserProfile.Api.IntegrationTests;
 
@@ -59,7 +61,9 @@ public sealed class StartupTests
                 configuration.AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["ConnectionStrings:Default"] =
-                        $"Data Source={databasePath};Default Timeout=1;Pooling=False"
+                        $"Data Source={databasePath};Default Timeout=1;Pooling=False",
+                    ["Jwt:SigningKey"] = Convert.ToBase64String(
+                        RandomNumberGenerator.GetBytes(JwtOptions.MinimumSigningKeyBytes))
                 });
             });
         }

@@ -50,12 +50,12 @@ A solução deve fornecer:
 | `FR-REG-04` | O sistema deve informar sucesso ou erro após o cadastro. No sucesso, deve redirecionar ao login sem autenticar automaticamente. |
 | `FR-LOGIN-01` | O login deve solicitar email e senha. |
 | `FR-LOGIN-02` | Credenciais válidas devem criar uma sessão JWT e redirecionar ao dashboard. |
-| `FR-LOGIN-03` | Credenciais inválidas devem produzir mensagem de erro e não criar sessão autenticada. |
+| `FR-LOGIN-03` | Email inexistente e senha incorreta devem produzir a mesma resposta genérica `401`, sem indicar qual credencial falhou e sem criar sessão autenticada. Payload de login estruturalmente inválido continua sendo validação `400`. |
 | `FR-AUTH-01` | Dashboard e operações de perfil devem estar disponíveis somente para usuário autenticado. |
 | `FR-AUTH-02` | Endpoints de perfil devem identificar o usuário exclusivamente pelo claim `sub` do JWT, sem receber `userId` do frontend. |
 | `FR-DASH-01` | O dashboard deve buscar o perfil atual na API e exibir uma mensagem de boas-vindas com o nome do usuário. |
 | `FR-DASH-02` | O dashboard deve oferecer navegação para edição dos dados cadastrais. |
-| `FR-PROF-01` | O usuário deve poder consultar o próprio nome e email e acessar a operação de alteração de senha; a senha atual não é um dado consultável. |
+| `FR-PROF-01` | O usuário deve poder consultar o próprio identificador imutável, nome e email e acessar a operação de alteração de senha; a senha atual não é um dado consultável. |
 | `FR-PROF-02` | O usuário deve poder atualizar nome e email, aplicando as validações equivalentes às do cadastro. |
 | `FR-PROF-03` | A atualização de nome/email deve informar sucesso ou erro. |
 | `FR-PASS-01` | A alteração de senha deve solicitar senha atual, nova senha e confirmação da nova senha. |
@@ -103,7 +103,7 @@ IDs publicados não devem ser renumerados nem reutilizados para outro comportame
 | ID | Critério |
 |---|---|
 | `AC-LOGIN-01` | Credenciais válidas autenticam o usuário, armazenam um JWT curto em `sessionStorage` e redirecionam ao dashboard. |
-| `AC-LOGIN-02` | Credenciais inválidas exibem mensagem de erro e não criam uma sessão autenticada. |
+| `AC-LOGIN-02` | Email inexistente e senha incorreta retornam o mesmo `401 ProblemDetails` genérico, exibem a mesma mensagem de erro e não criam uma sessão autenticada. |
 | `AC-LOGIN-03` | Enquanto a autenticação estiver em andamento, o frontend apresenta estado de carregamento. |
 
 ### Dashboard e autorização
@@ -119,7 +119,7 @@ IDs publicados não devem ser renumerados nem reutilizados para outro comportame
 
 | ID | Critério |
 |---|---|
-| `AC-PROF-01` | O usuário autenticado consulta o próprio nome e email, sem enviar `userId`, e acessa uma operação separada para alterar a senha. |
+| `AC-PROF-01` | O usuário autenticado consulta o próprio `id`, nome e email, sem enviar `userId`, e acessa uma operação separada para alterar a senha. |
 | `AC-PROF-02` | Nome e email são alterados em operação distinta da alteração de senha. |
 | `AC-PROF-03` | Nome/email inválidos são rejeitados segundo as mesmas regras do cadastro. |
 | `AC-PROF-04` | Alterar o email para o email normalizado de outra conta é rejeitado; manter o próprio email não produz conflito. |
@@ -134,7 +134,7 @@ IDs publicados não devem ser renumerados nem reutilizados para outro comportame
 | ID | Critério |
 |---|---|
 | `UI-STATE-01` | Cadastro, login, consulta e edições apresentam estado de carregamento e resultado de sucesso ou erro conforme aplicável. |
-| `API-ERROR-01` | Respostas HTTP de erro produzidas pela API seguem `ProblemDetails`; falhas de validação seguem `ValidationProblemDetails`. Quando o proxy de mesma origem não alcança a API, ele converte a falha de transporte em `503 ProblemDetails`, sem devolver HTML ao frontend. |
+| `API-ERROR-01` | Respostas HTTP de erro produzidas pela API seguem `ProblemDetails`; falhas de validação seguem `ValidationProblemDetails`. Login com credenciais não reconhecidas usa `401 ProblemDetails` genérico; recursos protegidos usam `401 ProblemDetails` com challenge Bearer. Quando o proxy de mesma origem não alcança a API, ele converte a falha de transporte em `503 ProblemDetails`, sem devolver HTML ao frontend. |
 | `SEC-AUTH-01` | Endpoints de perfil identificam o usuário exclusivamente pelo claim `sub` do JWT e não aceitam `userId` do cliente. |
 | `SEC-SESSION-01` | O JWT de curta duração fica em `sessionStorage` e não há refresh token. |
 | `SEC-SECRET-01` | O repositório não contém credenciais reais, segredos, senhas ou tokens; valores sensíveis são fornecidos por configuração externa. |
@@ -174,7 +174,7 @@ M2, para que não sejam apresentados como requisitos originais do desafio.
 | `PREM-REG-01` | Cadastro bem-sucedido redireciona ao login com mensagem de sucesso e não autentica automaticamente. |
 | `PREM-PASS-01` | Alterar senha exige senha atual, nova senha e confirmação; no sucesso, o frontend encerra a sessão. |
 | `PREM-PROF-01` | Atualização de nome/email e alteração de senha serão operações separadas. |
-| `PREM-AUTH-01` | O usuário autenticado será identificado pelo ID no claim `sub`; endpoints de perfil não receberão `userId`. |
+| `PREM-AUTH-01` | O usuário autenticado será identificado pelo ID no claim `sub`; endpoints de perfil não receberão `userId`. `ProfileResponse` pode devolver esse ID imutável junto de nome e email. |
 | `PREM-AUTH-02` | O dashboard buscará o perfil atual na API. |
 | `PREM-AUTH-03` | Será usado JWT de curta duração em `sessionStorage`, sem refresh token. |
 | `PREM-ERR-01` | Erros HTTP usarão `ProblemDetails`/`ValidationProblemDetails`. |
@@ -190,9 +190,12 @@ M2, para que não sejam apresentados como requisitos originais do desafio.
 - refresh tokens;
 - deploy em produção.
 
-## Pontos a detalhar no design
+## Pontos detalhados pelo design aprovado
 
-Estes pontos permanecem deliberadamente sem decisão nesta etapa para evitar escopo inventado:
+Estes pontos ficaram deliberadamente sem decisão na etapa inicial de requisitos,
+para evitar escopo inventado. O design aprovado em
+[`02-technical-design.md`](02-technical-design.md) e os ADRs já os resolveu; a
+lista é preservada como handoff histórico:
 
 - duração exata e regras de expiração do JWT;
 - rotas, métodos, status HTTP, códigos e textos dos erros;
@@ -202,7 +205,9 @@ Estes pontos permanecem deliberadamente sem decisão nesta etapa para evitar esc
 - significado preciso de “projeto de integração”;
 - portas e URLs da solução.
 
-Com SQLite, a persistência exigida pelo Compose será materializada por arquivo em volume Docker; não é necessário um contêiner de banco separado. Esse refinamento deverá ser detalhado no design técnico.
+Com SQLite, a persistência exigida pelo Compose foi materializada por arquivo em
+volume Docker; não é necessário um contêiner de banco separado. O refinamento
+está detalhado no design técnico e no ADR-0002.
 
 ## Definition of Done geral
 

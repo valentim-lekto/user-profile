@@ -85,8 +85,9 @@ paths:
       summary: Autentica um usuário
       description: >-
         Busca o email pela mesma normalização usada na unicidade e verifica a
-        senha com PasswordHasher. Credenciais inválidas sempre recebem a mesma
-        mensagem, independentemente de qual campo não correspondeu.
+        senha com PasswordHasher. Email inexistente e senha incorreta sempre
+        recebem o mesmo 401 genérico, independentemente de qual credencial não
+        correspondeu. Payload estruturalmente inválido continua usando 400.
       security: []
       x-functional-requirements:
         - FR-LOGIN-01
@@ -120,7 +121,9 @@ paths:
                   value:
                     accessToken: <JWT-issued-at-runtime>
         '400':
-          $ref: '#/components/responses/LoginValidationProblem'
+          $ref: '#/components/responses/ValidationProblem'
+        '401':
+          $ref: '#/components/responses/LoginUnauthorizedProblem'
         '413':
           $ref: '#/components/responses/PayloadTooLargeProblem'
         '415':
@@ -153,7 +156,7 @@ paths:
         - SEC-AUTH-01
       responses:
         '200':
-          description: Nome e email do usuário autenticado.
+          description: ID imutável, nome e email do usuário autenticado.
           content:
             application/json:
               schema:
@@ -161,6 +164,7 @@ paths:
               examples:
                 profile:
                   value:
+                    id: 00000000-0000-4000-8000-000000000001
                     name: Ana Example
                     email: ana@example.test
         '401':
@@ -213,6 +217,7 @@ paths:
               examples:
                 updated:
                   value:
+                    id: 00000000-0000-4000-8000-000000000001
                     name: Ana Updated
                     email: ana.updated@example.test
         '400':
@@ -416,9 +421,16 @@ components:
       type: object
       additionalProperties: false
       required:
+        - id
         - name
         - email
       properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          description: Identificador imutável do usuário autenticado.
+          example: 00000000-0000-4000-8000-000000000001
         name:
           type: string
           minLength: 3
@@ -565,21 +577,26 @@ components:
                 errors:
                   field:
                     - The supplied value is invalid.
-    LoginValidationProblem:
-      description: Payload de login inválido ou credenciais não reconhecidas; nenhuma sessão é criada.
+    LoginUnauthorizedProblem:
+      description: Email inexistente ou senha incorreta; nenhuma sessão é criada.
+      headers:
+        WWW-Authenticate:
+          required: true
+          description: Challenge Bearer genérico, sem indicar qual credencial falhou.
+          schema:
+            type: string
+            pattern: '^Bearer(?: .*)?$'
+          example: Bearer
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/ValidationProblemDetails'
+            $ref: '#/components/schemas/ProblemDetails'
           examples:
             invalidCredentials:
               value:
-                title: Bad Request
-                status: 400
+                title: Unauthorized
+                status: 401
                 detail: Invalid email or password.
-                errors:
-                  credentials:
-                    - Invalid email or password.
     EmailConflictProblem:
       description: O email normalizado já pertence a outro usuário.
       content:
