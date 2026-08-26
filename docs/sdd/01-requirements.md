@@ -45,7 +45,7 @@ A solução deve fornecer:
 | ID | Requisito |
 |---|---|
 | `FR-REG-01` | O cadastro deve solicitar Nome, Email, Senha e Confirmação de Senha. |
-| `FR-REG-02` | Nome deve ser obrigatório e ter ao menos 3 caracteres; email deve ser obrigatório e válido; senha deve ser obrigatória e ter ao menos 6 caracteres; a confirmação deve coincidir com a senha. |
+| `FR-REG-02` | Após remover espaços externos, nome deve ser obrigatório e ter entre 3 e 200 caracteres; email deve ser obrigatório, ter no máximo 320 caracteres e seguir a política comum documentada (uma única `@`, conteúdo sem espaços nos dois lados e domínio com ponto). Senha deve ser obrigatória e ter entre 6 e 128 caracteres; a confirmação deve ser obrigatória, respeitar o mesmo limite e coincidir exatamente com a senha. |
 | `FR-REG-03` | O sistema deve impedir mais de uma conta com o mesmo email conforme a regra de unicidade de `PREM-EMAIL-01`. |
 | `FR-REG-04` | O sistema deve informar sucesso ou erro após o cadastro. No sucesso, deve redirecionar ao login sem autenticar automaticamente. |
 | `FR-LOGIN-01` | O login deve solicitar email e senha. |
@@ -92,9 +92,9 @@ IDs publicados não devem ser renumerados nem reutilizados para outro comportame
 | ID | Critério |
 |---|---|
 | `AC-REG-01` | Dados válidos criam uma conta, exibem confirmação, redirecionam ao login e não criam sessão autenticada. |
-| `AC-REG-02` | Nome ausente ou com menos de 3 caracteres impede a criação do usuário e exibe o erro correspondente. |
-| `AC-REG-03` | Email ausente ou inválido impede a criação do usuário e exibe o erro correspondente. |
-| `AC-REG-04` | Senha ausente ou com menos de 6 caracteres, ou confirmação divergente, impede a criação do usuário e exibe o erro correspondente. |
+| `AC-REG-02` | Nome ausente ou, após remoção de espaços externos, fora do intervalo de 3 a 200 caracteres impede a criação do usuário e exibe o erro correspondente. |
+| `AC-REG-03` | Email ausente, fora da política comum ou maior que 320 caracteres após remoção de espaços externos impede a criação do usuário e exibe o erro correspondente nas duas camadas. |
+| `AC-REG-04` | Senha ausente ou fora do intervalo de 6 a 128 caracteres, confirmação ausente/maior que 128 caracteres ou confirmação divergente impede a criação do usuário e exibe o erro correspondente. |
 | `AC-REG-05` | Um email que, após remoção de espaços externos e comparação sem diferença de caixa, pertença a outra conta é rejeitado e nenhum segundo usuário é criado. |
 | `AC-REG-06` | Uma falha de cadastro é apresentada como estado de erro, sem redirecionamento ao dashboard. |
 

@@ -5,6 +5,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using UserProfile.Api.Data;
+using UserProfile.Api.Features.Auth;
 using UserProfile.Api.Features.Operations;
 using UserProfile.Api.IntegrationTests.Infrastructure;
 
@@ -159,7 +160,7 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
-    public async Task SwaggerContainsOnlyTheImplementedHealthOperationAndRequiredSchema()
+    public async Task SwaggerContainsOnlyTheImplementedOperationsAndRequiredSchemas()
     {
         using var client = factory.CreateClient();
 
@@ -168,26 +169,46 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
 
         using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync());
         var paths = document.RootElement.GetProperty("paths");
-        var path = Assert.Single(paths.EnumerateObject());
+        Assert.Equal(
+            ["/api/auth/register", "/health"],
+            paths.EnumerateObject().Select(path => path.Name).Order());
 
-        Assert.Equal("/health", path.Name);
-        var operation = path.Value.GetProperty("get");
-        Assert.Equal("getHealth", operation.GetProperty("operationId").GetString());
+        var healthOperation = paths.GetProperty("/health").GetProperty("get");
+        Assert.Equal("getHealth", healthOperation.GetProperty("operationId").GetString());
         Assert.Equal(
             ["Operations"],
-            operation.GetProperty("tags").EnumerateArray().Select(tag => tag.GetString()));
+            healthOperation.GetProperty("tags").EnumerateArray().Select(tag => tag.GetString()));
         Assert.Equal(
             ["200", "500", "503"],
-            operation.GetProperty("responses").EnumerateObject().Select(response => response.Name).Order());
+            healthOperation
+                .GetProperty("responses")
+                .EnumerateObject()
+                .Select(operationResponse => operationResponse.Name)
+                .Order());
+
+        var registerOperation = paths
+            .GetProperty("/api/auth/register")
+            .GetProperty("post");
+        Assert.Equal("registerUser", registerOperation.GetProperty("operationId").GetString());
+        Assert.Equal(
+            ["Auth"],
+            registerOperation.GetProperty("tags").EnumerateArray().Select(tag => tag.GetString()));
+        Assert.Equal(
+            ["201", "400", "409", "500", "503"],
+            registerOperation
+                .GetProperty("responses")
+                .EnumerateObject()
+                .Select(operationResponse => operationResponse.Name)
+                .Order());
 
         var info = document.RootElement.GetProperty("info");
         Assert.Equal("User Profile API", info.GetProperty("title").GetString());
         Assert.Equal("1.0.0", info.GetProperty("version").GetString());
 
-        var healthSchema = document.RootElement
+        var schemas = document.RootElement
             .GetProperty("components")
-            .GetProperty("schemas")
-            .GetProperty(nameof(HealthResponse));
+            .GetProperty("schemas");
+        var healthSchema = schemas.GetProperty(nameof(HealthResponse));
         Assert.Contains(
             healthSchema.GetProperty("required").EnumerateArray(),
             property => property.GetString() == "status");
@@ -196,6 +217,44 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal(
             ["Healthy"],
             statusSchema.GetProperty("enum").EnumerateArray().Select(value => value.GetString()));
+
+        var registerSchema = schemas.GetProperty("RegisterRequest");
+        Assert.False(registerSchema.GetProperty("additionalProperties").GetBoolean());
+        Assert.Equal(
+            ["email", "name", "password", "passwordConfirmation"],
+            registerSchema
+                .GetProperty("required")
+                .EnumerateArray()
+                .Select(property => property.GetString())
+                .Order());
+        var registerProperties = registerSchema.GetProperty("properties");
+        Assert.Equal(3, registerProperties.GetProperty("name").GetProperty("minLength").GetInt32());
+        Assert.Equal(200, registerProperties.GetProperty("name").GetProperty("maxLength").GetInt32());
+        Assert.Equal("email", registerProperties.GetProperty("email").GetProperty("format").GetString());
+        Assert.Equal(320, registerProperties.GetProperty("email").GetProperty("maxLength").GetInt32());
+        Assert.Equal(
+            RegisterRequest.EmailPattern,
+            registerProperties.GetProperty("email").GetProperty("pattern").GetString());
+        Assert.Equal(6, registerProperties.GetProperty("password").GetProperty("minLength").GetInt32());
+        Assert.Equal(128, registerProperties.GetProperty("password").GetProperty("maxLength").GetInt32());
+        Assert.Equal(
+            "password",
+            registerProperties.GetProperty("password").GetProperty("format").GetString());
+        Assert.True(registerProperties.GetProperty("password").GetProperty("writeOnly").GetBoolean());
+        Assert.Equal(
+            6,
+            registerProperties.GetProperty("passwordConfirmation").GetProperty("minLength").GetInt32());
+        Assert.Equal(
+            128,
+            registerProperties.GetProperty("passwordConfirmation").GetProperty("maxLength").GetInt32());
+        Assert.Equal(
+            "password",
+            registerProperties.GetProperty("passwordConfirmation").GetProperty("format").GetString());
+        Assert.True(
+            registerProperties
+                .GetProperty("passwordConfirmation")
+                .GetProperty("writeOnly")
+                .GetBoolean());
     }
 
     [Fact]

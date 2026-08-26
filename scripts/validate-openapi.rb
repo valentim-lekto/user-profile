@@ -117,32 +117,32 @@ request_expectations = {
   "RegisterRequest" => {
     "required" => %w[name email password passwordConfirmation],
     "rules" => {
-      "name" => { "type" => "string", "minLength" => 3 },
-      "email" => { "type" => "string", "format" => "email", "minLength" => 1 },
-      "password" => { "type" => "string", "format" => "password", "minLength" => 6, "writeOnly" => true },
-      "passwordConfirmation" => { "type" => "string", "format" => "password", "minLength" => 6, "writeOnly" => true }
+      "name" => { "type" => "string", "minLength" => 3, "maxLength" => 200 },
+      "email" => { "type" => "string", "format" => "email", "pattern" => '^[^@\s]+@[^@\s]+\.[^@\s]+$', "minLength" => 1, "maxLength" => 320 },
+      "password" => { "type" => "string", "format" => "password", "minLength" => 6, "maxLength" => 128, "writeOnly" => true },
+      "passwordConfirmation" => { "type" => "string", "format" => "password", "minLength" => 6, "maxLength" => 128, "writeOnly" => true }
     }
   },
   "LoginRequest" => {
     "required" => %w[email password],
     "rules" => {
-      "email" => { "type" => "string", "format" => "email", "minLength" => 1 },
-      "password" => { "type" => "string", "format" => "password", "minLength" => 1, "writeOnly" => true }
+      "email" => { "type" => "string", "format" => "email", "pattern" => '^[^@\s]+@[^@\s]+\.[^@\s]+$', "minLength" => 1, "maxLength" => 320 },
+      "password" => { "type" => "string", "format" => "password", "minLength" => 1, "maxLength" => 128, "writeOnly" => true }
     }
   },
   "UpdateProfileRequest" => {
     "required" => %w[name email],
     "rules" => {
-      "name" => { "type" => "string", "minLength" => 3 },
-      "email" => { "type" => "string", "format" => "email", "minLength" => 1 }
+      "name" => { "type" => "string", "minLength" => 3, "maxLength" => 200 },
+      "email" => { "type" => "string", "format" => "email", "pattern" => '^[^@\s]+@[^@\s]+\.[^@\s]+$', "minLength" => 1, "maxLength" => 320 }
     }
   },
   "ChangePasswordRequest" => {
     "required" => %w[currentPassword newPassword newPasswordConfirmation],
     "rules" => {
-      "currentPassword" => { "type" => "string", "format" => "password", "minLength" => 1, "writeOnly" => true },
-      "newPassword" => { "type" => "string", "format" => "password", "minLength" => 6, "writeOnly" => true },
-      "newPasswordConfirmation" => { "type" => "string", "format" => "password", "minLength" => 6, "writeOnly" => true }
+      "currentPassword" => { "type" => "string", "format" => "password", "minLength" => 1, "maxLength" => 128, "writeOnly" => true },
+      "newPassword" => { "type" => "string", "format" => "password", "minLength" => 6, "maxLength" => 128, "writeOnly" => true },
+      "newPasswordConfirmation" => { "type" => "string", "format" => "password", "minLength" => 6, "maxLength" => 128, "writeOnly" => true }
     }
   }
 }.freeze
@@ -178,8 +178,8 @@ response_expectations = {
     "accessToken" => { "type" => "string", "readOnly" => true }
   },
   "ProfileResponse" => {
-    "name" => { "type" => "string", "minLength" => 3 },
-    "email" => { "type" => "string", "format" => "email" }
+    "name" => { "type" => "string", "minLength" => 3, "maxLength" => 200 },
+    "email" => { "type" => "string", "format" => "email", "pattern" => '^[^@\s]+@[^@\s]+\.[^@\s]+$', "maxLength" => 320 }
   },
   "HealthResponse" => {
     "status" => { "type" => "string", "enum" => ["Healthy"] }

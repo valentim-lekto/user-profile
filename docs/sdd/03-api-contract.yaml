@@ -332,12 +332,15 @@ components:
         name:
           type: string
           minLength: 3
+          maxLength: 200
           description: Nome após remoção de espaços externos.
           example: Ana Example
         email:
           type: string
           format: email
+          pattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
           minLength: 1
+          maxLength: 320
           description: Email após remoção de espaços externos.
           example: ana@example.test
         password:
@@ -345,6 +348,7 @@ components:
           format: password
           writeOnly: true
           minLength: 6
+          maxLength: 128
           description: Valor sintético nos exemplos; não é aparado.
           example: <generated-at-runtime>
         passwordConfirmation:
@@ -352,6 +356,7 @@ components:
           format: password
           writeOnly: true
           minLength: 6
+          maxLength: 128
           description: Deve ser idêntica a password.
           example: <generated-at-runtime>
     LoginRequest:
@@ -364,13 +369,16 @@ components:
         email:
           type: string
           format: email
+          pattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
           minLength: 1
+          maxLength: 320
           example: ana@example.test
         password:
           type: string
           format: password
           writeOnly: true
           minLength: 1
+          maxLength: 128
           description: Placeholder; o valor de login não é versionado.
           example: <generated-at-runtime>
     LoginResponse:
@@ -394,10 +402,13 @@ components:
         name:
           type: string
           minLength: 3
+          maxLength: 200
           example: Ana Example
         email:
           type: string
           format: email
+          pattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+          maxLength: 320
           example: ana@example.test
     UpdateProfileRequest:
       type: object
@@ -409,12 +420,15 @@ components:
         name:
           type: string
           minLength: 3
+          maxLength: 200
           description: Nome após remoção de espaços externos.
           example: Ana Updated
         email:
           type: string
           format: email
+          pattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
           minLength: 1
+          maxLength: 320
           description: Email após remoção de espaços externos.
           example: ana.updated@example.test
     ChangePasswordRequest:
@@ -430,18 +444,21 @@ components:
           format: password
           writeOnly: true
           minLength: 1
+          maxLength: 128
           example: <generated-at-runtime>
         newPassword:
           type: string
           format: password
           writeOnly: true
           minLength: 6
+          maxLength: 128
           example: <new-generated-at-runtime>
         newPasswordConfirmation:
           type: string
           format: password
           writeOnly: true
           minLength: 6
+          maxLength: 128
           description: Deve ser idêntica a newPassword.
           example: <new-generated-at-runtime>
     MessageResponse:

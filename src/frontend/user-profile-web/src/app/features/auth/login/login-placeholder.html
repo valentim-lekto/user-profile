@@ -1,0 +1,21 @@
+<section class="login-page" aria-labelledby="login-title">
+  <mat-card appearance="outlined">
+    <mat-card-header>
+      <mat-card-title id="login-title">Login</mat-card-title>
+    </mat-card-header>
+
+    <mat-card-content>
+      @if (registrationCompleted) {
+        <p class="success-message" role="status" aria-live="polite">
+          Cadastro realizado com sucesso. Faça login para continuar.
+        </p>
+      }
+
+      <p>O login será disponibilizado no próximo milestone.</p>
+    </mat-card-content>
+
+    <mat-card-actions>
+      <a mat-button routerLink="/register">Voltar para o cadastro</a>
+    </mat-card-actions>
+  </mat-card>
+</section>

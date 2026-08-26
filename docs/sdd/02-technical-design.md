@@ -121,8 +121,8 @@ Entidade única `User`:
 | Campo | Tipo C# planejado | Persistência SQLite | Regra |
 |---|---|---|---|
 | `Id` | `Guid` | `TEXT`, chave primária | Gerado pelo backend. |
-| `Name` | `string` | `TEXT NOT NULL` | Remover espaços externos; validar comprimento mínimo 3 após essa remoção. |
-| `Email` | `string` | `TEXT NOT NULL` | Remover espaços externos e preservar a caixa restante para exibição. |
+| `Name` | `string` | `TEXT NOT NULL` | Remover espaços externos; validar comprimento entre 3 e 200 após essa remoção. |
+| `Email` | `string` | `TEXT NOT NULL` | Remover espaços externos, limitar a 320 caracteres, validar uma única `@`/ausência de espaços/domínio com ponto e preservar a caixa restante para exibição. |
 | `NormalizedEmail` | `string` | `TEXT NOT NULL` | `Email.Trim().ToUpperInvariant()`; índice único. |
 | `PasswordHash` | `string` | `TEXT NOT NULL` | Produzido e verificado por `PasswordHasher<User>`; nunca retornado ou logado. |
 | `CreatedAtUtc` | `DateTime` | `TEXT NOT NULL` | Instante UTC definido na criação. |
@@ -180,7 +180,8 @@ Não existe endpoint de dashboard: a tela usa `GET /api/profile`. Não existe en
 - Login: `email`, `password`.
 - Perfil: `name`, `email`.
 - Senha: `currentPassword`, `newPassword`, `newPasswordConfirmation`.
-- Nome é validado após `Trim`; email após `Trim`; senha não é aparada nem normalizada.
+- Nome é validado após `Trim`, com 3 a 200 caracteres; email após `Trim`, com máximo de 320 e o mesmo padrão explícito no DataAnnotations e no Reactive Form (`^[^@\s]+@[^@\s]+\.[^@\s]+$`); senha não é aparada nem normalizada e aceita 6 a 128 caracteres nas operações que definem uma senha nova.
+- Entradas de senha existentes, como login e senha atual, também são limitadas a 128 caracteres antes do `PasswordHasher`, evitando trabalho desnecessário com payloads defensivamente grandes.
 - A confirmação deve corresponder exatamente à senha correspondente.
 - DTOs de request rejeitam propriedades JSON não mapeadas com `400`; os schemas OpenAPI usam `additionalProperties: false`.
 - Nenhuma operação de perfil define `userId` em path, query, header ou body. Um `userId` extra no corpo é rejeitado, e valores arbitrários em query/header nunca participam da resolução de identidade.

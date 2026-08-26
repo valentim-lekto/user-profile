@@ -1,8 +1,13 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc.ModelBinding.Metadata;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.OpenApi;
 using UserProfile.Api.Configuration;
 using UserProfile.Api.Data;
+using UserProfile.Api.Features.Auth;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,7 +38,18 @@ builder.Services.AddProblemDetails(options =>
         context.ProblemDetails.Instance ??= context.HttpContext.Request.Path;
     };
 });
-builder.Services.AddControllers();
+builder.Services
+    .AddControllers(options =>
+    {
+        options.ModelMetadataDetailsProviders.Add(
+            new SystemTextJsonValidationMetadataProvider(JsonNamingPolicy.CamelCase));
+    })
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
+    });
+builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
+builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -45,6 +61,7 @@ builder.Services.AddSwaggerGen(options =>
     options.SupportNonNullableReferenceTypes();
     options.NonNullableReferenceTypesAsRequired();
     options.UseInlineDefinitionsForEnums();
+    options.SchemaFilter<RegisterRequestSchemaFilter>();
 });
 builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>("sqlite");

@@ -33,7 +33,7 @@ Somente um milestone pode estar em andamento. O próximo começa após o anterio
 
 ### M1 — Walking skeleton e Docker
 
-**Estado:** implementação concluída em 2026-08-25; revalidação independente com volume Docker padrão bloqueada por falta de espaço na VM
+**Estado:** implementação concluída em 2026-08-25; o bloqueio da revalidação com volume Docker padrão foi resolvido pela execução de M2 em 2026-08-25
 
 Entregas:
 
@@ -57,11 +57,11 @@ Gates observáveis:
 
 ### M2 — Cadastro
 
-**Estado:** pendente
+**Estado:** concluído em 2026-08-25
 
 Entregas:
 
-- implementar normalização, `PasswordHasher<User>`, rejeição de propriedades JSON não mapeadas e `POST /api/auth/register` conforme OpenAPI;
+- implementar limites defensivos documentados (nome 200, email 320 e senha/confirmação 128), normalização, `PasswordHasher<User>`, rejeição de propriedades JSON não mapeadas e `POST /api/auth/register` conforme OpenAPI;
 - implementar tela de cadastro, validações reativas e estados loading/sucesso/erro;
 - redirecionar ao login com mensagem de sucesso, sem criar sessão;
 - implementar `BE-REG-*`, `FE-REG-*` e a prova global `BE-ERR-001/002` da estratégia de testes.
@@ -161,6 +161,7 @@ Gates observáveis:
 - `2026-08-24` — `M1 iniciado` — estrutura de testes alinhada a `tests/backend`, proxy Swagger e `.env.example` antecipado por instrução explícita; implementação e evidências ainda pendentes.
 - `2026-08-25` — `M1 concluído` — walking skeleton backend/frontend, migration SQLite, testes, imagens multi-stage e origem única validados após auditoria final; M2–M6 permanecem pendentes e nenhum endpoint de negócio foi criado.
 - `2026-08-25` — `revisão independente de M1 concluída` — commit `8db5592` auditado; 1 High, 12 Medium e 11 Low confirmados. O High e 11 Medium foram corrigidos; 1 Medium operacional está bloqueado pela VM Docker sem espaço; 8 Low triviais foram corrigidos e 3 Low adiados com justificativa em [`review-log.md`](review-log.md).
+- `2026-08-25` — `M2 concluído` — cadastro vertical Angular → Nginx → Controller → SQLite entregue com validações equivalentes, hash Identity, duplicidade normalizada/concorrente, estados acessíveis e evidência em 29 integrações backend, 12 testes frontend e smoke no volume Docker padrão.
 
 ## Evidências de M1
 
@@ -178,6 +179,19 @@ Gates observáveis:
 O primeiro startup do Compose encontrou `SQLite Error 13` porque a VM Docker compartilhada estava sem espaço. Foram removidos somente três volumes temporários criados durante esta validação (`user-profile-m1-node-modules`, `user-profile-m1-node-modules-clean` e `user-profile-m1-nuget`). Na repetição final após corrigir os timestamps, o disco voltou a ficar cheio: o volume vazio/stale deste próprio projeto foi recriado, uma imagem backend anterior e dois registros exatos do cache de `dotnet publish UserProfile.Api` foram removidos. Nenhum recurso de outro projeto foi apagado. Com 150 MB livres, o Compose reconstruiu, ambos os serviços ficaram saudáveis, os smokes passaram e o teardown final preservou o novo volume correto. O hash do commit local é informado no handoff da etapa, pois um commit não pode registrar o próprio hash em seu conteúdo.
 
 Na revisão independente posterior, a VM voltou a ficar sem espaço e volumes Docker normais falharam antes da migration. `docker compose config` continuou aprovado e o smoke final completo passou em projeto isolado, usando o mesmo volume nomeado com armazenamento temporariamente apoiado no host. Essa adaptação e o cleanup pontual estão detalhados em [`review-log.md`](review-log.md); o volume principal não foi alterado e a execução padrão deve ser repetida após manutenção do disco da VM.
+
+## Evidências de M2
+
+| Gate | Execução observada | Resultado |
+|---|---|---|
+| Backend | SDK `10.0.400` pela imagem fixada: restore locked, `dotnet build UserProfile.sln --no-restore` e `dotnet test UserProfile.sln --no-restore --no-build --verbosity normal` | Build com 0 warnings/0 erros e 29/29 integrações aprovadas. `RegisterTests` cobre sucesso com email válido de 320 caracteres, 14 invalidações (incluindo bordas da política de email), JSON extra, duplicidades sequencial/normalizada e corrida determinística após ambos os prechecks, erros de pipeline e SQLite bloqueado; os seis testes de M1 permaneceram verdes. |
+| Frontend | Node `24.19.0`/npm `11.17.0`: `npm ci`, lint, testes e build de produção | 494 pacotes instalados com 0 vulnerabilidades; lint aprovado; 12/12 testes aprovados; bundle de produção com 494,56 kB bruto. Os testes comprovam contrato HTTP, validators, confirmação, loading/duplo submit, redirecionamento com sucesso, ausência de sessão e erros `400`/`409`/`503`. |
+| Contrato | `ruby scripts/validate-openapi.rb docs/sdd/03-api-contract.yaml` após ampliar o validador para `maxLength` e padrão de email | `SPEC-OAS-001`–`005` aprovados para seis operações e 42 referências; Swagger runtime contém exatamente `/health` e `/api/auth/register`, com campos, limites, padrão de email, senhas `password`/`writeOnly` e respostas da fatia. |
+| Compose e persistência | `docker compose config --quiet`; `docker compose up --build --detach --wait --wait-timeout 300`; curls pela porta 8080; recriação da API; novo `--wait` | Volume Docker padrão aprovado sem `.env`: SPA, `/register`, health e Swagger retornaram `200`; cadastro sintético retornou `201`; payload inválido `400`; email equivalente por caixa/espaços `409`; após recriar a API o mesmo email continuou retornando `409`, comprovando persistência do usuário. |
+| UI em runtime | Navegador local em `http://localhost:8080/register` | Formulário, labels, hints e link de login renderizados; submit vazio mostrou quatro mensagens acessíveis; navegação pública chegou ao placeholder `/login`; nenhum warning/error apareceu no console. O redirecionamento com aviso de sucesso é coberto pelo teste Angular que controla a resposta `201`. |
+| Cleanup | `docker compose down` sem `-v`; inspeção posterior | Contêineres e rede deste projeto foram removidos; o volume nomeado `user-profile-sdd-challenge_user-profile-data` foi preservado e permaneceu intacto. Caches temporárias de restore criadas nesta execução foram removidas. |
+
+O bloqueio ambiental registrado na revisão de M1 não se repetiu: M2 construiu e executou a configuração base com o volume Docker padrão. Isso resolve a revalidação operacional pendente de M1, sem apagar recursos ou volumes de outros projetos. A autenticação posterior à recriação continua reservada a M3; nesta fatia, a persistência foi observada pela colisão do mesmo email normalizado após a recriação.
 
 Ao iniciar um milestone, alterar somente seu estado para `em andamento`. Ao concluir, registrar data, comandos, evidências, desvios e hash do commit antes de iniciar o próximo.
 
@@ -260,7 +274,10 @@ Os nomes de scripts npm devem ser confirmados no scaffold e então congelados. M
 - `2026-08-25` — M1 manteve `CreatedAtUtc`/`UpdatedAtUtc` como decisão interna agora formalizada no ADR-0002; a revisão independente restaurou o histórico que antes recomendara sua remoção e programou as provas de ciclo de vida em M2/M4.
 - `2026-08-25` — A revisão independente descobriu que o comando backend original não executava testes; `IsTestProject`, contrato/runtime OpenAPI, schema real, timeout de health, ignores Docker, smoke Compose e rastreabilidade foram corrigidos antes do novo commit.
 - `2026-08-25` — M1 manteve apenas o shell Angular e `/health`; a complexidade retida limita-se a migrations, SQLite real, ProblemDetails e proxy exigidos pelos critérios.
+- `2026-08-25` — M2 fixou limites defensivos de nome/email/senha em `200/320/128`, uma política explícita e equivalente de email, `passwordConfirmation` como nome JSON normativo e `Trim` somente em nome/email.
+- `2026-08-25` — M2 manteve o fluxo direto `AuthController` → EF Core/`PasswordHasher<User>`; o índice único é a autoridade e somente a violação SQLite `2067` vira `409`. A única instrumentação adicional é uma barreira em interceptor exclusivo dos testes para provar a corrida sem hook de produção.
+- `2026-08-25` — O frontend de M2 criou somente cadastro, service/signals e um placeholder de login para receber o aviso; JWT, sessão, guard, interceptor e login funcional permanecem em M3.
 
 ## Resultado final
 
-M1 permanece implementado e suas correções passaram nas suítes backend/frontend, contrato e runtime isolado. A revalidação exata do volume Docker padrão está bloqueada pela falta de espaço da VM e não é declarada concluída nesta revisão. M2–M6 permanecem pendentes; cadastro, login, JWT, dashboard, edição de perfil/senha, E2E e CI não foram implementados.
+M1 e M2 estão implementados e validados. O cadastro funciona da tela Angular ao SQLite com respostas `201/400/409`, hash não reversível, normalização e persistência no volume padrão; o bloqueio Docker anterior foi resolvido. M3–M6 permanecem pendentes: login funcional, JWT, dashboard, edição de perfil/senha, jornadas E2E e CI não foram implementados.

@@ -44,8 +44,8 @@ Validar os comportamentos e riscos principais com a menor suíte capaz de fornec
 
 | ID | Cenário | Evidência principal |
 |---|---|---|
-| `BE-REG-001` | Cadastro válido retorna `201`, persiste hash verificável, inicializa `CreatedAtUtc`/`UpdatedAtUtc` com o mesmo instante UTC não default e não retorna JWT. | `AC-REG-01`, `PREM-DATA-02` |
-| `BE-REG-002` | Cada campo obrigatório ausente, nome curto, email inválido, senha curta, confirmação divergente ou propriedade JSON desconhecida retorna `400 ValidationProblemDetails`, e nenhum usuário é persistido. | `AC-REG-02`–`04`, `API-ERROR-01` |
+| `BE-REG-001` | Cadastro válido, incluindo email exatamente no limite comum de 320 caracteres, retorna `201`, persiste hash verificável diferente do texto puro, inicializa `CreatedAtUtc`/`UpdatedAtUtc` com o mesmo instante UTC não default e não retorna JWT, senha ou hash. | `AC-REG-01`, `PREM-DATA-02`, `SEC-SECRET-01` |
+| `BE-REG-002` | Cada campo obrigatório ausente, nome curto/longo, email inválido por casos de borda da política comum (sem ponto no domínio ou com espaço interno)/longo, senha curta/longa, confirmação ausente/longa/divergente ou propriedade JSON desconhecida retorna `400 ValidationProblemDetails`, e nenhum usuário é persistido. | `AC-REG-02`–`04`, `API-ERROR-01` |
 | `BE-REG-003` | Emails com espaços externos ou caixa diferente colidem em `409`. | `AC-REG-05`, `PREM-EMAIL-01` |
 | `BE-REG-004` | O índice único existe e uma violação concorrente é mapeada para `409`, sem segundo usuário. | `AC-REG-05` |
 | `BE-LOGIN-001` | Credenciais válidas retornam Bearer curto com `sub`, `jti`, `iat` e `exp`, sem refresh token. | `AC-LOGIN-01`, `SEC-SESSION-01` |
@@ -69,13 +69,13 @@ Validar os comportamentos e riscos principais com a menor suíte capaz de fornec
 | `BE-ERR-002` | Após startup saudável, cadastro contra SQLite bloqueado percorre o handler real e retorna `500` sem stack trace, SQL ou segredo. | `SEC-LOG-01`, `API-ERROR-01` |
 | `BE-DB-001` | Startup aplica migrations a banco vazio; o schema real contém exatamente os sete campos definidos no ADR-0002 com tipo/nulabilidade/chave esperados, cria o índice único e não deixa mudança pendente entre modelo e snapshot. | `OPS-DOCKER-01`, `PREM-DATA-02`, ADR-0002 |
 | `BE-HEALTH-001` | `/health` retorna `200` após startup; com timeout padrão de 30 segundos na conexão da API, bloqueio exclusivo posterior retorna `503 application/problem+json` em menos de 5 segundos. Falha de migration é testada como falha de startup. | `OPS-DOCKER-01`, `API-ERROR-01` |
-| `BE-OAS-001` | O OpenAPI gerado em runtime contém somente `/health` em M1 e coincide com o contrato normativo para `operationId`, tag, respostas e enum `Healthy`. | `DOC-SDD-01`, `DOC-TRACE-01`, `SPEC-OAS-002`, `SPEC-OAS-004` |
+| `BE-OAS-001` | O OpenAPI gerado em runtime contém somente as operações já implementadas; em M2, exatamente `/health` e `/api/auth/register`, com `operationId`, tags, respostas, campos obrigatórios, padrão de email, limites e senhas `format: password`/`writeOnly` coerentes com o contrato normativo. | `DOC-SDD-01`, `DOC-TRACE-01`, `SPEC-OAS-002`, `SPEC-OAS-004` |
 
 ## Catálogo planejado — frontend
 
 | ID | Cenário | Evidência principal |
 |---|---|---|
-| `FE-REG-001` | Formulário exige quatro campos, valida mínimos/formato e igualdade das senhas. | `AC-REG-02`–`04` |
+| `FE-REG-001` | Formulário tipado exige quatro campos, valida limites mínimos/máximos após o mesmo tratamento do backend, aceita email válido exatamente em 320 caracteres, rejeita as mesmas bordas de formato e exige igualdade das senhas. | `AC-REG-02`–`04` |
 | `FE-REG-002` | Loading bloqueia nova submissão; `201` leva ao login com sucesso; erro permanece visível sem criar sessão. | `AC-REG-01`, `AC-REG-06`, `UI-STATE-01` |
 | `FE-LOGIN-001` | Formulário e service tratam loading, bloqueiam submissão duplicada, exibem o `400` genérico de credenciais e tratam erro inesperado. | `AC-LOGIN-02`, `AC-LOGIN-03` |
 | `FE-LOGIN-002` | Sucesso grava token apenas em `sessionStorage` e navega ao dashboard. | `AC-LOGIN-01`, `SEC-SESSION-01` |
@@ -125,7 +125,7 @@ build.
 |---|---|---|
 | `TECH-BACKEND-001` | Solution/projetos e lock NuGet usam ASP.NET Core/C#, EF Core SQLite e JWT nas versões fixadas; restore locked e build passam. | `TECH-BACKEND-01` |
 | `TECH-FRONTEND-001` | `package.json`/lockfile usam Angular standalone/strict, Reactive Forms e Material nas versões fixadas; `npm ci` e build passam. | `TECH-FRONTEND-01` |
-| `OPS-COMPOSE-001` | `scripts/validate-m1-compose.sh` valida a configuração e, em checkout limpo, executa `docker compose up --build --wait` sem `.env` nem SDKs no host; a única probe do Compose roda no `web` e atravessa Nginx, API e SQLite. A revalidação independente exata com volume Docker padrão permanece bloqueada até liberar espaço na VM; o runtime foi validado com o mesmo volume nomeado apoiado temporariamente no host. | `OPS-DOCKER-01`, `OPS-DOCKER-02` |
+| `OPS-COMPOSE-001` | `scripts/validate-m1-compose.sh` valida a configuração e, em checkout limpo, executa `docker compose up --build --wait` sem `.env` nem SDKs no host; a única probe do Compose roda no `web` e atravessa Nginx, API e SQLite. O smoke de M2 revalidou a configuração base com o volume Docker padrão e removeu o bloqueio ambiental registrado em M1. | `OPS-DOCKER-01`, `OPS-DOCKER-02` |
 | `OPS-ORIGIN-001` | O mesmo smoke verifica SPA, `/api/*`, `/swagger/*` e `/health` por `http://localhost:8080`, ausência de porta pública da API, `404 ProblemDetails`, upstream parado convertido em `503 ProblemDetails` e mapeamento explícito de `502`/`504`. | `API-ERROR-01`, ADR-0004 |
 | `OPS-PERSIST-001` | Criar usuário, recriar serviços sem remover volume e autenticar novamente. | `OPS-DOCKER-03` |
 | `OPS-TAGS-001` | Dockerfiles não contêm `latest` nem tags incompletas e usam as versões do design. | `OPS-DOCKER-02` |
