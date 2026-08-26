@@ -25,8 +25,8 @@ Este diretório reúne os artefatos versionados do processo Spec-Driven Developm
 | [`03-api-contract.yaml`](03-api-contract.yaml) | Definir requests, responses, schemas, autenticação e erros da API. | Contrato normativo M3 validado para seis operações e 53 referências locais. |
 | [`04-test-strategy.md`](04-test-strategy.md) | Definir integração, frontend, E2E, Docker e gates. | Gates M1–M3 aprovados; E2E completo e CI continuam em M5. |
 | [`05-execution-plan.md`](05-execution-plan.md) | Organizar a implementação incremental em M1–M6. | M1, M2 e M3 concluídos; M4–M6 pendentes. |
-| [`06-traceability.md`](06-traceability.md) | Relacionar requisito, critério, design, milestone, teste e estado. | Evidências M1–M3 registradas: 69 integrações backend, 42 testes frontend, Compose e UI real. |
-| [`review-log.md`](review-log.md) | Registrar revisão independente, achados, decisões, comandos e riscos. | Revisões independentes de design, M1 e M2 registradas. |
+| [`06-traceability.md`](06-traceability.md) | Relacionar requisito, critério, design, milestone, teste e estado. | Evidências M1–M3 registradas: 69 integrações backend, 45 testes frontend, Compose e UI real. |
+| [`review-log.md`](review-log.md) | Registrar revisão independente, achados, decisões, comandos e riscos. | Revisões independentes de design, M1, M2 e M3 registradas. |
 | [`ai-usage.md`](ai-usage.md) | Definir e registrar de forma resumida o uso responsável de IA. | Uso de IA, auditorias e validação até M3 resumidos. |
 
 ## Governança
@@ -50,7 +50,7 @@ Novas decisões relevantes devem criar ou substituir ADR; registrar apenas uma p
 | Item | Estado |
 |---|---|
 | Código, dependências, Dockerfiles e Compose | Walking skeleton M1, cadastro M2 e login/autorização/dashboard M3 concluídos; M4–M6 pendentes. |
-| Testes automatizados e evidências observadas | 69 integrações backend e 42 testes frontend aprovados, além de OpenAPI, smoke Compose e UI real; E2E completo e CI permanecem pendentes. |
+| Testes automatizados e evidências observadas | 69 integrações backend e 45 testes frontend aprovados, além de OpenAPI normativo/runtime, smoke Compose e UI real; E2E completo e CI permanecem pendentes. |
 | README de execução e validação na raiz | Planejado para M6. |
 | Atualização de estados da matriz e do plano | Obrigatória em cada milestone. |
 | ADRs adicionais | Criar somente se surgir nova decisão relevante. |

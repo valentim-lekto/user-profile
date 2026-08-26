@@ -29,7 +29,11 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
 
   return next(authenticatedRequest).pipe(
     catchError((error: unknown) => {
-      if (error instanceof HttpErrorResponse && error.status === 401) {
+      if (
+        error instanceof HttpErrorResponse &&
+        error.status === 401 &&
+        auth.isCurrentAccessToken(accessToken)
+      ) {
         auth.clearSession();
         void router.navigate(['/login']);
       }

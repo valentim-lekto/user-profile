@@ -174,6 +174,7 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
             paths.EnumerateObject().Select(path => path.Name).Order());
 
         var healthOperation = paths.GetProperty("/health").GetProperty("get");
+        Assert.Empty(healthOperation.GetProperty("security").EnumerateArray());
         Assert.Equal("getHealth", healthOperation.GetProperty("operationId").GetString());
         Assert.Equal(
             ["Operations"],
@@ -189,7 +190,7 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var registerOperation = paths
             .GetProperty("/api/auth/register")
             .GetProperty("post");
-        Assert.False(registerOperation.TryGetProperty("security", out _));
+        Assert.Empty(registerOperation.GetProperty("security").EnumerateArray());
         Assert.Equal("registerUser", registerOperation.GetProperty("operationId").GetString());
         Assert.Equal(
             ["Auth"],
@@ -204,7 +205,7 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
 
         var loginOperation = paths.GetProperty("/api/auth/login").GetProperty("post");
         Assert.Equal("loginUser", loginOperation.GetProperty("operationId").GetString());
-        Assert.False(loginOperation.TryGetProperty("security", out _));
+        Assert.Empty(loginOperation.GetProperty("security").EnumerateArray());
         Assert.Equal(
             ["200", "400", "401", "413", "415", "500", "503"],
             loginOperation
@@ -313,14 +314,24 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
                 .Select(property => property.GetString())
                 .Order());
         var loginProperties = loginSchema.GetProperty("properties");
+        var loginEmail = loginProperties.GetProperty("email");
         Assert.Equal(
             RegisterRequestSchemaFilter.RawEmailPattern,
-            loginProperties.GetProperty("email").GetProperty("pattern").GetString());
-        Assert.Equal(1, loginProperties.GetProperty("password").GetProperty("minLength").GetInt32());
-        Assert.Equal(128, loginProperties.GetProperty("password").GetProperty("maxLength").GetInt32());
-        Assert.True(loginProperties.GetProperty("password").GetProperty("writeOnly").GetBoolean());
+            loginEmail.GetProperty("pattern").GetString());
+        Assert.True(loginEmail.GetProperty("x-trim").GetBoolean());
+        Assert.Equal(1, loginEmail.GetProperty("x-min-length-after-trim").GetInt32());
+        Assert.Equal(320, loginEmail.GetProperty("x-max-length-after-trim").GetInt32());
+        Assert.Equal(
+            RegisterRequest.EmailPattern,
+            loginEmail.GetProperty("x-pattern-after-trim").GetString());
+        var loginPassword = loginProperties.GetProperty("password");
+        Assert.Equal(1, loginPassword.GetProperty("minLength").GetInt32());
+        Assert.Equal(128, loginPassword.GetProperty("maxLength").GetInt32());
+        Assert.Equal("password", loginPassword.GetProperty("format").GetString());
+        Assert.True(loginPassword.GetProperty("writeOnly").GetBoolean());
 
         var loginResponseSchema = schemas.GetProperty("LoginResponse");
+        Assert.False(loginResponseSchema.GetProperty("additionalProperties").GetBoolean());
         Assert.Equal(
             ["accessToken"],
             loginResponseSchema
@@ -333,8 +344,14 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
                 .GetProperty("properties")
                 .EnumerateObject()
                 .Select(property => property.Name));
+        var accessTokenProperty = loginResponseSchema
+            .GetProperty("properties")
+            .GetProperty("accessToken");
+        Assert.Equal("string", accessTokenProperty.GetProperty("type").GetString());
+        Assert.True(accessTokenProperty.GetProperty("readOnly").GetBoolean());
 
         var profileSchema = schemas.GetProperty("ProfileResponse");
+        Assert.False(profileSchema.GetProperty("additionalProperties").GetBoolean());
         Assert.Equal(
             ["email", "id", "name"],
             profileSchema
@@ -346,7 +363,19 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal(
             ["email", "id", "name"],
             profileProperties.EnumerateObject().Select(property => property.Name).Order());
-        Assert.Equal("uuid", profileProperties.GetProperty("id").GetProperty("format").GetString());
+        var profileId = profileProperties.GetProperty("id");
+        Assert.Equal("string", profileId.GetProperty("type").GetString());
+        Assert.Equal("uuid", profileId.GetProperty("format").GetString());
+        Assert.True(profileId.GetProperty("readOnly").GetBoolean());
+        var profileName = profileProperties.GetProperty("name");
+        Assert.Equal("string", profileName.GetProperty("type").GetString());
+        Assert.Equal(3, profileName.GetProperty("minLength").GetInt32());
+        Assert.Equal(200, profileName.GetProperty("maxLength").GetInt32());
+        var profileEmail = profileProperties.GetProperty("email");
+        Assert.Equal("string", profileEmail.GetProperty("type").GetString());
+        Assert.Equal("email", profileEmail.GetProperty("format").GetString());
+        Assert.Equal(RegisterRequest.EmailPattern, profileEmail.GetProperty("pattern").GetString());
+        Assert.Equal(320, profileEmail.GetProperty("maxLength").GetInt32());
     }
 
     private static void AssertBearerChallengeHeader(JsonElement operation)

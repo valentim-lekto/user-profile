@@ -110,7 +110,9 @@ de aplicação.
 - Componentes e rotas são standalone e compilados em strict mode.
 - Reactive Forms implementam as mesmas validações visíveis definidas no contrato.
 - Services encapsulam HTTP e estado simples por signals (`loading`, `data`, `error`); não haverá store global nem NgRx.
+- O estado de leitura do perfil pertence à ativação corrente da rota protegida. Ao sair e entrar novamente, o dashboard recebe uma nova instância desse estado; uma resposta iniciada pela sessão anterior não pode bloquear nem preencher a sessão seguinte.
 - Um functional interceptor anexa o Bearer somente às URLs relativas protegidas `GET /api/profile`, `PUT /api/profile` e `PUT /api/profile/password` quando existe token. Login, cadastro, health, URLs absolutas e qualquer outro destino nunca recebem o token.
+- Um `401` recebido por uma chamada protegida só remove a sessão se o token corrente ainda for o mesmo Bearer anexado àquela chamada; uma resposta tardia de sessão anterior não encerra uma autenticação mais recente.
 - Um functional route guard bloqueia rotas protegidas quando a sessão está ausente ou expirada.
 - A API continua sendo a autoridade: presença ou conteúdo decodificado do token no browser não concede autorização.
 
@@ -246,7 +248,7 @@ Essa regra concilia execução sem preparação manual com a proibição de vers
 | `/dashboard` | Guard | Consulta `/api/profile`, mostra boas-vindas com `name` e link para `/profile`. |
 | `/profile` | Guard | Consulta e altera nome/email; oferece formulário separado para senha. |
 
-Cada operação assíncrona expõe estado de carregamento, impede submissão duplicada e apresenta sucesso ou erro. O interceptor reage a `401` global somente quando a requisição levava Bearer; nesse caso limpa a sessão e conduz ao login. O `401` esperado do próprio login não levava Bearer, portanto permanece disponível para a mensagem genérica da tela e não dispara limpeza/navegação global.
+Cada operação assíncrona expõe estado de carregamento, impede submissão duplicada e apresenta sucesso ou erro. O estado de carregamento do perfil é recriado a cada ativação do dashboard, isolando respostas pendentes de uma sessão encerrada. O interceptor reage a `401` global somente quando a requisição levava Bearer e a sessão corrente ainda contém exatamente aquele token; nesse caso limpa a sessão e conduz ao login. O `401` esperado do próprio login não levava Bearer, portanto permanece disponível para a mensagem genérica da tela e não dispara limpeza/navegação global.
 
 O token fica somente em `sessionStorage`. O estado de autenticação é um signal derivado da presença e do `exp` do token; decodificar o payload no cliente serve apenas à experiência de navegação.
 

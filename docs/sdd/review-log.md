@@ -687,3 +687,141 @@ Consolidação: 1 High, 10 Medium e 5 Low confirmados e corrigidos; nenhum achad
 - A política ASCII exclui emails internacionalizados e o padrão é deliberadamente simples; ampliar isso exige decisão de produto/canonicalização própria.
 - Login/JWT/`sub`, dashboard, perfil, troca de senha, E2E, CI e README final permanecem corretamente fora de M2 e pendentes em M3–M6.
 - O nível `crit` do error log Nginx reduz detalhe operacional para impedir request lines com argumentos; access logs ainda preservam método, path e status. Qualquer ampliação deve continuar sem query, body ou Authorization.
+
+## 2026-08-26 — Revisão independente de M3
+
+- **Etapa identificada:** M3 — login, JWT Bearer, sessão, proteção de rotas/endpoints, dashboard e leitura do perfil atual.
+- **Commit revisado:** `b1f24686b3132b9293444c2df031e8bb33505464` (`feat(auth): implement login and protected dashboard`).
+- **Base do diff:** `150c40a`; 55 arquivos do commit foram lidos no diff integral, além do estado atual, histórico, SDD/ADRs, código, testes e configuração operacional.
+- **Estado inicial:** branch `main` limpa; baseline de 69/69 integrações backend, lint e 42/42 testes frontend aprovados. O smoke acumulado também passava, mas a inspeção estrutural do Swagger runtime revelou divergência que os asserts existentes não detectavam.
+- **Critérios examinados:** `AC-LOGIN-*`, `AC-DASH-*`, `API-ERROR-01`, `SEC-AUTH-01`, `SEC-SESSION-01`, `SEC-SECRET-01`, `SEC-LOG-01`, `PREM-AUTH-*`, `PREM-EMAIL-01`, `PREM-INPUT-01`, `OPS-*`, `TECH-*`, `TEST-FLOW-01` e os gates M3 de `04-test-strategy.md`.
+
+### Achados confirmados e decisões
+
+#### `REV-M3-001` — High — resposta de perfil pendente atravessava logout e nova sessão
+
+- **Localização:** `ProfileService` singleton e ativação do `Dashboard`.
+- **Critérios:** `AC-DASH-01`, `SEC-SESSION-01`.
+- **Evidência:** a sessão A podia deixar `loading=true`; após logout e login B, o mesmo serviço impedia um novo GET e a resposta tardia de A preenchia o signal exibido a B.
+- **Impacto:** vazamento de dados entre usuários na mesma aba e violação de `AC-DASH-01`/`SEC-SESSION-01`.
+- **Correção mínima:** tornar `ProfileService` provider do componente `Dashboard`, criando estado novo por ativação, e adicionar regressão com duas sessões e duas respostas fora de ordem.
+- **Decisão:** corrigido. A resposta antiga ainda pode terminar, mas escreve somente na instância destruída; a sessão atual inicia seu próprio GET e exibe apenas seu perfil.
+
+#### `REV-M3-002` — Medium — `401` tardio encerrava uma sessão mais recente
+
+- **Localização:** `authInterceptor` e `AuthService`.
+- **Critérios:** `AC-DASH-02`, `SEC-SESSION-01`.
+- **Evidência:** qualquer `401` de request com Bearer chamava `clearSession()`; se A expirasse após o login B, o erro de A removia o token de B.
+- **Impacto:** logout indevido e indisponibilidade causada por resposta pertencente a outra sessão.
+- **Correção mínima:** comparar o Bearer capturado pela request com o token ainda armazenado antes de limpar/navegar; cobrir a resposta tardia em teste.
+- **Decisão:** corrigido sem generation counter ou store adicional.
+
+#### `REV-M3-003` — Medium — Swagger runtime divergia do contrato normativo e o gate era permissivo
+
+- **Localização:** `BearerSecurityOperationFilter`, schemas de resposta e `HealthTests.SwaggerContainsOnlyTheImplementedOperationsAndRequiredSchemas`.
+- **Critérios:** `SPEC-OAS-003`, `SPEC-OAS-004`, `DOC-SDD-01`.
+- **Evidência:** o JSON servido omitia `security: []` em operações públicas, `readOnly` de `LoginResponse.accessToken`/`ProfileResponse.id` e limites/formato/pattern de `ProfileResponse.name/email`; os asserts verificavam apenas parte desses schemas.
+- **Impacto:** `03-api-contract.yaml` e a API executável descreviam contratos diferentes sem quebrar a suíte.
+- **Correção mínima:** materializar segurança vazia nas operações públicas, aplicar um schema filter focado às duas respostas e exigir todos esses metadados no teste de integração.
+- **Decisão:** corrigido; o OpenAPI normativo permaneceu inalterado por já estar correto.
+
+#### `REV-M3-004` — Medium — smoke não procurava a senha usada no fluxo válido
+
+- **Localização:** `scripts/validate-m1-compose.sh` e `OPS-SECRET-001`.
+- **Critérios:** `SEC-SECRET-01`, `SEC-LOG-01`.
+- **Evidência:** o script enviava `smoke_password` em cadastro/login bem-sucedidos, mas procurava nos logs apenas marcadores de uma request rejeitada e o primeiro JWT.
+- **Impacto:** uma regressão que registrasse payload/credenciais de sucesso poderia passar por `SEC-LOG-01`.
+- **Correção mínima:** incluir o valor sintético de `smoke_password` na mesma varredura literal, sem imprimir o segredo de teste.
+- **Decisão:** corrigido e aprovado pelo smoke completo.
+
+#### `REV-M3-005` — Medium — testes não provavam o wiring de produção do guard e interceptor
+
+- **Localização:** `app.config.ts`, `app.routes.ts` e specs Angular.
+- **Critérios:** `AC-DASH-01`, `AC-DASH-02`, `SEC-AUTH-01`.
+- **Evidência:** guard/interceptor eram testados isoladamente e o spec do dashboard recriava rotas/HTTP; remover sua conexão de `appConfig` ainda deixaria a suíte original verde.
+- **Impacto:** a aplicação poderia compilar sem proteger a rota ou anexar Bearer no runtime.
+- **Correção mínima:** usar os providers reais de `appConfig` com backend HTTP de teste e provar redirecionamento anônimo, rota lazy e header Bearer do GET do dashboard.
+- **Decisão:** corrigido em `FE-WIRE-001`.
+
+#### `REV-M3-006` — Medium — matriz omitia gates M3 existentes
+
+- **Localização:** `06-traceability.md`.
+- **Critérios:** `DOC-TRACE-01`.
+- **Evidência:** `BE-LOGIN-003` e `FE-INT-002` estavam definidos na estratégia e implementados, mas não apareciam nas linhas/evidências correspondentes da matriz. Durante a re-revisão, `FE-WIRE-001` também ainda não constava no gate/entrega M3 nem no eixo `AC-DASH-02`, e `PREM-EMAIL-01` apontava o teste genérico em vez de `BE-LOGIN-003`.
+- **Impacto:** rastreabilidade incompleta para normalização do login e semântica de `401`.
+- **Correção mínima:** associar os IDs aos requisitos, critérios, artefatos, gate/entrega e evidência executada; registrar `FE-WIRE-001` nos eixos de dashboard/autorização e `BE-LOGIN-003` na premissa de normalização.
+- **Decisão:** corrigido.
+
+#### `REV-M3-007` — Low — bordas inclusivas máximas do login não eram positivas
+
+- **Localização:** `login.spec.ts`.
+- **Critérios:** `PREM-INPUT-01`, `FE-LOGIN-001`.
+- **Evidência:** havia rejeição acima de 320/128, mas não aceitação explícita de email ASCII com 320 caracteres e senha com 128.
+- **Impacto:** regressão off-by-one poderia rejeitar entradas válidas sem falha do frontend.
+- **Correção mínima:** afirmar formulário válido exatamente nas duas bordas.
+- **Decisão:** corrigido por ser trivial e de baixo risco.
+
+#### `REV-M3-008` — Low — ADR-0003 tinha rastreabilidade incompleta
+
+- **Localização:** seção de rastreabilidade do ADR.
+- **Critérios:** `DOC-TRACE-01`, `FR-LOGIN-03`, `API-ERROR-01`.
+- **Evidência:** a decisão de `401` genérico não citava `FR-LOGIN-03` nem `API-ERROR-01`.
+- **Impacto:** decisão e requisito ficavam conectados apenas indiretamente.
+- **Correção mínima:** incluir os dois IDs e registrar a proteção contra `401` de sessão anterior.
+- **Decisão:** corrigido.
+
+#### `REV-M3-009` — Low — evidência de UI real atribuía a ela o estado de erro
+
+- **Localização:** linha `FR-DASH-01` da matriz.
+- **Critérios:** `AC-DASH-04`, `DOC-TRACE-01`.
+- **Evidência:** a sessão real registrada cobria o fluxo feliz, enquanto loading/erro eram demonstrados pelos testes Angular.
+- **Impacto:** superestimação pequena, porém auditável, da evidência manual.
+- **Correção mínima:** separar explicitamente prova automatizada de loading/erro e prova real do fluxo feliz.
+- **Decisão:** corrigido.
+
+#### `REV-M3-010` — Low — teste novo de wiring podia exceder o timeout frio
+
+- **Localização:** `app.spec.ts`, `FE-WIRE-001`.
+- **Critérios:** `TEST-FLOW-01`, `FE-WIRE-001`.
+- **Evidência:** uma leitura independente observou 44/45 na primeira suíte porque a compilação lazy fria durou 5,903 s contra o default de 5 s; o teste isolado e a repetição completa passaram.
+- **Impacto:** flakiness do gate sem falha funcional.
+- **Correção mínima:** timeout explícito de 10 s somente nesse teste de integração de wiring, mantendo todos os asserts.
+- **Decisão:** corrigido; a suíte completa foi repetida após a mudança.
+
+Consolidação: 1 High, 5 Medium e 4 Low confirmados e corrigidos; nenhum achado desta revisão ficou aberto ou bloqueado.
+
+### Candidatos rejeitados e decisões conscientes
+
+- Cancelamento global de requests ou store por geração de sessão não foi introduzido: provider por ativação e comparação do token resolvem os dois riscos observados com menos estado e menor superfície.
+- Não foi criada comparação byte a byte entre os dois documentos OpenAPI; o teste runtime exige diretamente cada elemento divergente e o validador continua responsável pelo contrato normativo.
+- As imagens e locks não foram atualizados: o host possuía .NET `10.0.105` e Node `20.19.1`, portanto os gates autoritativos usaram as imagens fixadas pelo design.
+- O placeholder de edição, E2E completo e CI continuam fora de M3 e permanecem em M4/M5.
+
+### Comandos e resultados
+
+| Comando/check | Resultado |
+|---|---|
+| `pwd`, `git status --short --branch`, `git log --oneline -5`, `git show --stat` | Raiz correta; `main` inicialmente limpa; commit/base/escopo M3 identificados. |
+| `git diff 150c40a b1f2468` e leitura integral de SDD/ADRs/código/testes/configuração | Diff de 55 arquivos revisado por eixos independentes de backend/segurança, frontend e SDD/operação. |
+| Baseline na imagem .NET `10.0.400-noble` | 69/69 integrações aprovadas antes das correções. |
+| Baseline na imagem Node `24.19.0-bookworm-slim` | 494 pacotes, 0 vulnerabilidades, lint, 42/42 testes e build aprovados antes das correções. |
+| Swagger servido por stack isolada e inspeção estrutural do JSON | Confirmou `security` público omitido e metadados ausentes de `LoginResponse`/`ProfileResponse`, originando `REV-M3-003`. |
+| Primeiro diagnóstico Docker com restore e build `--no-restore` em contêineres efêmeros separados | Build não encontrou o cache NuGet do contêiner anterior; tentativa descartada e substituída por comando autocontido. Não era falha do repositório. |
+| Imagem .NET `10.0.400-noble`: `dotnet test UserProfile.sln -p:RestoreLockedMode=true --verbosity minimal` | Restore/build aprovados sem warnings; 69/69 integrações aprovadas, sem falhas/skips. |
+| Imagem Node `24.19.0-bookworm-slim`: `npm ci`, lint, teste e build | 494 pacotes, 0 vulnerabilidades; lint; 45/45 testes; bundle de 317,37 kB bruto/87,64 kB estimado. |
+| Imagem Node após `REV-M3-010`: lint e duas execuções consecutivas de `npm test` | Lint aprovado e 45/45 testes aprovados nas duas execuções; o teste de wiring durou 2,403 s e 2,818 s. |
+| `ruby scripts/validate-openapi.rb docs/sdd/03-api-contract.yaml`; `docker compose config --quiet`; `sh -n scripts/validate-m1-compose.sh` | Seis operações/53 referências locais, Compose e sintaxe shell aprovados. |
+| `scripts/validate-m1-compose.sh` | Exit 0: same-origin, cadastro/login, autenticação/perfil por `sub`, `401`, `413/415`, persistência, senha/marcadores/JWT ausentes dos logs, `503` e cleanup aprovados em projeto isolado. |
+| UI real final em `http://127.0.0.1:8080` | Cadastro sintético, aviso de sucesso, login, dashboard com nome da API, rota protegida de perfil, logout e reproteção observados no build corrigido. |
+| Checker inicial de links Markdown sem exclusão de dependências | Reportou links internos ausentes somente em READMEs de `node_modules`; diagnóstico descartado por escopo incorreto, sem indicar falha do repositório. |
+| Checker corrigido sobre 17 Markdown do repositório; varredura por padrões AWS/GitHub/OpenAI/JWT/private-key e valor utilizável em `.env.example` | Nenhum link local quebrado e nenhum padrão de segredo real/valor utilizável encontrado. |
+| `git diff --check` e duas releituras independentes do patch | Diff aprovado; re-revisão backend encerrou com 0 achados e a frontend encontrou somente `REV-M3-010`, corrigido antes da repetição final. |
+| Inspeção Docker filtrada pelos três projetos efêmeros da revisão | Nenhum contêiner, volume ou rede correspondente permaneceu. |
+
+### Cleanup e riscos restantes
+
+- Os projetos/volumes/redes efêmeros `user-profile-m3-review-runtime`, `user-profile-m3-smoke-64814` e `user-profile-m3-ui-review` foram removidos. As imagens versionadas reconstruídas permanecem reutilizáveis; nenhum volume ou dado de outro projeto foi alterado.
+- Requests da sessão anterior não são canceladas, mas sua instância de estado deixa de ser observável e um `401` tardio não pode remover o token atual. Cancelamento só deve ser adicionado se houver requisito de economia de rede, não para corrigir isolamento.
+- `sessionStorage` continua acessível a JavaScript, como documentado no ADR; prevenção de XSS e auditoria acumulada de dependências/segredos permanecem essenciais.
+- Loading e erro do dashboard são comprovados automaticamente; a inspeção real desta revisão cobriu o fluxo feliz. Jornadas E2E completas e CI permanecem em M5.
+- M4–M6 continuam pendentes: edição de perfil/senha, CI, README raiz, walkthrough e validação final.

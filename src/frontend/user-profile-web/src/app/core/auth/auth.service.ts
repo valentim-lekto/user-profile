@@ -81,6 +81,10 @@ export class AuthService {
     return this.getValidAccessToken() !== null;
   }
 
+  isCurrentAccessToken(accessToken: string): boolean {
+    return sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY) === accessToken;
+  }
+
   clearSession(): void {
     sessionStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
     this.accessToken.set(null);

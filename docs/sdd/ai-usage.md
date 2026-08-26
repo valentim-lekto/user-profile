@@ -106,3 +106,12 @@ Não armazenar conversas completas nem transcrições integrais de prompts e res
 - **Artefatos:** código e testes de `Auth`/`Profile`, configuração JWT/Compose, smoke acumulado M1+M2+M3, OpenAPI e os documentos de execução/rastreabilidade deste diretório.
 - **Validação:** imagem .NET `10.0.400` com restore locked, build com warnings como erros e 69/69 integrações sem falhas/skips; imagem Node `24.19.0` com 494 pacotes, 0 vulnerabilidades, lint, 42/42 testes e build sem warnings (317,28 kB bruto/87,60 kB estimado); OpenAPI normativo com seis operações/53 referências; `docker compose config`; smoke isolado cobrindo origem única, registro/login, `401` equivalente/Bearer, perfil por `sub`, `413/415`, ausência dos marcadores e do primeiro JWT nos logs, recriação da API com novo token/persistência, `503` e cleanup; UI real em `http://localhost:8080` sem warnings/erros de console.
 - **Ambiente e limitação:** o host não tinha os patches exatos de SDK/Node, portanto a validação usou as imagens fixadas, sem mudar locks. O Compose padrão foi encerrado sem apagar o volume. M4–M6 permanecem pendentes, inclusive edição de perfil/senha, jornadas E2E completas, CI, README raiz e validação final; nenhum push foi realizado.
+
+### 2026-08-26 — Revisão independente e correções de M3
+
+- **Objetivo:** auditar o commit `b1f2468` sem presumir correção, registrar achados e corrigir os riscos High/Medium e Low triviais antes de iniciar M4.
+- **Entradas:** histórico/diff integral, SDD/ADRs, implementação/testes, Swagger runtime, smoke Compose e UI real.
+- **Apoio da IA:** leituras independentes por backend/segurança, frontend e SDD/operação; reprodução de concorrência de sessão, inspeção estrutural do OpenAPI servido e re-revisão do patch corretivo. Achados e comandos completos estão em [`review-log.md`](review-log.md).
+- **Decisões influenciadas:** isolar `ProfileService` por ativação do dashboard; condicionar a limpeza de `401` ao mesmo token; completar metadados do Swagger com filtro focado; provar o wiring real do Angular e procurar a senha sintética bem-sucedida nos logs.
+- **Simplicidade (KISS):** provider local e igualdade do token substituíram store global, generation tracker e infraestrutura de cancelamento; não foram criadas novas camadas de aplicação.
+- **Resultado:** 1 High, 5 Medium e 4 Low confirmados e corrigidos; 69/69 integrações backend, 45/45 testes frontend, 0 vulnerabilidades, lint/build, OpenAPI normativo/runtime, Compose/smoke e fluxo real no navegador aprovados. Nenhum push foi realizado e M4–M6 permanecem pendentes.

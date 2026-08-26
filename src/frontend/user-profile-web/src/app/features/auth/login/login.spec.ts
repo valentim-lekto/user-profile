@@ -55,6 +55,10 @@ describe('Login', () => {
     component.form.controls.email.setValue('ß@example.test');
     expect(component.form.controls.email.hasError('email')).toBe(true);
 
+    component.form.controls.email.setValue(`${'a'.repeat(307)}@example.test`);
+    component.form.controls.password.setValue('p'.repeat(128));
+    expect(component.form.valid).toBe(true);
+
     component.form.controls.email.setValue('e'.repeat(321));
     expect(component.form.controls.email.hasError('maxlength')).toBe(true);
 

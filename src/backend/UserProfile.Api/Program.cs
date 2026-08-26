@@ -76,6 +76,7 @@ builder.Services.AddSwaggerGen(options =>
     options.NonNullableReferenceTypesAsRequired();
     options.UseInlineDefinitionsForEnums();
     options.SchemaFilter<RegisterRequestSchemaFilter>();
+    options.SchemaFilter<ResponseSchemaFilter>();
     options.AddSecurityDefinition("bearerAuth", new OpenApiSecurityScheme
     {
         Type = SecuritySchemeType.Http,

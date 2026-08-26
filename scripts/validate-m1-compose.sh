@@ -266,8 +266,9 @@ docker compose logs --no-color >"$review_tmp/logs"
 if grep -Fq -- "$query_marker" "$review_tmp/logs" ||
   grep -Fq -- "$body_marker" "$review_tmp/logs" ||
   grep -Fq -- "$header_marker" "$review_tmp/logs" ||
+  grep -Fq -- "$smoke_password" "$review_tmp/logs" ||
   grep -Fq -- "$access_token" "$review_tmp/logs"; then
-  fail 'a synthetic query, body, header or JWT marker was exposed in container logs'
+  fail 'a synthetic query, body, header, password or JWT marker was exposed in container logs'
 fi
 
 dd if=/dev/zero of="$review_tmp/oversized" bs=1048577 count=1 2>/dev/null

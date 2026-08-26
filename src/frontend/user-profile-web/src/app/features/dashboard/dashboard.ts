@@ -8,6 +8,7 @@ import { ProfileService } from '../profile/profile.service';
 @Component({
   selector: 'app-dashboard',
   imports: [MatButtonModule, MatCardModule, RouterLink],
+  providers: [ProfileService],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.scss',
 })

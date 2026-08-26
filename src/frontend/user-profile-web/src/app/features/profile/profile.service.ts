@@ -8,7 +8,7 @@ export interface Profile {
   email: string;
 }
 
-@Injectable({ providedIn: 'root' })
+@Injectable()
 export class ProfileService {
   private readonly http = inject(HttpClient);
 

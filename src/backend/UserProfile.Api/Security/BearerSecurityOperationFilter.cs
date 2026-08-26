@@ -14,6 +14,7 @@ public sealed class BearerSecurityOperationFilter : IOperationFilter
                 .OfType<IAuthorizeData>()
                 .Any())
         {
+            operation.Security ??= [];
             return;
         }
 

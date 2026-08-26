@@ -114,6 +114,22 @@ describe('authInterceptor', () => {
     expect(sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBe(accessToken);
     expect(router.navigate).not.toHaveBeenCalled();
   });
+
+  it('does not let a late 401 clear a newer authenticated session', async () => {
+    const result = firstValueFrom(client.get('/api/profile')).catch(() => null);
+    const request = http.expectOne('/api/profile');
+    const newerAccessToken = createToken(Math.floor(Date.now() / 1000) + 1800);
+    sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, newerAccessToken);
+
+    request.flush(
+      { title: 'Unauthorized', status: 401 },
+      { status: 401, statusText: 'Unauthorized' },
+    );
+    await result;
+
+    expect(sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBe(newerAccessToken);
+    expect(router.navigate).not.toHaveBeenCalled();
+  });
 });
 
 function createToken(exp: number): string {

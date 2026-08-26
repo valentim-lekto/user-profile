@@ -105,6 +105,34 @@ describe('Dashboard', () => {
     expect(sessionStorage.getItem('unrelated.test-key')).toBe('preserve-me');
     expect(router.url).toBe('/login');
   });
+
+  it('isolates a pending profile response from the next authenticated session', async () => {
+    const firstRequest = http.expectOne('/api/profile');
+
+    await router.navigateByUrl('/login');
+    sessionStorage.setItem(
+      AUTH_TOKEN_STORAGE_KEY,
+      createToken(Math.floor(Date.now() / 1000) + 1800),
+    );
+    await harness.navigateByUrl('/dashboard', Dashboard);
+
+    const secondRequest = http.expectOne('/api/profile');
+    firstRequest.flush({
+      id: '00000000-0000-4000-8000-000000000001',
+      name: 'Sessão anterior',
+      email: 'old-session@example.test',
+    });
+    secondRequest.flush({
+      id: '00000000-0000-4000-8000-000000000002',
+      name: 'Sessão atual',
+      email: 'current-session@example.test',
+    });
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+
+    expect(harness.routeNativeElement?.textContent).toContain('Boas-vindas, Sessão atual!');
+    expect(harness.routeNativeElement?.textContent).not.toContain('Sessão anterior');
+  });
 });
 
 function createToken(exp: number): string {
