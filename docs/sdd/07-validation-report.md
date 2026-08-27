@@ -138,3 +138,48 @@ Depois das correções e da reexecução relevante: **0 Alto e 0 Médio abertos*
 ## Conclusão
 
 A entrega está funcional, coerente com o OpenAPI/ADRs, reproduzível somente com Docker e pronta para associação a um repositório GitHub e publicação pelo responsável. A publicação em si não foi executada.
+
+## Adendo — revisão independente posterior de M6
+
+Esta seção preserva a auditoria acima como evidência da conclusão original de M6 e registra a revisão posterior exigida sobre seu snapshot documental.
+
+- **Snapshot revisado:** `ee2933d5d880f9ea0a401a39fffa7fec43e5c0a0`.
+- **Base do diff:** `3f6fbc4b006c3a0ebbe83cf3617c8a924a16e798`.
+- **Worktree inicial:** limpa, na branch `main`.
+- **Escopo:** diff integral de oito arquivos de M6 e leitura acumulada de governança, SDD/ADRs, backend, frontend, testes, Docker, scripts, CI, locks e cinco commits recentes.
+- **Método:** revisões independentes de correção/segurança, stale, simplicidade e KISS antes de editar; testes vermelhos antes do código; re-revisão completa do patch.
+
+### Achados e disposição
+
+| ID | Severidade | Evidência e impacto | Disposição |
+|---|---|---|---|
+| `REV-M6-001` | Medium | `AC-DASH-02` estava marcado como Verified, mas o guard só atuava na ativação. Após `exp`, dashboard/perfil e dados pessoais já renderizados permaneciam visíveis; uma nova chamada era enviada sem Bearer e seu `401` escapava da navegação global. A API seguia segura, sem bypass server-side. | Critério/design/testes atualizados; `AuthService` agenda `exp` por token e reprotege rota ativa; interceptor cancela request protegida sem token e conduz ao login; sessão posterior e rota pública são preservadas. |
+| `REV-M6-002` | Medium | Durante a re-revisão, as afirmações correntes ainda descreviam o baseline de 57 testes e ausência de mudança da aplicação, contrariando o patch e `DOC-TRACE-01`. | Evidência histórica M3–M6 preservada e rotulada; plano, matriz, relatório, índice, uso de IA e review log ganharam estado corrente separado com 64 testes. |
+| `REV-M6-003` | Low | O novo timer era cancelado em logout/troca/expiração, mas sobrevivia à destruição do injector, deixando callback/closure satélite até `exp`. | `AuthService` implementa `OnDestroy` e cancela somente o timer, sem remover a sessão; teste dedicado aprovado. |
+| `REV-M6-004` | Low | A classificação textual de rota ignorava query/fragment, mas não matrix params; `/dashboard;tab=resumo` e `/profile;section=password` perdiam a sessão em `exp` sem navegar, mantendo o DOM protegido. | A URL é normalizada também em `;`; dois testes vermelhos e depois verdes cobrem dashboard/perfil com matrix params, query e fragment. |
+
+Consolidação desta revisão e de sua re-revisão: **0 High, 2 Medium e 2 Low confirmados; todos corrigidos. 0 achado aberto ou bloqueado.** As lentes stale e KISS não encontraram resíduo anterior ou complexidade desnecessária no snapshot; os três achados satélites acima surgiram e foram encerrados ao re-revisar o patch corretivo.
+
+### Evidência executada
+
+| Comando ou gate | Resultado observado |
+|---|---|
+| Checks estáticos iniciais | `git diff --check ee2933d^ ee2933d`, `docker compose config --quiet` e `bash -n scripts/*.sh` aprovados; status inicial limpo. |
+| Profile `contract-tests` | OpenAPI aprovado: 6 operações e 53 referências locais. |
+| Profile `backend-tests` | Restore/build Release e 101/101 integrações aprovados, sem falha ou skip. |
+| Baseline do profile `frontend-tests` | Lint, 57/57 testes e build aprovados antes da correção. |
+| Regressão focada antes do código | 3 falhas e 21 sucessos: timer/redirect ausentes e request anônima reproduzida. |
+| Segunda regressão focada | 2 falhas/8 sucessos reproduziram matrix params impedindo navegação; após a correção, os 10 testes do `AuthService` passaram. |
+| Testes de autenticação finais | 27/27 aprovados, incluindo `exp`, parâmetros de URL, races, rota pública, cancelamento HTTP e lifecycle. |
+| Profile `frontend-tests` final | Lint, 64/64 testes em 9 arquivos e build de 318,32 kB bruto/87,94 kB estimado aprovados. |
+| `e2e-playwright.sh` | 3/3 jornadas aprovadas em Chromium; recursos efêmeros removidos. |
+| `validate-m1-compose.sh` | Origem, cadastro/login, perfil/senha, autorização, persistência, `413/415/503`, logs e cleanup aprovados. |
+| `actionlint:1.7.12` | Workflow aprovado no container fixado. |
+
+### Riscos e pendências preservados
+
+- A API continua validando assinatura, issuer, audience, claims e `exp`; a decodificação/timer do browser serve somente à experiência. Timers podem ser processados no primeiro ciclo disponível após suspensão da aba ou do sistema.
+- JWT em `sessionStorage`, ausência de refresh/revogação, HTTP local, SQLite de instância única, CSP/rate limiting/lockout e hardenings de produção continuam com as limitações já descritas acima.
+- CI hospedada, `AI-EXPLAIN-01` e `DEL-REPO-01` permanecem Pending; nenhum push, remote ou confirmação humana foi fabricado.
+
+**Resultado corrente:** aprovado localmente, com 0 High, 0 Medium e 0 Low abertos após a revisão pós-M6.

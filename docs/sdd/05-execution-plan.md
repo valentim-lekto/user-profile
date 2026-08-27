@@ -183,6 +183,7 @@ Gates observáveis:
 - `2026-08-26` — `M5 concluído` — 101 integrações backend, 57 testes frontend, contrato, smoke acumulado e três jornadas Playwright independentes passaram em perfis Docker; acabamento Material/responsivo/acessível, workflow CI, tags fixas, cleanup isolado e artefatos sem credenciais foram revalidados. Somente M6 permanece pendente.
 - `2026-08-26` — `revisão independente de M5 concluída` — o commit `eaad3cd` foi auditado; 0 High, 8 Medium e 11 Low foram corrigidos, incluindo seis inconsistências triviais descobertas na re-revisão do próprio patch corretivo. Provas E2E de nomes acessíveis/persistência/reproteção, inventário exato, dependências, diagnósticos, cleanup, CI imutável e rastreabilidade passaram nos gates finais; detalhes em [`review-log.md`](review-log.md).
 - `2026-08-27` — `M6 concluído tecnicamente` — quatro auditorias independentes e a re-revisão final encerraram todos os Médios, inclusive o bind publicado fora do loopback e a afirmação incorreta sobre CSP. Build sem cache, Compose sem `.env`, URLs, restart/persistência, 101 integrações, 57 testes frontend, três E2E, contrato, smoke e actionlint passaram somente com Docker. README, relatório final, plano, matriz, índice, `.env.example` e uso de IA foram fechados; publicação e confirmação humana permanecem explicitamente externas.
+- `2026-08-27` — `revisão independente pós-M6 concluída` — o commit documental `ee2933d` e a entrega acumulada foram auditados contra `3f6fbc4`; 0 High, 2 Medium e 2 Low foram confirmados e corrigidos. A expiração do JWT agora reprotege dashboard/perfil já ativos, inclusive com parâmetros de URL; chamadas protegidas sem token válido não saem anonimamente; timers respeitam sessão/rota/lifecycle e a evidência corrente foi atualizada. Regressões vermelhas, 64 testes frontend, 101 integrações backend, contrato, 3 E2E, smoke e actionlint foram observados; detalhes em [`review-log.md`](review-log.md).
 
 ## Evidências de M1
 
@@ -256,7 +257,7 @@ O SDK e o Node disponíveis no host divergiam dos patches fixados; por isso rest
 
 Durante a implementação original, uma repetição redundante do smoke foi afetada por contenção externa comprovada. A revisão independente preservou o incidente como histórico, mas encerrou a lacuna executando com sucesso o smoke completo sobre o conteúdo corretivo final e verificando que contêineres, volumes e redes dos projetos efêmeros não permaneceram.
 
-## Evidências de M6
+## Evidências da conclusão original de M6
 
 | Gate | Execução observada em 2026-08-27 | Resultado |
 |---|---|---|
@@ -271,6 +272,17 @@ Durante a implementação original, uma repetição redundante do smoke foi afet
 | Documentação | README raiz, relatório 07, matriz, índice, `.env.example`, frontend README e este plano | `DOC-RUN-001` Verified; roteiro técnico criado; `AI-EXPLAIN-01`, CI hospedada e `DEL-REPO-01` mantidos Pending sem fabricar evidência. |
 
 O relatório detalhado, incluindo as correções do próprio script de auditoria, está em [`07-validation-report.md`](07-validation-report.md).
+
+## Evidências da revisão independente pós-M6
+
+| Gate | Execução observada em 2026-08-27 | Resultado |
+|---|---|---|
+| Snapshot e revisão | `git status --short --branch`, `git log -5`, diff integral `3f6fbc4..ee2933d` e leitura acumulada de SDD, código, testes, Docker/CI e histórico | Etapa M6 e snapshot `ee2933d5d880f9ea0a401a39fffa7fec43e5c0a0` fixados com worktree inicial limpa; lentes de correção/segurança, stale, simplicidade e KISS concluídas antes da edição. |
+| Regressão observável | Testes focados `src/app/core/auth/*.spec.ts` acrescentados antes do código | Primeira execução vermelha com 3 falhas/21 sucessos reproduziu timer/redirect/request; a re-revisão de URL produziu depois 2 falhas/8 sucessos para matrix params. |
+| Correção frontend | `AuthService`, interceptor e sete testes de sessão/lifecycle/URL | Timer vinculado ao token e cancelado em troca/logout/destroy; rota protegida ativa conduz ao login, inclusive com matrix params/query/fragment; rota pública e sessão posterior são preservadas; request protegida sem token é cancelada. |
+| Frontend final | Profile `frontend-tests` | npm/lint, 64/64 testes em 9 arquivos e build de 318,32 kB bruto/87,94 kB estimado aprovados. |
+| Gates acumulados | Profiles `backend-tests`/`contract-tests`, `e2e-playwright.sh`, `validate-m1-compose.sh` e `actionlint:1.7.12` | 101/101 integrações, OpenAPI 6 operações/53 referências, 3/3 E2E, smoke completo e workflow aprovados; nenhum segredo real usado. |
+| Re-revisão e documentação | Diff corretivo completo, `review-log.md`, plano, matriz, relatório, índice e uso de IA | 0 High, 0 Medium e 0 Low abertos; evidência original de M6 preservada como histórica e estado corrente atualizado sem promover CI hospedada, `AI-EXPLAIN-01` ou `DEL-REPO-01`. |
 
 Ao iniciar um milestone, alterar somente seu estado para `em andamento`. Ao concluir, registrar data, comandos, evidências, desvios e hash do commit antes de iniciar o próximo.
 
@@ -370,7 +382,8 @@ Os nomes de scripts npm devem ser confirmados no scaffold e então congelados. M
 - `2026-08-26` — M5 não alterou endpoints nem regras de negócio: reutilizou as suítes acumuladas, acrescentou somente três jornadas Playwright diretas, targets/profiles Docker, um workflow e ajustes visuais locais. O isolamento usa projeto/volume por execução da suíte e contexto/dados por jornada, sem orquestrador ou framework adicional.
 - `2026-08-26` — A revisão independente de M5 fechou `REV-M1-015`–`017`: npm passou a impor a allowlist, assets inexistentes com extensão retornam `404` e o collector sem consumidor foi removido. Actions foram fixadas por SHA e a decisão de status do teardown ganhou prova negativa direta, sem framework de CI adicional.
 - `2026-08-27` — M6 não alterou código da aplicação nem contrato de negócio. Uma correção direta de configuração restringiu a publicação HTTP ao loopback e um assert no smoke tornou a decisão executável; documentação encerrou os demais achados. O usuário Nginx, `forbidOnly`, CSP e rate limiting permaneceram hardenings baixos documentados, sem abstrações novas.
+- `2026-08-27` — A revisão pós-M6 corrigiu `AC-DASH-02` no serviço de autenticação e no interceptor sem store, refresh, listener global ou nova dependência: um único timer por sessão compara o token capturado, respeita a rota ativa e é cancelado no lifecycle; a API permanece autoridade.
 
 ## Resultado final
 
-M1–M6 estão concluídos quanto ao escopo técnico e documental. A validação final repetiu, somente com Docker, build sem cache, Compose sem `.env`, runtime, persistência, 101 integrações backend, 57 testes frontend, três jornadas Playwright, contrato, actionlint e smoke completo. Não houve nova funcionalidade de negócio; a única correção operacional de M6 restringiu/testou o bind de host. A execução hospedada da CI, a confirmação de `AI-EXPLAIN-01` por uma pessoa e `DEL-REPO-01` permanecem ações externas e não foram marcadas como Verified.
+M1–M6 estão concluídos quanto ao escopo técnico e documental. A conclusão original de M6 repetiu o ambiente somente com Docker; a revisão independente posterior corrigiu a reproteção visual no `exp` sem alterar a API ou ampliar o escopo de negócio. A evidência corrente contém 101 integrações backend, 64 testes frontend, três jornadas Playwright, contrato, actionlint e smoke completo aprovados. A execução hospedada da CI, a confirmação de `AI-EXPLAIN-01` por uma pessoa e `DEL-REPO-01` permanecem ações externas e não foram marcadas como Verified.

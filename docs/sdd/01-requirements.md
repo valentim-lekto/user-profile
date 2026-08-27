@@ -111,7 +111,7 @@ IDs publicados não devem ser renumerados nem reutilizados para outro comportame
 | ID | Critério |
 |---|---|
 | `AC-DASH-01` | Após autenticação, o dashboard consulta o perfil atual na API e exibe boas-vindas contendo o nome retornado. |
-| `AC-DASH-02` | Sem JWT válido, o dashboard não fica acessível e a API rejeita chamadas a recursos protegidos. |
+| `AC-DASH-02` | Sem JWT válido, dashboard e perfil não ficam acessíveis e a API rejeita chamadas a recursos protegidos. Se o JWT expirar enquanto uma dessas rotas estiver ativa, o frontend remove a sessão e conduz ao login ao alcançar `exp`, no primeiro ciclo de execução disponível após eventual suspensão da aba ou do sistema; uma chamada protegida iniciada sem token válido também não é enviada anonimamente e conduz ao login. |
 | `AC-DASH-03` | O dashboard oferece navegação para edição dos dados cadastrais. |
 | `AC-DASH-04` | A consulta do perfil apresenta estado de carregamento e, em caso de falha, estado de erro. |
 

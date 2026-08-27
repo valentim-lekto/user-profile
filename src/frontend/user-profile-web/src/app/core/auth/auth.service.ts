@@ -1,8 +1,11 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, OnDestroy, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 
 export const AUTH_TOKEN_STORAGE_KEY = 'user-profile.access-token';
+
+const PROTECTED_ROUTE_PATHS = new Set(['/dashboard', '/profile']);
 
 export interface LoginRequest {
   email: string;
@@ -21,15 +24,21 @@ export interface AuthProblemDetails {
 }
 
 @Injectable({ providedIn: 'root' })
-export class AuthService {
+export class AuthService implements OnDestroy {
   private readonly http = inject(HttpClient);
+  private readonly router = inject(Router);
   private readonly accessToken = signal<string | null>(null);
+  private expirationTimer: ReturnType<typeof setTimeout> | undefined;
 
   readonly loading = signal(false);
   readonly error = signal<AuthProblemDetails | null>(null);
 
   constructor() {
     this.getValidAccessToken();
+  }
+
+  ngOnDestroy(): void {
+    this.cancelExpirationTimer();
   }
 
   async login(request: LoginRequest): Promise<boolean> {
@@ -45,7 +54,8 @@ export class AuthService {
         this.http.post<LoginResponse>('/api/auth/login', request),
       );
 
-      if (!isUnexpiredJwt(response.accessToken)) {
+      const expiresAt = readUnexpiredJwtExpiration(response.accessToken);
+      if (expiresAt === null) {
         this.clearSession();
         this.error.set({ status: 0 });
         return false;
@@ -53,6 +63,7 @@ export class AuthService {
 
       sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, response.accessToken);
       this.accessToken.set(response.accessToken);
+      this.scheduleExpiration(response.accessToken, expiresAt);
       return true;
     } catch (error: unknown) {
       this.error.set(toProblemDetails(error));
@@ -64,14 +75,16 @@ export class AuthService {
 
   getValidAccessToken(): string | null {
     const storedToken = sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+    const expiresAt = readUnexpiredJwtExpiration(storedToken);
 
-    if (!isUnexpiredJwt(storedToken)) {
+    if (storedToken === null || expiresAt === null) {
       this.clearSession();
       return null;
     }
 
     if (this.accessToken() !== storedToken) {
       this.accessToken.set(storedToken);
+      this.scheduleExpiration(storedToken, expiresAt);
     }
 
     return storedToken;
@@ -86,19 +99,43 @@ export class AuthService {
   }
 
   clearSession(): void {
+    this.cancelExpirationTimer();
     sessionStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
     this.accessToken.set(null);
   }
+
+  private scheduleExpiration(accessToken: string, expiresAt: number): void {
+    this.cancelExpirationTimer();
+    this.expirationTimer = setTimeout(() => {
+      this.expirationTimer = undefined;
+
+      if (!this.isCurrentAccessToken(accessToken)) {
+        return;
+      }
+
+      this.clearSession();
+      if (PROTECTED_ROUTE_PATHS.has(this.router.url.split(/[;?#]/, 1)[0])) {
+        void this.router.navigate(['/login']);
+      }
+    }, expiresAt - Date.now());
+  }
+
+  private cancelExpirationTimer(): void {
+    if (this.expirationTimer !== undefined) {
+      clearTimeout(this.expirationTimer);
+      this.expirationTimer = undefined;
+    }
+  }
 }
 
-function isUnexpiredJwt(value: unknown): value is string {
+function readUnexpiredJwtExpiration(value: unknown): number | null {
   if (typeof value !== 'string') {
-    return false;
+    return null;
   }
 
   const parts = value.split('.');
   if (parts.length !== 3 || parts.some((part) => part.length === 0)) {
-    return false;
+    return null;
   }
 
   try {
@@ -107,17 +144,20 @@ function isUnexpiredJwt(value: unknown): value is string {
     const payload: unknown = JSON.parse(atob(paddedPayload));
 
     if (!isRecord(payload)) {
-      return false;
+      return null;
     }
 
     const expiresAt = payload['exp'];
-    return (
-      typeof expiresAt === 'number' &&
-      Number.isSafeInteger(expiresAt) &&
-      expiresAt > Math.floor(Date.now() / 1000)
-    );
+    if (typeof expiresAt !== 'number' || !Number.isSafeInteger(expiresAt)) {
+      return null;
+    }
+
+    const expiresAtMilliseconds = expiresAt * 1000;
+    return Number.isSafeInteger(expiresAtMilliseconds) && expiresAtMilliseconds > Date.now()
+      ? expiresAtMilliseconds
+      : null;
   } catch {
-    return false;
+    return null;
   }
 }
 

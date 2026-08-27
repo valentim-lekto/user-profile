@@ -1131,3 +1131,93 @@ Consolidação: 0 High, 8 Medium e 11 Low confirmados; todos foram corrigidos. N
 - M6 continua responsável pelo README raiz, walkthrough e validação de checkout limpo; não foi antecipada nesta revisão de M5.
 - JWTs já emitidos continuam válidos no servidor até `exp`; o risco é deliberado e documentado, enquanto o cliente encerra a sessão imediatamente.
 - O filtro de diagnóstico reduz exposição acidental, mas a regra primária continua sendo nunca produzir segredos em logs.
+
+## 2026-08-27 — Revisão independente pós-M6
+
+- **Etapa revisada:** M6 — validação final e documentação, incluindo a entrega acumulada que o fechamento promoveu como pronta.
+- **Commit revisado:** `ee2933d5d880f9ea0a401a39fffa7fec43e5c0a0` (`3f6fbc4b006c3a0ebbe83cf3617c8a924a16e798` como base imediata).
+- **Worktree inicial:** branch `main` limpa; o snapshot permaneceu fixo durante toda a fase de análise.
+- **Diff da etapa:** `.env.example`, README raiz, `05-execution-plan.md`, `06-traceability.md`, novo `07-validation-report.md`, índice SDD, `ai-usage.md` e README do frontend.
+- **Arquivos examinados:** `AGENTS.md`, `PLANS.md`, todos os SDD/ADRs e este histórico; diff e cinco commits recentes; implementação/testes completos de backend e frontend; OpenAPI; Dockerfiles, Nginx, Compose, scripts, E2E, workflow e locks.
+- **Critérios examinados:** todos os estados promovidos por M6, com foco em `FR-AUTH-01`, `AC-DASH-02`, `SEC-AUTH-01`, `SEC-SESSION-01`, `SEC-SECRET-01`, `TECH-FRONTEND-01`, `TEST-FLOW-01`, `DOC-RUN-01`, `DOC-SDD-01`, `DOC-TRACE-01`, `AI-*`, `DEL-REPO-01` e Definition of Done.
+- **Método:** revisão completa antes de editar, com lentes independentes de correção/segurança, stale e simplicidade/KISS; consolidação por causa raiz; especificação e testes vermelhos antes do código; re-revisão do patch corretivo.
+
+### Achados confirmados e decisões
+
+Considerando o snapshot e a re-revisão do patch corretivo, foram confirmados **0 High, 2 Medium e 2 Low**. Todos foram corrigidos; não há achado aberto ou bloqueado.
+
+#### `REV-M6-001` — Medium / P2 — rota protegida permanecia aberta após expiração do JWT
+
+- **Localização no snapshot:** `07-validation-report.md`, auditoria funcional que marcava dashboard protegido como Verified e declarava zero Medium aberto; `auth.guard.ts`, `auth.service.ts`, `auth.interceptor.ts` e telas dashboard/perfil.
+- **Evidência concreta:** o guard consultava validade apenas na ativação. Uma aba já em `/dashboard` ou `/profile` mantinha nome/email renderizados depois de `exp`. Na interação seguinte, `getValidAccessToken()` removia o token expirado, mas o interceptor retornava `next(request)` antes do `catchError`; a chamada saía sem Bearer, a API respondia `401` corretamente e o erro ficava local na tela, sem navegação.
+- **Cenário alcançável:** autenticar, abrir dashboard/perfil, manter a aba até o JWT de 15 minutos expirar e permanecer nela ou tentar recarregar/salvar.
+- **Impacto:** encerramento visual da sessão incompleto e PII já carregada ainda visível em aba abandonada/compartilhada. Não houve bypass de autorização da API nem confiança em ID do cliente; endpoints continuaram identificando exclusivamente pelo claim `sub`.
+- **Correção mínima:** agendar `exp` do token corrente, removê-lo e conduzir somente rota protegida ativa ao login; cancelar uma request protegida iniciada sem token válido; preservar rota pública e sessão posterior por comparação do token capturado.
+- **Critérios:** `FR-AUTH-01`, `AC-DASH-02`, `SEC-SESSION-01`, `FE-GUARD-001`, `FE-INT-002`.
+- **Decisão:** requisito, design e estratégia foram atualizados antes dos quatro testes iniciais; a regressão focada falhou primeiro e passou após a implementação direta em `AuthService`/interceptor.
+
+#### `REV-M6-002` — Medium — evidência corrente permaneceu presa ao baseline anterior durante o patch
+
+- **Localização na primeira re-revisão:** seções correntes de `05-execution-plan.md`, `06-traceability.md`, `07-validation-report.md`, índice SDD e `ai-usage.md` ainda mencionavam 57 testes e nenhuma mudança de aplicação.
+- **Evidência concreta:** o patch já alterava `AC-DASH-02`, código e testes, enquanto a matriz determina que estado e evidência mudem no mesmo commit. Promover o patch naquele ponto teria deixado uma alegação verificável falsa.
+- **Impacto:** quebra de `DOC-TRACE-01` e do Definition of Done; um avaliador não conseguiria distinguir a execução original de M6 da revisão posterior.
+- **Correção mínima:** preservar M3–M6 como histórico rotulado e acrescentar estado/evidência corrente pós-M6 com snapshot, achados, 64 testes e gates reexecutados.
+- **Critérios:** `DOC-SDD-01`, `DOC-TRACE-01`, `NFR-SDD-01`, `NFR-TRACE-01`.
+- **Decisão:** plano, matriz, relatório/adendo, índice, uso de IA e este review log foram atualizados sem reescrever os números históricos.
+
+#### `REV-M6-003` — Low — timer novo sobrevivia à destruição do serviço
+
+- **Localização na primeira correção:** `AuthService.scheduleExpiration` e specs satélites que destroem o injector Angular.
+- **Evidência concreta:** logout, troca e expiração cancelavam o timer, mas o serviço não implementava lifecycle cleanup; instâncias destruídas podiam manter callback/closure até `exp`.
+- **Impacto:** pequeno resíduo de memória/temporizador em testes ou em teardown da aplicação; a checagem de token evitava limpar sessão diferente, portanto o risco funcional era baixo.
+- **Correção mínima:** implementar `OnDestroy` e cancelar somente o timer, sem remover `sessionStorage`.
+- **Critérios:** `SEC-SESSION-01`, `TECH-FRONTEND-01`, `FE-GUARD-001`.
+- **Decisão:** hook e teste dedicado adicionados; specs de autenticação e profile final passaram.
+
+#### `REV-M6-004` — Low — matrix params evitavam a navegação no `exp`
+
+- **Localização na segunda re-revisão:** `AuthService.scheduleExpiration`, comparação de `router.url` com `PROTECTED_ROUTE_PATHS`.
+- **Evidência concreta:** Angular trata `/dashboard;tab=resumo` e `/profile;section=password` como as mesmas rotas protegidas, mas `split(/[?#]/)` preservava `;...`; no timer, a sessão era removida e a comparação falhava antes do redirect.
+- **Impacto:** DOM e PII já renderizados continuavam visíveis até outra chamada/navegação; a API permanecia protegida.
+- **Correção mínima:** ignorar também o delimitador `;` ao obter o path estático, sem introduzir parser/helper para duas rotas sem parâmetros de path.
+- **Critérios:** `AC-DASH-02`, `SEC-SESSION-01`, `FE-GUARD-001`.
+- **Decisão:** dois testes parametrizados falharam primeiro (2 falhas/8 sucessos); a normalização direta passou 10/10 no service spec e 64/64 no profile final.
+
+### Candidatos rejeitados e decisões conscientes
+
+- A falta de uma seção M6 anterior neste `review-log.md` não era defeito do snapshot: o índice delegava explicitamente a auditoria original ao relatório 07. A nova seção existe porque esta rodada foi expressamente instruída a registrá-la aqui.
+- Não foi encontrado IDOR: GET e ambos os PUTs protegidos derivam a identidade exclusivamente do claim JWT `sub`; query, header, body e overposting com IDs não selecionam usuário.
+- Não foram encontrados segredo real, dependência órfã, código substituído, camada especulativa ou simplificação segura adicional. Timer, comparação de token, allowlists de request/rota e lifecycle atendem responsabilidades distintas.
+- O JWT já emitido continua válido no servidor até `exp`, inclusive após troca de senha; essa limitação sem blacklist/refresh é decisão documentada. A correção desta revisão encerra a sessão visual no `exp`, sem alterar o contrato server-side.
+- Timers do browser podem ser processados somente no primeiro ciclo disponível após suspensão de aba/sistema; o guard e a validação em toda decisão/request permanecem defesa adicional, e a API continua autoridade.
+- CSP, rate limiting, lockout, usuário padrão do Nginx e `forbidOnly` continuam hardenings/limitações de produção já registrados, sem novo cenário que justificasse ampliar esta correção.
+
+### Comandos e resultados
+
+| Comando/check | Resultado |
+|---|---|
+| `pwd`, `git status --short --branch`, `git log -5`, `git show --stat`, `git diff 3f6fbc4..ee2933d` | Raiz correta; `main` inicialmente limpa; etapa, base e snapshot fixados; diff integral de 8 arquivos revisado antes de editar. |
+| Leitura de governança, SDD/ADRs/review log, implementação, testes, Docker/Compose, Nginx, scripts, CI e locks | Escopo funcional, arquitetura, segurança, backend/frontend, testes, Docker e rastreabilidade confrontados com as afirmações M6. |
+| `git diff --check ee2933d^ ee2933d`, `docker compose config --quiet`, `bash -n scripts/*.sh` | Snapshot aprovado nos checks estáticos. |
+| Profile `contract-tests` | Exit 0: `SPEC-OAS-001..005`, 6 operações e 53 referências locais. |
+| Profile `backend-tests` | Restore/build Release aprovados; 101/101 integrações, 0 falhas, 0 skips. |
+| Profile `frontend-tests` no baseline | Lint, 57/57 testes em 9 arquivos e build aprovados antes da correção. |
+| Testes focados após especificar a regressão e antes do código | Exit 1 esperado: 3 falhas e 21 sucessos; timer/redirect ausentes e request anônima reproduzidos. |
+| Testes focados após a correção principal | 24/24 aprovados. |
+| Testes focados após o cleanup de lifecycle | 25/25 aprovados naquele patch intermediário. |
+| Segunda regressão focada de URL | Exit 1 esperado: 2 falhas/8 sucessos; dashboard/perfil com matrix params perderam a sessão sem redirect. |
+| Repetição focada após normalização de URL | 10/10 no `AuthService`; o profile final confirmou 27/27 specs de autenticação. |
+| Profile `frontend-tests` final | Lint, 64/64 testes em 9 arquivos e build de 318,32 kB bruto/87,94 kB estimado aprovados. |
+| `./scripts/e2e-playwright.sh` | 3/3 jornadas Chromium aprovadas em 4,7 s; projeto/volume efêmeros removidos pelo trap. |
+| `./scripts/validate-m1-compose.sh` | Exit 0: origem, cadastro/login, perfil/senha, autorização, persistência, `413/415/503`, logs e cleanup aprovados. |
+| `docker run ... rhysd/actionlint:1.7.12` | Exit 0; workflow aprovado no container fixado. |
+| Re-revisões independentes do patch | Correção/segurança sem novo High/Medium funcional e com `REV-M6-004` Low encerrado; stale encontrou `REV-M6-002/003`; KISS aprovou a forma direta, sem simplificação segura perdida. |
+| `git diff --check`, `docker compose config --quiet`, `zsh -n scripts/*.sh`, busca por testes focados/desabilitados e validação de links Markdown | Exit 0 nos checks aplicáveis; nenhuma ocorrência de foco/skip e links relativos válidos nos 17 documentos do projeto. |
+| Verificação final de cleanup no daemon e filesystem | Rede `user-profile-sdd-challenge_default` ausente; volume persistente `user-profile-sdd-challenge_user-profile-data` preservado; diretórios exatos dos artefatos desta rodada ausentes. |
+
+### Cleanup, riscos e fechamento
+
+- E2E e smoke usaram projetos/volumes próprios e seus traps concluíram com exit 0; nenhum container/rede/volume efêmero desses projetos permaneceu. A rede padrão sem containers criada pelo profile foi removida com `docker compose down --remove-orphans`, preservando `user-profile-sdd-challenge_user-profile-data`. Os diretórios exatos de artefatos criados nesta rodada (`user-profile-e2e-e2e-42714` e `user-profile-m4-smoke-43090`) foram removidos; artefatos anteriores e recursos de outros projetos foram preservados.
+- Nenhum segredo, senha ou token real foi usado, impresso ou versionado; somente valores sintéticos dos testes passaram pelos fluxos previstos.
+- CI hospedada, `AI-EXPLAIN-01` e `DEL-REPO-01` permanecem Pending. Nenhum remote, push, rebase, amend ou squash foi usado.
+- O hash do commit local de revisão é informado no handoff, pois o commit não pode registrar o próprio hash em seu conteúdo.

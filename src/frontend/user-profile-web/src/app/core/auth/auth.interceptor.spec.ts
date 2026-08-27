@@ -99,6 +99,20 @@ describe('authInterceptor', () => {
     expect(router.navigate).toHaveBeenCalledWith(['/login']);
   });
 
+  it('cancels a protected request and navigates when the stored token is already expired', () => {
+    const expiredAccessToken = createToken(Math.floor(Date.now() / 1000) - 1);
+    sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, expiredAccessToken);
+    const onError = vi.fn();
+
+    client.get('/api/profile').subscribe({ error: onError });
+
+    expect(http.match('/api/profile')).toHaveLength(0);
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ status: 401 }));
+    expect(sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBeNull();
+    expect(router.navigate).toHaveBeenCalledOnce();
+    expect(router.navigate).toHaveBeenCalledWith(['/login']);
+  });
+
   it('leaves a public login 401 for the screen and keeps the existing session untouched', async () => {
     const result = firstValueFrom(client.post('/api/auth/login', {})).catch(() => null);
 

@@ -16,13 +16,21 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
   }
 
   const auth = inject(AuthService);
+  const router = inject(Router);
   const accessToken = auth.getValidAccessToken();
 
   if (!accessToken) {
-    return next(request);
+    void router.navigate(['/login']);
+    return throwError(
+      () =>
+        new HttpErrorResponse({
+          status: 401,
+          statusText: 'Unauthorized',
+          url: request.urlWithParams,
+        }),
+    );
   }
 
-  const router = inject(Router);
   const authenticatedRequest = request.clone({
     setHeaders: { Authorization: `Bearer ${accessToken}` },
   });

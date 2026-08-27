@@ -1,16 +1,23 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
 import { AUTH_TOKEN_STORAGE_KEY, AuthService } from './auth.service';
 
 describe('AuthService', () => {
   let auth: AuthService;
   let http: HttpTestingController;
+  let router: { url: string; navigate: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     sessionStorage.clear();
+    router = { url: '/login', navigate: vi.fn().mockResolvedValue(true) };
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: Router, useValue: router },
+      ],
     });
 
     auth = TestBed.inject(AuthService);
@@ -19,7 +26,7 @@ describe('AuthService', () => {
 
   afterEach(() => {
     http.verify();
-    sessionStorage.clear();
+    auth.clearSession();
     vi.useRealTimers();
   });
 
@@ -92,6 +99,87 @@ describe('AuthService', () => {
 
     expect(auth.getValidAccessToken()).toBeNull();
     expect(sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBeNull();
+  });
+
+  it('expires the current session at exp and redirects an already active protected route', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-26T12:00:00Z'));
+    router.url = '/dashboard';
+    const accessToken = createToken(expiresInSeconds(60));
+    sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, accessToken);
+
+    expect(auth.getValidAccessToken()).toBe(accessToken);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBeNull();
+    expect(router.navigate).toHaveBeenCalledOnce();
+    expect(router.navigate).toHaveBeenCalledWith(['/login']);
+  });
+
+  it.each([
+    '/dashboard;tab=resumo',
+    '/profile;section=password?mode=edit#password-form',
+  ])('redirects an active protected route with URL parameters at exp: %s', async (url) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-26T12:00:00Z'));
+    router.url = url;
+    const accessToken = createToken(expiresInSeconds(60));
+    sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, accessToken);
+    expect(auth.getValidAccessToken()).toBe(accessToken);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBeNull();
+    expect(router.navigate).toHaveBeenCalledWith(['/login']);
+  });
+
+  it('does not let an earlier expiration timer clear a newer session', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-26T12:00:00Z'));
+    router.url = '/profile';
+    const firstAccessToken = createToken(expiresInSeconds(60));
+    sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, firstAccessToken);
+    expect(auth.getValidAccessToken()).toBe(firstAccessToken);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    const newerAccessToken = createToken(expiresInSeconds(300));
+    sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, newerAccessToken);
+    expect(auth.getValidAccessToken()).toBe(newerAccessToken);
+
+    await vi.advanceTimersByTimeAsync(31_000);
+
+    expect(sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBe(newerAccessToken);
+    expect(router.navigate).not.toHaveBeenCalled();
+  });
+
+  it('clears an expired session without interrupting an active public route', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-26T12:00:00Z'));
+    router.url = '/register';
+    const accessToken = createToken(expiresInSeconds(60));
+    sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, accessToken);
+    expect(auth.getValidAccessToken()).toBe(accessToken);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBeNull();
+    expect(router.navigate).not.toHaveBeenCalled();
+  });
+
+  it('cancels the expiration timer when the service is destroyed', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-26T12:00:00Z'));
+    router.url = '/dashboard';
+    const accessToken = createToken(expiresInSeconds(60));
+    sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, accessToken);
+    expect(auth.getValidAccessToken()).toBe(accessToken);
+
+    auth.ngOnDestroy();
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBe(accessToken);
+    expect(router.navigate).not.toHaveBeenCalled();
   });
 });
 
