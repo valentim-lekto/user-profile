@@ -9,7 +9,8 @@ interface Account {
 type SecretKey = 'primary' | 'replacement' | 'invalid';
 
 interface SecretField {
-  readonly selector: string;
+  readonly locator: Locator;
+  readonly redactionSelector: string;
   readonly secretKey: SecretKey;
 }
 
@@ -28,15 +29,19 @@ async function register(page: Page, account: Account): Promise<void> {
   await page.goto('/register');
   await page.getByLabel('Nome').fill(account.name);
   await page.getByLabel('Email').fill(account.email);
-  const secretSelectors = [
-    '[formControlName="password"]',
-    '[formControlName="passwordConfirmation"]',
-  ];
   await submitWithSecrets(
     page,
     [
-      { selector: secretSelectors[0], secretKey: 'primary' },
-      { selector: secretSelectors[1], secretKey: 'primary' },
+      {
+        locator: page.getByLabel('Senha', { exact: true }),
+        redactionSelector: '[formControlName="password"]',
+        secretKey: 'primary',
+      },
+      {
+        locator: page.getByLabel('Confirmação de senha', { exact: true }),
+        redactionSelector: '[formControlName="passwordConfirmation"]',
+        secretKey: 'primary',
+      },
     ],
     () => page.getByRole('button', { name: 'Criar conta' }).click(),
   );
@@ -46,10 +51,15 @@ async function register(page: Page, account: Account): Promise<void> {
 
 async function login(page: Page, account: Account): Promise<void> {
   await page.getByLabel('Email').fill(account.email);
-  const passwordSelector = '[formControlName="password"]';
   await submitWithSecrets(
     page,
-    [{ selector: passwordSelector, secretKey: 'primary' }],
+    [
+      {
+        locator: page.getByLabel('Senha', { exact: true }),
+        redactionSelector: '[formControlName="password"]',
+        secretKey: 'primary',
+      },
+    ],
     () => page.getByRole('button', { name: 'Entrar' }).click(),
   );
   await expectPath(page, '/dashboard');
@@ -63,14 +73,14 @@ async function submitWithSecrets(
 ): Promise<void> {
   try {
     for (const field of fields) {
-      await fillSecret(page.locator(field.selector), field.secretKey);
+      await fillSecret(field.locator, field.secretKey);
     }
 
     await submit();
   } finally {
     await redactSecrets(
       page,
-      fields.map(({ selector }) => selector),
+      fields.map(({ redactionSelector }) => redactionSelector),
     );
   }
 }
@@ -156,7 +166,7 @@ test('E2E-001 registration, profile update, fresh dashboard and logout', async (
   await expectNoHorizontalOverflow(page);
   await page.getByLabel('Nome').fill(updatedName);
   await page.getByLabel('Email').fill(updatedEmail);
-  await page.getByTestId('save-profile').click();
+  await page.getByRole('button', { name: 'Salvar dados' }).click();
   await expect(page.getByText('Dados pessoais atualizados com sucesso.')).toBeVisible();
 
   await page.getByRole('link', { name: 'Voltar ao dashboard' }).click();
@@ -164,7 +174,15 @@ test('E2E-001 registration, profile update, fresh dashboard and logout', async (
   await expect(page.getByRole('heading', { name: `Boas-vindas, ${updatedName}!` })).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
+  await page.getByRole('link', { name: 'Ir para o perfil' }).click();
+  await expectPath(page, '/profile');
+  await expect(page.getByLabel('Email')).toHaveValue(updatedEmail);
+  await page.getByRole('link', { name: 'Voltar ao dashboard' }).click();
+  await expectPath(page, '/dashboard');
+
   await page.getByRole('button', { name: 'Sair' }).click();
+  await expectPath(page, '/login');
+  await page.goto('/dashboard');
   await expectPath(page, '/login');
   await expectNoHorizontalOverflow(page);
 });
@@ -180,11 +198,17 @@ test('E2E-002 anonymous protected route and generic invalid login', async ({ pag
   await expect(page.locator('#main-content')).toBeFocused();
 
   await page.getByLabel('Email').fill(`unknown-${randomUUID()}@example.test`);
-  const passwordSelector = '[formControlName="password"]';
+  const password = page.getByLabel('Senha', { exact: true });
   await submitWithSecrets(
     page,
-    [{ selector: passwordSelector, secretKey: 'invalid' }],
-    () => page.locator(passwordSelector).press('Enter'),
+    [
+      {
+        locator: password,
+        redactionSelector: '[formControlName="password"]',
+        secretKey: 'invalid',
+      },
+    ],
+    () => password.press('Enter'),
   );
 
   await expectPath(page, '/login');
@@ -199,36 +223,57 @@ test('E2E-003 password change ends the session and accepts only the new password
 
   await page.getByRole('link', { name: 'Ir para o perfil' }).click();
   await expectPath(page, '/profile');
-  const passwordSelectors = [
-    '[formControlName="currentPassword"]',
-    '[formControlName="newPassword"]',
-    '[formControlName="newPasswordConfirmation"]',
-  ];
   await submitWithSecrets(
     page,
     [
-      { selector: passwordSelectors[0], secretKey: 'primary' },
-      { selector: passwordSelectors[1], secretKey: 'replacement' },
-      { selector: passwordSelectors[2], secretKey: 'replacement' },
+      {
+        locator: page.getByLabel('Senha atual', { exact: true }),
+        redactionSelector: '[formControlName="currentPassword"]',
+        secretKey: 'primary',
+      },
+      {
+        locator: page.getByLabel('Nova senha', { exact: true }),
+        redactionSelector: '[formControlName="newPassword"]',
+        secretKey: 'replacement',
+      },
+      {
+        locator: page.getByLabel('Confirmação da nova senha', { exact: true }),
+        redactionSelector: '[formControlName="newPasswordConfirmation"]',
+        secretKey: 'replacement',
+      },
     ],
-    () => page.getByTestId('change-password').click(),
+    () => page.getByRole('button', { name: 'Alterar senha' }).click(),
   );
 
   await expectPath(page, '/login');
   await expect(page.getByText('Senha alterada com sucesso. Faça login novamente.')).toBeVisible();
+  await page.goto('/dashboard');
+  await expectPath(page, '/login');
 
   await page.getByLabel('Email').fill(account.email);
-  const loginPasswordSelector = '[formControlName="password"]';
+  const loginPassword = page.getByLabel('Senha', { exact: true });
   await submitWithSecrets(
     page,
-    [{ selector: loginPasswordSelector, secretKey: 'primary' }],
+    [
+      {
+        locator: loginPassword,
+        redactionSelector: '[formControlName="password"]',
+        secretKey: 'primary',
+      },
+    ],
     () => page.getByRole('button', { name: 'Entrar' }).click(),
   );
   await expect(page.getByRole('alert')).toHaveText('Email ou senha inválidos.');
 
   await submitWithSecrets(
     page,
-    [{ selector: loginPasswordSelector, secretKey: 'replacement' }],
+    [
+      {
+        locator: loginPassword,
+        redactionSelector: '[formControlName="password"]',
+        secretKey: 'replacement',
+      },
+    ],
     () => page.getByRole('button', { name: 'Entrar' }).click(),
   );
   await expectPath(page, '/dashboard');

@@ -5,18 +5,21 @@ set -eu
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repository_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 cd "$repository_root"
+sanitizer_script="$repository_root/scripts/sanitize-ci-output.sh"
 
 review_tmp=$(mktemp -d)
 stack_started=0
 run_succeeded=0
-COMPOSE_PROJECT_NAME="user-profile-m4-smoke-$$"
+compose_project_prefix="${COMPOSE_PROJECT_NAME:-user-profile-m4}"
+COMPOSE_PROJECT_NAME="${compose_project_prefix}-smoke-$$"
 export COMPOSE_PROJECT_NAME
+failure_artifacts_root="${SMOKE_FAILURE_ARTIFACTS_DIR:-$repository_root/artifacts/ci/smoke}"
+failure_artifacts_dir="$failure_artifacts_root/$COMPOSE_PROJECT_NAME"
+mkdir -p "$failure_artifacts_dir"
+printf '%s\n' "$COMPOSE_PROJECT_NAME" >"$failure_artifacts_dir/compose-project.txt"
 
 collect_failure_diagnostics() {
   failure_status=$1
-  failure_artifacts_root="${SMOKE_FAILURE_ARTIFACTS_DIR:-$repository_root/artifacts/ci/smoke}"
-  failure_artifacts_dir="$failure_artifacts_root/$COMPOSE_PROJECT_NAME"
-  mkdir -p "$failure_artifacts_dir"
 
   printf 'project=%s\nexit_status=%s\nstack_started=%s\n' \
     "$COMPOSE_PROJECT_NAME" "$failure_status" "$stack_started" \
@@ -31,24 +34,32 @@ collect_failure_diagnostics() {
       >"$failure_artifacts_dir/compose-ps.txt" 2>&1 || true
     docker compose logs --no-color api web \
       >"$review_tmp/failure-logs" 2>&1 || true
-    sed -E \
-      -e 's/(Bearer[[:space:]]+)[A-Za-z0-9._-]+/\1[REDACTED]/g' \
-      -e 's/("(accessToken|password|passwordConfirmation|currentPassword|newPassword|newPasswordConfirmation|passwordHash)"[[:space:]]*:[[:space:]]*")[^"]*"/\1[REDACTED]"/g' \
-      -e 's/([?&]password=)[^&[:space:]]+/\1[REDACTED]/g' \
-      "$review_tmp/failure-logs" \
+    sh "$sanitizer_script" \
+      <"$review_tmp/failure-logs" \
       >"$failure_artifacts_dir/compose.log"
   fi
 }
 
 cleanup() {
   cleanup_status=$?
+  teardown_status=0
+  trap - EXIT HUP INT TERM
 
   if [ "$run_succeeded" -eq 0 ]; then
     collect_failure_diagnostics "$cleanup_status" || true
   fi
 
   if [ "$stack_started" -eq 1 ]; then
-    docker compose down --volumes --remove-orphans >/dev/null 2>&1 || true
+    teardown_output=''
+    set +e
+    teardown_output=$(docker compose down --volumes --remove-orphans 2>&1)
+    teardown_status=$?
+    set -e
+
+    if [ "$teardown_status" -ne 0 ]; then
+      printf '%s\n' "$teardown_output" |
+        sh "$sanitizer_script" >"$failure_artifacts_dir/teardown.log"
+    fi
   fi
 
   rm -f -- \
@@ -62,7 +73,13 @@ cleanup() {
     "$review_tmp/request"
   rmdir "$review_tmp" 2>/dev/null || true
 
-  return "$cleanup_status"
+  if [ "$teardown_status" -ne 0 ]; then
+    printf 'M1+M2+M3+M4 Compose teardown returned %s\n' "$teardown_status" >&2
+  fi
+
+  final_status=$(sh "$repository_root/scripts/resolve-cleanup-status.sh" \
+    "$cleanup_status" "$teardown_status")
+  exit "$final_status"
 }
 
 fail() {
@@ -121,27 +138,122 @@ wait_for_health() {
   fail 'health did not recover after recreating the API'
 }
 
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
-docker compose config --quiet
+docker compose \
+  --profile backend-tests \
+  --profile frontend-tests \
+  --profile contract-tests \
+  --profile e2e \
+  config --quiet
 
-compose_images=$(docker compose config --images | sort)
-expected_compose_images=$(printf '%s\n' 'user-profile-api:0.1.0' 'user-profile-web:0.1.0')
+compose_services=$(docker compose \
+  --profile backend-tests \
+  --profile frontend-tests \
+  --profile contract-tests \
+  --profile e2e \
+  config --services | sort)
+expected_compose_services=$(printf '%s\n' \
+  'api' \
+  'backend-tests' \
+  'contract-tests' \
+  'e2e' \
+  'frontend-tests' \
+  'web' \
+  'web-e2e')
+[ "$compose_services" = "$expected_compose_services" ] ||
+  fail "unexpected Compose services: $compose_services"
+
+compose_images=$(docker compose \
+  --profile backend-tests \
+  --profile frontend-tests \
+  --profile contract-tests \
+  --profile e2e \
+  config --images | sort -u)
+expected_compose_images=$(printf '%s\n' \
+  'ruby:3.4.10-slim-bookworm' \
+  'user-profile-api:0.1.0' \
+  'user-profile-backend-tests:0.1.0' \
+  'user-profile-e2e-tests:0.1.0' \
+  'user-profile-frontend-tests:0.1.0' \
+  'user-profile-web:0.1.0')
 [ "$compose_images" = "$expected_compose_images" ] ||
   fail "unexpected Compose images: $compose_images"
 
-grep -Fqx 'FROM mcr.microsoft.com/dotnet/sdk:10.0.400-noble AS build' \
-  src/backend/UserProfile.Api/Dockerfile || fail 'unexpected .NET SDK image'
-grep -Fqx 'FROM mcr.microsoft.com/dotnet/aspnet:10.0.11-noble AS final' \
-  src/backend/UserProfile.Api/Dockerfile || fail 'unexpected ASP.NET runtime image'
-grep -Fqx 'FROM node:24.19.0-bookworm-slim AS dependencies' \
-  src/frontend/user-profile-web/Dockerfile || fail 'unexpected Node image'
-grep -Fqx 'FROM nginx:1.30.4-alpine3.24-slim' \
-  src/frontend/user-profile-web/Dockerfile || fail 'unexpected Nginx image'
-grep -Fqx 'FROM mcr.microsoft.com/playwright:v1.62.0-noble' \
-  tests/e2e/Dockerfile || fail 'unexpected Playwright image'
+backend_froms=$(grep '^FROM ' src/backend/UserProfile.Api/Dockerfile)
+expected_backend_froms=$(printf '%s\n' \
+  'FROM mcr.microsoft.com/dotnet/sdk:10.0.400-noble AS build' \
+  'FROM mcr.microsoft.com/dotnet/sdk:10.0.400-noble AS test' \
+  'FROM mcr.microsoft.com/dotnet/aspnet:10.0.11-noble AS final')
+[ "$backend_froms" = "$expected_backend_froms" ] || fail 'unexpected backend FROM stages'
+
+frontend_froms=$(grep '^FROM ' src/frontend/user-profile-web/Dockerfile)
+expected_frontend_froms=$(printf '%s\n' \
+  'FROM node:24.19.0-bookworm-slim AS dependencies' \
+  'FROM dependencies AS test' \
+  'FROM dependencies AS build' \
+  'FROM nginx:1.30.4-alpine3.24-slim')
+[ "$frontend_froms" = "$expected_frontend_froms" ] || fail 'unexpected frontend FROM stages'
+
+e2e_froms=$(grep '^FROM ' tests/e2e/Dockerfile)
+[ "$e2e_froms" = 'FROM mcr.microsoft.com/playwright:v1.62.0-noble' ] ||
+  fail 'unexpected Playwright FROM stage'
+
 grep -Eq '^[[:space:]]+image:[[:space:]]+ruby:3\.4\.10-slim-bookworm$' \
   compose.yaml || fail 'unexpected Ruby contract-validator image'
+
+grep -Fqx 'strict-allow-scripts=true' \
+  src/frontend/user-profile-web/.npmrc || fail 'npm install-script allowlist is not strict'
+grep -Fqx 'RUN test "$(npm --version)" = "11.17.0" && npm ci' \
+  src/frontend/user-profile-web/Dockerfile || fail 'unexpected npm runtime or install command'
+
+if grep -Fq 'coverlet.collector' \
+  tests/backend/UserProfile.Api.IntegrationTests/UserProfile.Api.IntegrationTests.csproj \
+  tests/backend/UserProfile.Api.IntegrationTests/packages.lock.json; then
+  fail 'unused coverage collector remains in the backend test dependency graph'
+fi
+
+workflow_uses=$(sed -n \
+  -e 's/^[[:space:]]*-[[:space:]]*uses:[[:space:]]*//p' \
+  -e 's/^[[:space:]]*uses:[[:space:]]*//p' \
+  .github/workflows/ci.yml)
+expected_workflow_uses=$(printf '%s\n' \
+  'actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2' \
+  'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1')
+[ "$workflow_uses" = "$expected_workflow_uses" ] ||
+  fail "unexpected or unpinned workflow Actions: $workflow_uses"
+
+checkout_credentials_count=$(awk '
+  /^[[:space:]]*- uses: actions\/checkout@/ { in_checkout = 1; next }
+  in_checkout && /^[[:space:]]*- (uses:|name:)/ { in_checkout = 0 }
+  in_checkout && /^[[:space:]]+persist-credentials:[[:space:]]+false([[:space:]]*#.*)?$/ {
+    count++
+  }
+  END { print count + 0 }
+' .github/workflows/ci.yml)
+[ "$checkout_credentials_count" -eq 1 ] || fail 'checkout persists Git credentials'
+
+sanitizer_marker='SYNTHETIC_CI_SECRET_MARKER'
+sanitizer_jwt='eyJzeW50aGV0aWMiOiJ0ZXN0In0.eyJzdWIiOiJ0ZXN0In0.c3ludGhldGljLXNpZ25hdHVyZQ'
+sanitized_probe=$(printf '%s\n' \
+  "Authorization: Bearer $sanitizer_marker" \
+  "{\"password\":\"$sanitizer_marker\",\"accessToken\":\"$sanitizer_jwt\"}" \
+  "password=$sanitizer_marker Jwt__SigningKey=$sanitizer_marker" |
+  sh "$sanitizer_script")
+if printf '%s' "$sanitized_probe" | grep -Fq "$sanitizer_marker" ||
+  printf '%s' "$sanitized_probe" | grep -Fq "$sanitizer_jwt"; then
+  fail 'CI log sanitizer retained a synthetic secret marker'
+fi
+printf '%s' "$sanitized_probe" | grep -Fq '[REDACTED]' ||
+  fail 'CI log sanitizer did not emit a redaction marker'
+
+[ "$(sh scripts/resolve-cleanup-status.sh 0 17)" = '17' ] ||
+  fail 'teardown failure does not fail a successful run'
+[ "$(sh scripts/resolve-cleanup-status.sh 23 17)" = '23' ] ||
+  fail 'teardown failure overwrites the primary failure'
 
 if grep -Eq '^FROM .*:(latest|stable|lts)([[:space:]]|$)' \
   src/backend/UserProfile.Api/Dockerfile \
@@ -200,6 +312,16 @@ grep -Fq '<app-root' "$review_tmp/body" || fail 'SPA shell was not served'
 request '/review-smoke-route' '200' 'text/html'
 grep -Fq '<app-root' "$review_tmp/body" || fail 'SPA fallback was not served'
 
+request '/review-missing-asset.js' '404' 'text/html'
+if grep -Fq '<app-root' "$review_tmp/body"; then
+  fail 'missing asset was served through the SPA fallback'
+fi
+
+request '/review-missing-asset.webmanifest' '404' 'text/html'
+if grep -Fq '<app-root' "$review_tmp/body"; then
+  fail 'missing non-script asset was served through the SPA fallback'
+fi
+
 request '/health' '200' 'application/json'
 grep -Fq '"status":"Healthy"' "$review_tmp/body" || fail 'health body is unexpected'
 
@@ -215,6 +337,9 @@ grep -Fq '"bearerAuth"' "$review_tmp/body" || fail 'runtime OpenAPI omits Bearer
 
 request '/api/not-implemented' '404' 'application/problem+json'
 grep -Fq '"status":404' "$review_tmp/body" || fail '404 body is not ProblemDetails'
+
+request '/api/not-implemented.json' '404' 'application/problem+json'
+grep -Fq '"status":404' "$review_tmp/body" || fail 'API path with extension bypassed the proxy'
 
 smoke_suffix="$(date +%s)-$$"
 smoke_email="m4-smoke-$smoke_suffix@example.test"

@@ -472,7 +472,7 @@ As localizações de `REV-M1-001`–`019` referem-se ao commit revisado, antes d
 - **Critérios:** `TECH-BACKEND-01`, `TEST-FLOW-01`, `DOC-TRACE-01`.
 - **Decisão:** corrigido por ser trivial.
 
-Consolidação: o High e 11 Medium foram corrigidos; `REV-M1-020` é o único Medium bloqueado, por estado externo explícito. Oito Low triviais foram corrigidos e `REV-M1-015`–`017` permanecem adiados.
+Consolidação naquele momento: o High e 11 Medium foram corrigidos; `REV-M1-020` era o único Medium bloqueado, por estado externo explícito. Oito Low triviais foram corrigidos e `REV-M1-015`–`017` foram adiados até M5, quando acabaram encerrados conforme o registro de 2026-08-26 abaixo.
 
 ### Candidatos rejeitados e riscos aceitos
 
@@ -507,7 +507,7 @@ Consolidação: o High e 11 Medium foram corrigidos; `REV-M1-020` é o único Me
 
 ### Riscos restantes
 
-- `REV-M1-015`–`017` permanecem Low e adiados para M5 com justificativa; não bloqueiam a implementação M1.
+- Na conclusão desta revisão de M1, `REV-M1-015`–`017` permaneceram Low e adiados para M5 com justificativa; os três foram posteriormente encerrados na revisão de M5 registrada abaixo.
 - A execução com volume Docker padrão deve ser repetida após liberar espaço na VM; o erro observado é ambiental, mas o volume principal local pode exigir manutenção pelo responsável.
 - Ciclo de vida de timestamps será provado nos fluxos de M2/M4; persistência após recriação permanece pendente até haver usuário em M2/M6.
 - Cadastro, autenticação/JWT, dashboard, perfil, senha, E2E, CI e README final continuam corretamente pendentes em M2–M6.
@@ -683,7 +683,7 @@ Consolidação: 1 High, 10 Medium e 5 Low confirmados e corrigidos; nenhum achad
 ### Cleanup e riscos restantes
 
 - O smoke removeu apenas seu projeto, volume e rede efêmeros; o volume normal do repositório não foi usado nem alterado. Imagens versionadas `user-profile-api:0.1.0`/`user-profile-web:0.1.0` foram reconstruídas como parte do gate e permanecem reutilizáveis.
-- `REV-M1-020` está encerrado; `REV-M1-015`–`017` continuam Low e adiados para M5 pelas justificativas históricas.
+- `REV-M1-020` foi encerrado em M2; `REV-M1-015`–`017` ainda estavam adiados neste ponto histórico e foram encerrados na revisão de M5 registrada abaixo.
 - A política ASCII exclui emails internacionalizados e o padrão é deliberadamente simples; ampliar isso exige decisão de produto/canonicalização própria.
 - Login/JWT/`sub`, dashboard, perfil, troca de senha, E2E, CI e README final permanecem corretamente fora de M2 e pendentes em M3–M6.
 - O nível `crit` do error log Nginx reduz detalhe operacional para impedir request lines com argumentos; access logs ainda preservam método, path e status. Qualquer ampliação deve continuar sem query, body ou Authorization.
@@ -915,3 +915,219 @@ Consolidação: 0 High, 4 Medium e 1 Low confirmados e corrigidos; nenhum achado
 - A UI real de edição cadastral já pertence à evidência original de M4; esta revisão acrescentou interação DOM automatizada e repetiu o smoke. A jornada E2E completa da troca de senha continua explicitamente em M5.
 - JWTs antigos continuam válidos no servidor até `exp`; no cliente, respostas tardias não podem remover uma sessão posterior.
 - M5–M6 continuam pendentes. Não há High/Medium aberto nesta revisão.
+
+## 2026-08-26 23:07 -03 — Revisão independente de M5
+
+- **Etapa identificada:** M5 — jornadas E2E, workflow de CI, gates operacionais, acessibilidade e evidência automatizada.
+- **Commit revisado:** `eaad3cdbcae465748b6d57766429bf4c03309b7b` (`test: add end-to-end validation and CI`).
+- **Base do diff:** `a1d32b0e51f170953413be48a78d61caf2b23d96`; os 41 arquivos do commit, com 1.131 inserções e 104 remoções, foram examinados no diff integral, além do estado atual, histórico, SDD/ADRs, código, testes, scripts, Compose e workflow.
+- **Estado inicial:** branch `main` limpa; restore locked/build/101 integrações backend, lint/57 testes/build frontend, contrato OpenAPI, Compose e checks estáticos aprovados antes das correções.
+- **Critérios examinados:** `TEST-FLOW-01`, `CI-001`, `OPS-ORIGIN-001`, `BE-HEALTH-001`, `OPS-DOCKER-01`, `SEC-AUTH-01`, `SEC-SESSION-01`, `SEC-SECRET-01`, `SEC-LOG-01`, `FE-PROF-*`, `FE-PASS-*`, `TECH-BACKEND-01`, `TECH-FRONTEND-01`, `DOC-TRACE-01` e Definition of Done.
+
+### Achados confirmados e decisões
+
+#### `REV-M5-001` — Medium — journeys críticos dependiam de seletores de implementação
+
+- **Localização:** `tests/e2e/specs/user-profile.spec.ts`.
+- **Evidência:** os campos de senha e ações críticas eram localizados por CSS ou `data-testid`, embora a UI já expusesse labels e nomes acessíveis.
+- **Impacto:** o gate podia permanecer verde diante de regressão de label/role ou falhar por refatoração interna sem mudança de comportamento.
+- **Correção mínima:** usar `getByLabel`/`getByRole` nos controles críticos e manter seletor técnico apenas para mascaramento de screenshot.
+- **Critérios:** `TEST-FLOW-01`, `FE-PROF-001/002`, `FE-PASS-001/002`, `DOC-TRACE-01`.
+- **Decisão:** corrigido diretamente nos três journeys, sem page object ou camada adicional.
+
+#### `REV-M5-002` — Medium — E2E não provava que a área protegida voltava a exigir autenticação
+
+- **Localização:** `E2E-001` e `E2E-003` em `tests/e2e/specs/user-profile.spec.ts`.
+- **Evidência:** logout e troca de senha chegavam ao login, mas não havia navegação posterior direta a `/dashboard` para provar ausência de sessão reutilizável.
+- **Impacto:** uma regressão que mantivesse token/sessão poderia escapar do gate mesmo com a tela de login visível.
+- **Correção mínima:** acessar a rota protegida após cada encerramento de sessão e afirmar redirecionamento; depois comprovar senha antiga rejeitada e nova aceita.
+- **Critérios:** `SEC-SESSION-01`, `AC-PASS-04`, `TEST-FLOW-01`.
+- **Decisão:** corrigido em ambos os journeys e documentado na estratégia/matriz.
+
+#### `REV-M5-003` — Medium — gate de versões não cobria todos os perfis, serviços e estágios
+
+- **Localização:** `scripts/validate-m1-compose.sh`, Dockerfiles e `compose.yaml`.
+- **Evidência:** a validação original cobria somente parte das imagens visíveis no perfil padrão e não vinculava todas as linhas `FROM` nem todos os perfis opcionais.
+- **Impacto:** tag flutuante ou imagem inesperada nos gates de contrato/frontend/E2E poderia entrar sem reprovação.
+- **Correção mínima:** renderizar todos os perfis e comparar exatamente serviços, seis imagens únicas e todas as bases dos Dockerfiles.
+- **Critérios:** `CI-001`, `TECH-BACKEND-01`, `TECH-FRONTEND-01`, `DOC-TRACE-01`.
+- **Decisão:** corrigido com inventário exato, incluindo versão efetiva do npm.
+
+#### `REV-M5-004` — Medium — Actions eram referenciadas por tags mutáveis
+
+- **Localização:** `.github/workflows/ci.yml`.
+- **Evidência:** checkout e upload de artefatos usavam tags de release; o checkout também preservava credenciais por padrão.
+- **Impacto:** alteração remota da tag mudaria código executado no gate sem diff local e ampliaria a exposição do token do job.
+- **Correção mínima:** fixar os dois usos por commit SHA e definir `persist-credentials: false`.
+- **Critérios:** `CI-001`, `SEC-SECRET-01`, `DOC-TRACE-01`.
+- **Decisão:** corrigido com SHAs de releases oficiais e comentários legíveis de versão.
+
+#### `REV-M5-005` — Medium — diagnóstico de falha era incompleto e podia publicar logs crus
+
+- **Localização:** `.github/workflows/ci.yml`, `scripts/e2e-playwright.sh` e `scripts/validate-m1-compose.sh`.
+- **Evidência:** caminhos de falha não preservavam consistentemente projeto/serviços/imagens/status e alguns encaminhavam saída de Compose sem filtro compartilhado.
+- **Impacto:** falhas concorrentes ficavam difíceis de reproduzir e futuras mensagens poderiam vazar Authorization, JWT ou campos sensíveis no artefato.
+- **Correção mínima:** centralizar sanitização, registrar contexto mínimo e publicar somente saída filtrada.
+- **Critérios:** `CI-001`, `SEC-LOG-01`, `SEC-SECRET-01`.
+- **Decisão:** criado um filtro POSIX compartilhado, testado com marcadores sintéticos, e os diagnósticos passaram a registrar o nome exato do projeto.
+
+#### `REV-M5-006` — Medium — três riscos herdados de M1 permaneceram formalmente abertos
+
+- **Localização:** `REV-M1-015`–`017`, frontend/npm/Nginx e projeto de integração backend.
+- **Evidência:** scripts npm ainda não tinham allowlist fechada, fallback de asset inexistente podia devolver o shell SPA e o collector de cobertura permanecia instalado sem consumidor.
+- **Impacto:** lifecycle scripts não decididos poderiam executar; erro de asset seria mascarado por HTML 200; dependência sem uso ampliava restore/superfície.
+- **Correção mínima:** habilitar `strict-allow-scripts` com decisões explícitas, retornar `404` para URI de asset com extensão e remover/regenerar o lock do collector.
+- **Critérios:** `TECH-FRONTEND-01`, `OPS-ORIGIN-001`, `TECH-BACKEND-01`, `DOC-TRACE-01`.
+- **Decisão:** os três IDs foram encerrados; a primeira instalação estrita falhou com `ESTRICTALLOWSCRIPTS` até todas as dependências relevantes receberem decisão explícita.
+
+#### `REV-M5-007` — Medium — estado final do commit não tinha uma repetição autoritativa do smoke
+
+- **Localização:** evidência de execução em `05-execution-plan.md`/`ai-usage.md` e última alteração original do smoke.
+- **Evidência:** uma repetição sob contenção Docker falhou depois da última alteração, e a documentação apoiava a conclusão no smoke verde anterior.
+- **Impacto:** o conteúdo final de M5 não estava integralmente provado pelo gate operacional que o próprio plano exige.
+- **Correção mínima:** repetir serialmente o smoke na árvore final e registrar o resultado sem apagar o incidente histórico.
+- **Critérios:** `CI-001`, `OPS-ORIGIN-001`, `DOC-TRACE-01`, Definition of Done.
+- **Decisão:** corrigido; a execução final passou no projeto isolado e removeu seus recursos.
+
+#### `REV-M5-008` — Medium — falha de teardown podia ser mascarada e não tinha prova negativa
+
+- **Localização:** `scripts/e2e-playwright.sh` e `scripts/validate-m1-compose.sh`.
+- **Evidência:** o trap anterior descartava o status de `docker compose down`; também não havia prova de “execução verde + teardown falho” nem de preservação de uma falha primária.
+- **Impacto:** o gate poderia reportar sucesso com cleanup incompleto ou substituir a causa original pelo erro secundário.
+- **Correção mínima:** tornar explícita a precedência dos códigos e testá-la nos dois ramos negativos.
+- **Critérios:** `CI-001`, `DOC-TRACE-01`.
+- **Decisão:** criado `resolve-cleanup-status.sh`; o smoke prova automaticamente `0 + 17 → 17` e `23 + 17 → 23`, e ambos os runners o reutilizam.
+
+#### `REV-M5-009` — Low — timeouts documentados divergiam dos valores executados
+
+- **Localização:** `02-technical-design.md`, `04-test-strategy.md` e scripts de validação.
+- **Evidência:** textos misturavam limite de comando, probe, SLO de teste e timeout do proxy.
+- **Impacto:** diagnóstico de lentidão poderia usar o orçamento errado.
+- **Correção mínima:** nomear separadamente 1 s para comando SQLite, 2 s para probe, menos de 5 s para o teste e 30 s para o proxy.
+- **Critérios:** `BE-HEALTH-001`, `OPS-DOCKER-01`, `DOC-TRACE-01`.
+- **Decisão:** corrigido na especificação e estratégia.
+
+#### `REV-M5-010` — Low — documentação superestimava o isolamento entre journeys
+
+- **Localização:** plano, estratégia, matriz, README E2E e uso de IA.
+- **Evidência:** o texto dizia projeto/volume independente por jornada, mas a suíte usa um projeto/volume por execução e contexto/dados novos por journey.
+- **Impacto:** evidência declarava uma propriedade que o runtime não implementava.
+- **Correção mínima:** registrar exatamente os dois níveis reais de isolamento.
+- **Critério:** `DOC-TRACE-01`.
+- **Decisão:** documentação corrigida sem adicionar três stacks desnecessárias.
+
+#### `REV-M5-011` — Low — persistência E2E do email atualizado não era afirmada
+
+- **Localização:** `E2E-001` em `tests/e2e/specs/user-profile.spec.ts`.
+- **Evidência:** a consulta fresca voltava somente ao dashboard e cobria o nome; o email atualizado não era relido em nova abertura do perfil.
+- **Impacto:** regressão que não persistisse o email poderia escapar da jornada principal.
+- **Correção mínima:** afirmar nome e email após nova navegação ao perfil.
+- **Critérios:** `AC-PROF-05`, `TEST-FLOW-01`.
+- **Decisão:** correção trivial aplicada no journey existente.
+
+#### `REV-M5-012` — Low — primeira correção do fallback ainda dependia de allowlist incompleta
+
+- **Localização:** `src/frontend/user-profile-web/nginx.conf` e smoke operacional.
+- **Evidência:** o patch inicial de revisão tratava extensões comuns, mas `.webmanifest`, `.wasm` ou outra extensão omitida ainda cairiam no shell SPA.
+- **Impacto:** a regra geral documentada de asset inexistente continuaria parcial.
+- **Correção mínima:** casar URI final com qualquer extensão, preservando precedência de `/api`, `/swagger` e health, e testar `.js` mais `.webmanifest`.
+- **Critérios:** `OPS-ORIGIN-001`, `DOC-TRACE-01`.
+- **Decisão:** matcher genérico aplicado e smoke ampliado; a rota JSON inexistente da API continua ProblemDetails, não asset.
+
+#### `REV-M5-013` — Low — cleanup final da CI não alcançava projeto efêmero nem produzia artefato próprio
+
+- **Localização:** `.github/workflows/ci.yml` e marcadores gerados pelos scripts.
+- **Evidência:** os runners adicionam PID ao projeto; o fallback conhecia somente o prefixo-base e o upload ocorria antes dele.
+- **Impacto:** falha exclusiva do último cleanup poderia deixar recurso e terminar sem diagnóstico publicado.
+- **Correção mínima:** registrar nomes efêmeros, validar seu prefixo antes do `down`, tentar cleanup de cada projeto e fazer o upload depois.
+- **Critérios:** `CI-001`, `SEC-LOG-01`.
+- **Decisão:** corrigido mantendo o fallback pequeno e restrito aos projetos do job.
+
+#### `REV-M5-014` — Low — registro usava um ID de critério inexistente
+
+- **Localização:** cabeçalho e `REV-M5-009` deste registro.
+- **Evidência:** `OPS-HEALTH-001` não existe nos requisitos nem na matriz.
+- **Impacto:** a referência impedia verificação mecânica da rastreabilidade do timeout de health.
+- **Correção mínima:** usar os IDs existentes `BE-HEALTH-001`, `OPS-DOCKER-01` e `DOC-TRACE-01`.
+- **Critério:** `DOC-TRACE-01`.
+- **Decisão:** corrigido na re-revisão documental final.
+
+#### `REV-M5-015` — Low — evidência de persistência descrevia uma navegação inexistente no commit
+
+- **Localização:** evidência inicialmente escrita para `REV-M5-011`.
+- **Evidência:** o texto dizia que o perfil era reaberto e somente o nome era verificado; o commit revisado consultava apenas o dashboard fresco, sem reabrir o perfil.
+- **Impacto:** o achado era válido, mas sua narrativa histórica não correspondia ao journey original.
+- **Correção mínima:** registrar que a consulta fresca cobria dashboard/nome e não relia o email.
+- **Critérios:** `AC-PROF-05`, `DOC-TRACE-01`.
+- **Decisão:** evidência corrigida sem alterar a correção E2E já aprovada.
+
+#### `REV-M5-016` — Low — design chamava de exato um inventário Compose incompleto no texto
+
+- **Localização:** inventário de Docker/rede em `02-technical-design.md` e `OPS-TAGS-001`.
+- **Evidência:** o gate comparava seis tags Compose, inclusive quatro imagens produzidas pelo projeto, mas o design listava somente as imagens-base.
+- **Impacto:** “coincidir com o inventário do design” não era auditável lendo apenas a especificação.
+- **Correção mínima:** enumerar literalmente as seis imagens renderizadas com todos os perfis.
+- **Critérios:** `OPS-DOCKER-02`, `DOC-TRACE-01`.
+- **Decisão:** inventário normativo completo acrescentado ao design.
+
+#### `REV-M5-017` — Low — gate positivo de Actions não rejeitava um terceiro uso não fixado
+
+- **Localização:** validações da CI em `scripts/validate-m1-compose.sh`.
+- **Evidência:** procurar somente checkout/upload aprovados permitia acrescentar outro `uses: vendor/action@v1`; a primeira correção também capturava apenas a forma YAML `- uses:` e falhou diante do upload em passo nomeado.
+- **Impacto:** o design exigia todas as Actions fixadas, mas o gate não era fechado sobre o conjunto real.
+- **Correção mínima:** extrair ambas as formas válidas de `uses:`, comparar o conjunto/ordem exatos e verificar `persist-credentials: false` dentro do passo de checkout.
+- **Critérios:** `CI-001`, `SEC-SECRET-01`, `DOC-TRACE-01`.
+- **Decisão:** gate fechado e execução vermelha da primeira extração registrada; a repetição final passou antes de iniciar o runtime funcional.
+
+#### `REV-M5-018` — Low — declaração de cleanup não distinguia artefatos anteriores
+
+- **Localização:** seção de cleanup deste registro e diretórios ignorados em `artifacts/`.
+- **Evidência:** a primeira redação dizia apenas que os artefatos temporários foram removidos enquanto o diretório continha resultados anteriores ao início da revisão e diretórios produzidos por ela.
+- **Impacto:** a evidência parecia contradizer o filesystem ou autorizar remoção de dados preexistentes do usuário.
+- **Correção mínima:** remover somente os alvos comprovadamente criados nesta revisão e declarar que os anteriores foram preservados.
+- **Critério:** `DOC-TRACE-01`.
+- **Decisão:** todos os diretórios temporários exatos desta revisão foram removidos; o registro agora explicita a preservação dos artefatos antigos.
+
+#### `REV-M5-019` — Low — documentação prometia relatórios Playwright mesmo antes do runner iniciar
+
+- **Localização:** `02-technical-design.md` e `tests/e2e/README.md`.
+- **Evidência:** config/up podem falhar antes do processo Playwright, situação em que existem diagnóstico/marcador Compose, mas ainda não JUnit/HTML.
+- **Impacto:** a documentação superestimava os artefatos disponíveis para falhas de bootstrap.
+- **Correção mínima:** qualificar JUnit/HTML a execuções em que o runner iniciou e descrever o diagnóstico anterior ao runner.
+- **Critérios:** `CI-001`, `DOC-TRACE-01`.
+- **Decisão:** textos corrigidos; nenhum relatório sintético foi inventado.
+
+Consolidação: 0 High, 8 Medium e 11 Low confirmados; todos foram corrigidos. Nenhum achado desta revisão ficou aberto ou bloqueado.
+
+### Candidatos rejeitados e decisões conscientes
+
+- A primeira execução E2E concorrente excedeu o limite apenas em `E2E-003`; trace e repetição serial mostraram o journey concluindo, e a suíte final passou 3/3 em 9,0 s. O episódio foi classificado como contenção do host, não defeito reproduzível.
+- JWT antigo continua válido no servidor até `exp` depois da troca de senha. Essa é a decisão documentada do ADR; M5 prova encerramento no cliente, reproteção da rota e rejeição da senha anterior, sem introduzir blacklist server-side.
+- Nenhum endpoint protegido obteve identidade de ID fornecido pelo cliente; a inspeção confirmou uso exclusivo do claim `sub`.
+- Nenhum segredo real foi encontrado. O sanitizador é defesa em profundidade para artefatos de diagnóstico, não substituto para prevenção de logs sensíveis na aplicação.
+- Não foram introduzidos framework de shell, page objects, store global ou novas camadas de CI: scripts pequenos compartilhados resolveram os comportamentos observados.
+
+### Comandos e resultados
+
+| Comando/check | Resultado |
+|---|---|
+| `pwd`, `git status --short --branch`, `git log --oneline`, `git show --stat`, `git diff a1d32b0 eaad3cd` | Raiz correta; `main` inicialmente limpa; M5/commit/base identificados e diff integral de 41 arquivos revisado. |
+| Leitura integral de `AGENTS.md`, SDD/ADRs/review-log e código/testes/configuração relacionados | Arquitetura, segurança/JWT, CI, Docker, frontend, E2E, acessibilidade, dependências e rastreabilidade avaliados antes de qualquer alteração. |
+| Baseline e repetição final backend com restore locked/build/test | 0 warnings/0 erros; 101/101 integrações aprovadas, sem falhas ou skips. |
+| Primeira instalação frontend com `strict-allow-scripts` | Reprovou com `ESTRICTALLOWSCRIPTS` para dependências ainda sem decisão, provando o gate negativo antes da allowlist completa. |
+| Perfil `frontend-tests` final | npm 11.17.0, 496 pacotes/0 vulnerabilidades; lint aprovado; 57/57 testes; build de 317,42 kB bruto/87,68 kB estimado. |
+| Perfil `contract-tests`, `validate-openapi.rb`, Compose com todos os perfis e `actionlint` | Seis operações/53 referências, configuração, tags/imagens/estágios e workflow aprovados. |
+| Probes de `resolve-cleanup-status.sh` e marcador sintético no sanitizador | `0 + 17 → 17`, `23 + 17 → 23`, `0 + 0 → 0`; senha/token/JWT sintéticos foram redigidos. |
+| Primeira repetição após fechar o conjunto de `uses:` | Reprovou antes de iniciar a stack porque a primeira extração reconhecia `- uses:`, mas não o `uses:` do passo nomeado de upload; a extração foi corrigida e a checagem exata passou. |
+| `scripts/validate-m1-compose.sh` final | Exit 0: same-origin, cadastro/login, perfil/senha, falhas de auth, persistência, `413/415`, assets, API JSON, logs seguros, upstream `503` e teardown aprovados. |
+| `scripts/e2e-playwright.sh` final | 3/3 journeys aprovados em 9,0 s, incluindo persistência de nome/email e reproteção após os dois encerramentos de sessão. |
+| Inspeção dos projetos `user-profile-m4-smoke-98691` e `user-profile-e2e-e2e-96963` | Nenhum contêiner, volume ou rede correspondente permaneceu. |
+| `git diff --check`, sintaxe shell, busca de skips/segredos, inspeção de artefatos e revisão independente final do patch | Aprovados; nenhum teste foi removido/enfraquecido e nenhum segredo foi encontrado. |
+
+### Cleanup e riscos restantes
+
+- Os projetos, volumes e redes efêmeros dos gates finais foram removidos. Os diretórios temporários criados por esta revisão foram inspecionados e removidos antes do commit; artefatos ignorados anteriores ao início da revisão foram preservados, e as imagens versionadas reconstruídas permanecem reutilizáveis.
+- O workflow foi validado estruturalmente e todos os mesmos comandos passaram localmente, mas não houve execução em runner hospedado nem push, por limite explícito desta revisão.
+- M6 continua responsável pelo README raiz, walkthrough e validação de checkout limpo; não foi antecipada nesta revisão de M5.
+- JWTs já emitidos continuam válidos no servidor até `exp`; o risco é deliberado e documentado, enquanto o cliente encerra a sessão imediatamente.
+- O filtro de diagnóstico reduz exposição acidental, mas a regra primária continua sendo nunca produzir segredos em logs.

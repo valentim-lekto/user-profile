@@ -21,13 +21,13 @@ Este diretório reúne os artefatos versionados do processo Spec-Driven Developm
 |---|---|---|
 | [`00-challenge.md`](00-challenge.md) | Preservar o enunciado, com requisitos originais e decisões aprovadas claramente separados. | Concluído nesta etapa. |
 | [`01-requirements.md`](01-requirements.md) | Definir escopo, atores, casos de uso, requisitos, critérios, premissas, exclusões e Definition of Done. | Funcionalidades M1–M4 e gate de qualidade M5 implementados e validados, sem ampliar o escopo de negócio. |
-| [`02-technical-design.md`](02-technical-design.md) | Definir arquitetura, modelo de dados, segurança, frontend, operação e versões fixadas. | M1–M5 validados, inclusive perfis Compose, Playwright fixado, CI e política segura de artefatos. |
+| [`02-technical-design.md`](02-technical-design.md) | Definir arquitetura, modelo de dados, segurança, frontend, operação e versões fixadas. | M1–M5 validados, inclusive perfis Compose, npm estrito, Playwright, Actions por SHA e política segura de artefatos. |
 | [`03-api-contract.yaml`](03-api-contract.yaml) | Definir requests, responses, schemas, autenticação e erros da API. | Seis operações normativas e 53 referências locais aprovadas; Swagger runtime também validado. |
-| [`04-test-strategy.md`](04-test-strategy.md) | Definir integração, frontend, E2E, Docker e gates. | 101 integrações backend, 57 testes frontend, três jornadas E2E e smoke acumulado aprovados. |
+| [`04-test-strategy.md`](04-test-strategy.md) | Definir integração, frontend, E2E, Docker e gates. | 101 integrações backend, 57 testes frontend, três jornadas E2E reforçadas e smoke corretivo final aprovados. |
 | [`05-execution-plan.md`](05-execution-plan.md) | Organizar a implementação incremental em M1–M6. | M1–M5 concluídos; M6 pendente. |
 | [`06-traceability.md`](06-traceability.md) | Relacionar requisito, critério, design, milestone, teste e estado. | M5 concluído com evidências automatizadas, Compose, E2E e inspeção da UI real. |
-| [`review-log.md`](review-log.md) | Registrar revisão independente, achados, decisões, comandos e riscos. | Revisões independentes de design e M1–M4 registradas. |
-| [`ai-usage.md`](ai-usage.md) | Definir e registrar de forma resumida o uso responsável de IA. | Uso de IA, auditorias e validação até M5 resumidos. |
+| [`review-log.md`](review-log.md) | Registrar revisão independente, achados, decisões, comandos e riscos. | Revisões independentes de design e M1–M5 registradas; M5 encerrou também `REV-M1-015`–`017`. |
+| [`ai-usage.md`](ai-usage.md) | Definir e registrar de forma resumida o uso responsável de IA. | Uso de IA, auditorias e revisão independente até M5 resumidos. |
 
 ## Governança
 
@@ -50,7 +50,7 @@ Novas decisões relevantes devem criar ou substituir ADR; registrar apenas uma p
 | Item | Estado |
 |---|---|
 | Código, dependências, Dockerfiles e Compose | Walking skeleton M1, cadastro M2, login/autorização/dashboard M3, perfil/senha M4 e qualidade/E2E/CI M5 concluídos; somente M6 permanece pendente. |
-| Testes automatizados e evidências observadas | 101 integrações backend, 57 testes frontend e três jornadas E2E aprovados sem skips, além de OpenAPI normativo/runtime, perfis Compose, smoke acumulado e UI real. |
+| Testes automatizados e evidências observadas | 101 integrações backend, 57 testes frontend e três jornadas E2E aprovados sem skips, além de OpenAPI normativo/runtime, perfis Compose, npm estrito, smoke final e UI real. |
 | README de execução e validação na raiz | Planejado para M6. |
 | Atualização de estados da matriz e do plano | Obrigatória em cada milestone. |
 | ADRs adicionais | Criar somente se surgir nova decisão relevante. |

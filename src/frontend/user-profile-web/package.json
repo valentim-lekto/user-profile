@@ -14,7 +14,9 @@
   "allowScripts": {
     "@parcel/watcher@2.6.0": true,
     "esbuild@0.28.1": true,
-    "lmdb@3.5.6": true
+    "fsevents@2.3.3": false,
+    "lmdb@3.5.6": true,
+    "msgpackr-extract@3.0.4": false
   },
   "dependencies": {
     "@angular/cdk": "22.1.3",

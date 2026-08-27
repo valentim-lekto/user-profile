@@ -51,8 +51,10 @@ Verificação realizada em 2026-08-24. Foram escolhidas versões estáveis e sup
 | Playwright | `1.62.0` | Release estável verificada no M5; pacote e imagem devem permanecer na mesma versão. | `@playwright/test` exato, lock npm e `mcr.microsoft.com/playwright:v1.62.0-noble`. |
 | Ruby do validador OpenAPI | `3.4.10` | Runtime estável usado somente pelo perfil de contrato. | `ruby:3.4.10-slim-bookworm`. |
 | Node.js | `24.19.0` LTS | Compatível com Angular 22 (`^24.15.0`) e em LTS. | `node:24.19.0-bookworm-slim`. |
+| npm | `11.17.0` | Versão da imagem Node fixada com suporte à política `allowScripts`. | Versão conferida no Dockerfile, `packageManager` exato e `.npmrc` com `strict-allow-scripts=true`. |
 | Nginx | `1.30.4` estável | Linha estável da imagem oficial. | `nginx:1.30.4-alpine3.24-slim`. |
 | Runtime da API | ASP.NET `10.0.11` | Mesma atualização de segurança da aplicação. | `mcr.microsoft.com/dotnet/aspnet:10.0.11-noble`. |
+| GitHub Actions | checkout `6.0.2`; upload-artifact `7.0.1` | Releases oficiais usadas pelo workflow único. | SHAs completos `de0fac2e4500dabe0009e67214ff5f5447ce83dd` e `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a`. |
 
 Fontes oficiais consultadas:
 
@@ -63,7 +65,9 @@ Fontes oficiais consultadas:
 - [pacotes oficiais do Angular ESLint](https://www.npmjs.com/org/angular-eslint);
 - [advisory oficial do Vitest](https://github.com/advisories/GHSA-5xrq-8626-4rwp);
 - [documentação oficial da imagem Docker do Playwright](https://playwright.dev/docs/docker);
+- [política oficial de install scripts do npm](https://docs.npmjs.com/cli/v11/commands/npm-rebuild/#strict-allow-scripts);
 - [manifesto oficial da imagem Ruby](https://github.com/docker-library/official-images/blob/master/library/ruby);
+- [releases oficiais de actions/checkout](https://github.com/actions/checkout/releases) e [actions/upload-artifact](https://github.com/actions/upload-artifact/releases);
 - [releases suportadas do Node.js](https://nodejs.org/en/about/previous-releases), [manifesto oficial da imagem Node](https://github.com/docker-library/official-images/blob/master/library/node) e [manifesto oficial da imagem Nginx](https://github.com/docker-library/official-images/blob/master/library/nginx).
 
 O scaffold de M1 reconfirmou as tags exatas ao construir as imagens. Uma atualização posterior exige mudança explícita deste documento e validação completa; não se deve substituir silenciosamente uma tag por alias flutuante.
@@ -162,7 +166,9 @@ Em uma implantação concorrente ou de produção, migrations seriam uma etapa s
 O health check consulta a tabela de histórico de migrations, não apenas abre uma
 conexão. O comando dessa consulta usa timeout explícito de 1 segundo, independente
 do timeout geral da conexão, para não manter threads ocupadas depois dos limites
-de 2 segundos da probe do Compose e 5 segundos do Nginx. Falha durante o startup
+de 2 segundos da probe do Compose. O proxy admite até 30 segundos de leitura para
+acomodar o primeiro hash de senha sob contenção; esse limite é independente do SLO
+de menos de 5 segundos exigido pelo teste de indisponibilidade do health. Falha durante o startup
 mantém o serviço fora do ar; `503` representa uma perda de acesso ao SQLite depois
 de um startup bem-sucedido. O teste dessa transição usa bloqueio exclusivo do
 arquivo SQLite temporário, conserva o timeout padrão de 30 segundos na conexão da
@@ -263,12 +269,12 @@ O token fica somente em `sessionStorage`. O estado de autenticação é um signa
 - `compose.yaml` terá serviços `web` e `api` e um volume nomeado para `/data`; SQLite não cria um terceiro contêiner.
 - `web` é uma imagem multi-stage: Node compila o Angular e Nginx serve o resultado.
 - `api` é uma imagem multi-stage: SDK publica e runtime ASP.NET executa como usuário não-root; `/data` é preparado com permissão de escrita para esse usuário antes de receber o volume.
-- Perfis opt-in do Compose executam restore/build/test do backend, `npm ci`/lint/test/build do frontend, contrato OpenAPI e as três jornadas Playwright sem exigir SDKs no host. Esses serviços não publicam portas nem alteram a pilha padrão.
-- Cada execução E2E recebe projeto Compose, contexto de navegador, volume e diretório de artefatos próprios. Emails são únicos; senhas sintéticas são geradas e mantidas dentro do contexto do navegador, e o runner Playwright recebe somente chaves não sensíveis. Relatórios JUnit/HTML são sempre gravados; screenshot e trace minimizado, sem snapshots, sources ou attachments, são retidos somente em falha. Os traps de E2E e smoke persistem `ps`, imagens/serviços e logs sanitizados do projeto efêmero antes do teardown quando há falha; o cleanup remove apenas seus próprios recursos.
+- Perfis opt-in do Compose executam restore/build/test do backend, `npm ci`/lint/test/build do frontend, contrato OpenAPI e as três jornadas Playwright sem exigir SDKs no host. O `npm ci` reprova install scripts fora da allowlist versionada. Esses serviços não publicam portas nem alteram a pilha padrão.
+- Cada execução da suíte E2E recebe projeto Compose, volume e diretório de artefatos próprios; cada jornada recebe contexto e dados próprios. Emails são únicos; senhas sintéticas são geradas e mantidas dentro do contexto do navegador, e o runner Playwright recebe somente chaves não sensíveis. Relatórios JUnit/HTML são gravados sempre que o runner Playwright chega a iniciar; screenshot de inputs mascarados e trace minimizado, sem snapshots, sources ou attachments, são retidos somente em falha. Falhas anteriores ao runner preservam os diagnósticos do Compose disponíveis. O `finally` limpa os inputs em melhor esforço, sem ser tratado como a única defesa de artefatos. Os traps de E2E e smoke registram o nome do projeto, persistem `ps`, imagens/serviços e logs processados por um filtro compartilhado/testado antes do teardown quando há falha, e nunca publicam a cópia bruta. Falha de teardown reprova uma execução antes bem-sucedida, preserva a falha primária quando já existe e deixa saída filtrada; a CI tenta novamente somente projetos sob seu prefixo único e faz upload depois do cleanup.
 - `web` publica `8080:8080`; `api` expõe `8080` apenas para a rede interna.
-- Nginx escuta em `8080`, encaminha `/api/`, `/swagger/` e `/health` para `http://api:8080`, usa timeout explícito de conexão de 2 segundos e de resposta de 30 segundos, converte falha de conexão/timeout do upstream em `503 application/problem+json`, converte corpo acima de 1 MiB em `413 application/problem+json` e serve a SPA nas demais rotas. A janela de resposta acomoda o primeiro hash de senha em runners Docker sob contenção sem criar retry; indisponibilidade de conexão continua falhando rapidamente.
+- Nginx escuta em `8080`, encaminha `/api/`, `/swagger/` e `/health` para `http://api:8080`, usa timeout explícito de conexão de 2 segundos e de resposta de 30 segundos, converte falha de conexão/timeout do upstream em `503 application/problem+json`, converte corpo acima de 1 MiB em `413 application/problem+json`, devolve `404` para assets com extensão que não existem e usa fallback para `index.html` somente nas rotas da SPA. A janela de resposta acomoda o primeiro hash de senha em runners Docker sob contenção sem criar retry; indisponibilidade de conexão continua falhando rapidamente.
 - Existe um único health check do Compose no serviço `web`: `wget -q -O /dev/null http://127.0.0.1:8080/health`, usando o BusyBox presente na imagem Alpine. `web` depende de `api` com `condition: service_started`; como a probe atravessa Nginx, API e a consulta SQLite, `docker compose up --wait` só conclui quando a pilha inteira está saudável, sem instalar cliente HTTP na imagem da API.
-- Tags completas listadas neste documento serão copiadas literalmente; `latest`, `lts`, `stable` ou apenas major/minor são proibidos.
+- O inventário exato das imagens Compose, incluindo todos os perfis, é: `ruby:3.4.10-slim-bookworm`, `user-profile-api:0.1.0`, `user-profile-backend-tests:0.1.0`, `user-profile-e2e-tests:0.1.0`, `user-profile-frontend-tests:0.1.0` e `user-profile-web:0.1.0`. Todas as linhas `FROM` e esse conjunto renderizado são comparados às versões completas deste documento; `latest`, `lts`, `stable` ou apenas major/minor são proibidos. Todas as linhas `uses:` de terceiros na CI usam SHA completo e pertencem ao inventário aprovado; o checkout não persiste credenciais Git.
 
 No desenvolvimento local, o proxy do Angular CLI encaminha `/api`, `/swagger` e `/health` para a API, mantendo URLs relativas. Não haverá configuração CORS permissiva para compensar URLs absolutas.
 

@@ -2,8 +2,8 @@ FROM node:24.19.0-bookworm-slim AS dependencies
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package.json package-lock.json .npmrc ./
+RUN test "$(npm --version)" = "11.17.0" && npm ci
 
 FROM dependencies AS test
 

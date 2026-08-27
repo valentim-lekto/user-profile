@@ -18,7 +18,9 @@ jobs:
       E2E_ARTIFACTS_DIR: ${{ github.workspace }}/artifacts/e2e
       SMOKE_FAILURE_ARTIFACTS_DIR: ${{ github.workspace }}/artifacts/ci/smoke
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Validate Compose configuration
         run: docker compose config --quiet
@@ -44,18 +46,46 @@ jobs:
           mkdir -p artifacts/ci
           docker compose --profile backend-tests --profile frontend-tests --profile contract-tests --profile e2e ps --all > artifacts/ci/compose-ps.txt 2>&1 || true
           docker compose --profile backend-tests --profile frontend-tests --profile contract-tests --profile e2e config --images > artifacts/ci/compose-images.txt 2>&1 || true
-          docker compose --profile backend-tests --profile frontend-tests --profile contract-tests --profile e2e logs --no-color > artifacts/ci/compose.log 2>&1 || true
+          docker compose --profile backend-tests --profile frontend-tests --profile contract-tests --profile e2e logs --no-color 2>&1 | sh ./scripts/sanitize-ci-output.sh > artifacts/ci/compose.log || true
           printf 'workflow=%s\nrun_id=%s\nrun_attempt=%s\ncommit=%s\n' "$GITHUB_WORKFLOW" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA" > artifacts/ci/context.txt
+
+      - name: Cleanup Compose resources
+        if: always()
+        run: |
+          mkdir -p artifacts/ci
+          printf '%s\n' "$COMPOSE_PROJECT_NAME" > artifacts/ci/compose-projects.txt
+          find artifacts -type f -name compose-project.txt -exec cat {} \; >> artifacts/ci/compose-projects.txt
+          sort -u -o artifacts/ci/compose-projects.txt artifacts/ci/compose-projects.txt
+          : > artifacts/ci/cleanup.log
+          cleanup_status=0
+          set +e
+          while IFS= read -r project; do
+            case "$project" in
+              "$COMPOSE_PROJECT_NAME"|"$COMPOSE_PROJECT_NAME"-*) ;;
+              *)
+                printf 'Rejected unexpected Compose project: %s\n' "$project" >> artifacts/ci/cleanup.log
+                cleanup_status=1
+                continue
+                ;;
+            esac
+
+            docker compose -p "$project" --profile backend-tests --profile frontend-tests --profile contract-tests --profile e2e down --volumes --remove-orphans 2>&1 |
+              sh ./scripts/sanitize-ci-output.sh >> artifacts/ci/cleanup.log
+            pipeline_status=("${PIPESTATUS[@]}")
+            if [ "${pipeline_status[0]}" -ne 0 ]; then
+              cleanup_status="${pipeline_status[0]}"
+            fi
+            if [ "${pipeline_status[1]}" -ne 0 ]; then
+              cleanup_status="${pipeline_status[1]}"
+            fi
+          done < artifacts/ci/compose-projects.txt
+          exit "$cleanup_status"
 
       - name: Upload failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: failure-diagnostics
           path: artifacts
           if-no-files-found: error
           retention-days: 7
-
-      - name: Cleanup Compose resources
-        if: always()
-        run: docker compose --profile e2e down --volumes --remove-orphans
