@@ -143,7 +143,8 @@ Gates observáveis:
 
 ### M6 — Validação final e documentação
 
-**Estado:** pendente
+**Estado:** concluído tecnicamente em 2026-08-27. `AI-EXPLAIN-01` aguarda
+confirmação humana e `DEL-REPO-01` aguarda associação/publicação explícita.
 
 Entregas:
 
@@ -157,7 +158,8 @@ Entregas:
 
 Gates observáveis:
 
-- `TECH-*`, `OPS-COMPOSE-*`, `OPS-ORIGIN-001`, `OPS-PERSIST-001`, `OPS-TAGS-001`, `OPS-SECRET-001`, `DOC-RUN-001` e `DOC-EXPLAIN-001` são reexecutados e passam;
+- `TECH-*`, `OPS-COMPOSE-*`, `OPS-ORIGIN-001`, `OPS-PERSIST-001`, `OPS-TAGS-001`, `OPS-SECRET-001` e `DOC-RUN-001` foram reexecutados e passaram;
+- o roteiro `DOC-EXPLAIN-001` foi criado e revisado, sem promover `AI-EXPLAIN-01` antes da confirmação humana;
 - documentação reproduz exatamente o ambiente observado;
 - todos os critérios possuem evidência e estado final correto;
 - build, testes, E2E e revisão do diff estão aprovados.
@@ -180,6 +182,7 @@ Gates observáveis:
 - `2026-08-26` — `M5 iniciado` — as três jornadas E2E foram alinhadas à instrução atual antes do código; a prova de upstream indisponível permanece no smoke Compose, e perfis de qualidade/E2E, CI e acabamento visual entram nesta única etapa sem funcionalidade de negócio nova.
 - `2026-08-26` — `M5 concluído` — 101 integrações backend, 57 testes frontend, contrato, smoke acumulado e três jornadas Playwright independentes passaram em perfis Docker; acabamento Material/responsivo/acessível, workflow CI, tags fixas, cleanup isolado e artefatos sem credenciais foram revalidados. Somente M6 permanece pendente.
 - `2026-08-26` — `revisão independente de M5 concluída` — o commit `eaad3cd` foi auditado; 0 High, 8 Medium e 11 Low foram corrigidos, incluindo seis inconsistências triviais descobertas na re-revisão do próprio patch corretivo. Provas E2E de nomes acessíveis/persistência/reproteção, inventário exato, dependências, diagnósticos, cleanup, CI imutável e rastreabilidade passaram nos gates finais; detalhes em [`review-log.md`](review-log.md).
+- `2026-08-27` — `M6 concluído tecnicamente` — quatro auditorias independentes e a re-revisão final encerraram todos os Médios, inclusive o bind publicado fora do loopback e a afirmação incorreta sobre CSP. Build sem cache, Compose sem `.env`, URLs, restart/persistência, 101 integrações, 57 testes frontend, três E2E, contrato, smoke e actionlint passaram somente com Docker. README, relatório final, plano, matriz, índice, `.env.example` e uso de IA foram fechados; publicação e confirmação humana permanecem explicitamente externas.
 
 ## Evidências de M1
 
@@ -252,6 +255,22 @@ O SDK e o Node disponíveis no host divergiam dos patches fixados; por isso rest
 | CI | `.github/workflows/ci.yml` e execução local dos mesmos profiles/scripts | O job usa Actions por SHA, checkout sem credencial persistida, executa todos os gates e registra os nomes efêmeros. O cleanup final aceita somente o prefixo único da execução, tenta novamente cada projeto, sanitiza sua saída e ocorre antes do upload; falha de teardown reprova sucesso sem substituir falha primária. A execução hospedada depende de push explicitamente fora do escopo. |
 
 Durante a implementação original, uma repetição redundante do smoke foi afetada por contenção externa comprovada. A revisão independente preservou o incidente como histórico, mas encerrou a lacuna executando com sucesso o smoke completo sobre o conteúdo corretivo final e verificando que contêineres, volumes e redes dos projetos efêmeros não permaneceram.
+
+## Evidências de M6
+
+| Gate | Execução observada em 2026-08-27 | Resultado |
+|---|---|---|
+| Baseline e isolamento | Leitura integral; `git status`; inventário por labels; `docker compose down --volumes --remove-orphans` | Worktree inicialmente limpa e zero containers do desafio; somente a rede residual e o volume deste projeto foram removidos; outro projeto Compose permaneceu intacto. |
+| Build/boot | Docker Compose `v2.37.1-desktop.1`; `docker compose config --quiet`; `docker compose build --no-cache --progress plain`; `docker compose up --detach --wait --wait-timeout 300` | Configuração sem `.env`, web restrito a `127.0.0.1:8080`, imagens de produção construídas e origem única saudável sobre banco vazio/migration. |
+| Runtime e persistência | HTTP real em `/`, `/health`, Swagger e APIs; navegador; `docker compose restart`; nova espera de health | SPA/health/Swagger `200`; guard e validações visuais aprovados; perfil persistiu e token da chave efêmera anterior foi rejeitado. |
+| Backend | Profile `backend-tests` | 101/101 integrações, 0 falhas, 0 skips; runner em 6 s. |
+| Frontend | Profile `frontend-tests` | npm/lint, 57/57 testes em 9 arquivos e build de 317,42 kB aprovados. |
+| Contrato/CI | Profile `contract-tests`; `rhysd/actionlint:1.7.12` em container | 6 operações/53 referências e workflow aprovados. |
+| Jornadas e smoke | `./scripts/e2e-playwright.sh`; `./scripts/validate-m1-compose.sh` | 3/3 E2E em 7,3 s; smoke completo de origem/auth/perfil/senha/persistência/erros/logs/cleanup aprovado. |
+| Segurança e coerência | Revisores somente leitura de segurança, testes, Docker e SDD; scans de Git/dependências/segredos | 0 Alto e 0 Médio aberto após restringir o web a `127.0.0.1:8080` e corrigir a documentação de CSP; nenhum banco/segredo real versionado; locks válidos; riscos baixos e trade-offs registrados. |
+| Documentação | README raiz, relatório 07, matriz, índice, `.env.example`, frontend README e este plano | `DOC-RUN-001` Verified; roteiro técnico criado; `AI-EXPLAIN-01`, CI hospedada e `DEL-REPO-01` mantidos Pending sem fabricar evidência. |
+
+O relatório detalhado, incluindo as correções do próprio script de auditoria, está em [`07-validation-report.md`](07-validation-report.md).
 
 Ao iniciar um milestone, alterar somente seu estado para `em andamento`. Ao concluir, registrar data, comandos, evidências, desvios e hash do commit antes de iniciar o próximo.
 
@@ -350,7 +369,8 @@ Os nomes de scripts npm devem ser confirmados no scaffold e então congelados. M
 - `2026-08-26` — M4 manteve o fluxo KISS `Controller` → EF Core/`PasswordHasher<User>` e `component` → service/signals, sem repository, facade, NgRx ou camada adicional. A complexidade ficou restrita à atomicidade, à corrida do índice único, à autorização/limpeza segura de sessão e aos estados observáveis exigidos.
 - `2026-08-26` — M5 não alterou endpoints nem regras de negócio: reutilizou as suítes acumuladas, acrescentou somente três jornadas Playwright diretas, targets/profiles Docker, um workflow e ajustes visuais locais. O isolamento usa projeto/volume por execução da suíte e contexto/dados por jornada, sem orquestrador ou framework adicional.
 - `2026-08-26` — A revisão independente de M5 fechou `REV-M1-015`–`017`: npm passou a impor a allowlist, assets inexistentes com extensão retornam `404` e o collector sem consumidor foi removido. Actions foram fixadas por SHA e a decisão de status do teardown ganhou prova negativa direta, sem framework de CI adicional.
+- `2026-08-27` — M6 não alterou código da aplicação nem contrato de negócio. Uma correção direta de configuração restringiu a publicação HTTP ao loopback e um assert no smoke tornou a decisão executável; documentação encerrou os demais achados. O usuário Nginx, `forbidOnly`, CSP e rate limiting permaneceram hardenings baixos documentados, sem abstrações novas.
 
 ## Resultado final
 
-M1–M5 estão implementados, revisados e validados. M5 manteve as 101 integrações backend e 57 testes frontend e aprovou as três jornadas Playwright contra Nginx/API/SQLite reais, além de contrato, perfis Compose, smoke final, acabamento acessível/responsivo, dependências decididas, CI imutável e artefatos filtrados. Não houve nova funcionalidade de negócio. M6 permanece pendente exclusivamente para validação e documentação finais.
+M1–M6 estão concluídos quanto ao escopo técnico e documental. A validação final repetiu, somente com Docker, build sem cache, Compose sem `.env`, runtime, persistência, 101 integrações backend, 57 testes frontend, três jornadas Playwright, contrato, actionlint e smoke completo. Não houve nova funcionalidade de negócio; a única correção operacional de M6 restringiu/testou o bind de host. A execução hospedada da CI, a confirmação de `AI-EXPLAIN-01` por uma pessoa e `DEL-REPO-01` permanecem ações externas e não foram marcadas como Verified.

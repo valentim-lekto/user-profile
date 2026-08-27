@@ -1,6 +1,8 @@
 # User Profile Web
 
-Shell Angular standalone do milestone M1, gerado com Angular CLI 22.1.3 e executado com Node 24.19.0.
+Frontend Angular standalone/strict da aplicação de perfil, com cadastro,
+login, dashboard e dois formulários protegidos de perfil. O guia suportado da
+entrega e dos testes Docker está no [`README.md`](../../../README.md) da raiz.
 
 ## Desenvolvimento
 
@@ -21,4 +23,6 @@ npm test
 npm run build
 ```
 
-As telas funcionais e as jornadas E2E pertencem aos milestones posteriores.
+As versões de Node/npm são fixadas no Dockerfile e no lock. A validação oficial
+não exige SDK local: use o profile `frontend-tests` e o runner E2E descritos no
+README raiz.

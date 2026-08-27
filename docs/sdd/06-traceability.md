@@ -1,6 +1,6 @@
 # 06 — Matriz de rastreabilidade
 
-**Status:** M5 concluído e revisado · **Data:** 2026-08-26
+**Status:** M6 concluído tecnicamente e auditado · **Data:** 2026-08-27
 
 ## Convenções
 
@@ -9,9 +9,11 @@
 - **M2 concluído/parcial:** a parcela de cadastro possui implementação e evidência pós-revisão; login, autenticação e perfil continuam pendentes.
 - **M3 concluído/parcial:** login, JWT, sessão, guard, interceptor, dashboard e leitura protegida do perfil possuem implementação e evidência; suas jornadas completas foram confirmadas em M5.
 - **M4 concluído/parcial:** edição protegida de perfil/senha, formulários, atomicidade, atualização do dashboard e encerramento de sessão possuem implementação e evidência; suas jornadas completas foram confirmadas em M5.
-- **M5 concluído/parcial:** cobertura acumulada, acabamento, três jornadas Playwright, perfis Compose e definição de CI possuem implementação, revisão independente e evidência local; somente a execução hospedada, dependente de publicação, e os gates finais de M6 permanecem futuros.
+- **M5 concluído/parcial:** cobertura acumulada, acabamento, três jornadas Playwright, perfis Compose e definição de CI possuem implementação e evidência local; a execução hospedada continua dependente de publicação.
+- **Verified (M6):** implementação ou artefato confrontado com evidência executada nesta auditoria final; esse estado não é usado para ação externa ou capacidade humana não observada.
 - **Parcial:** parte documental já existe, mas o critério depende de implementação ou entrega futura.
-- **Pendente:** depende integralmente de milestone futuro.
+- **Pendente:** depende integralmente de milestone, ação humana ou evidência
+  externa ainda não observada.
 - O estado deve ser atualizado no mesmo commit que altera implementação ou evidência.
 - IDs de testes são definidos em [`04-test-strategy.md`](04-test-strategy.md); operações em [`03-api-contract.yaml`](03-api-contract.yaml).
 
@@ -43,20 +45,20 @@
 
 | Requisito | Critério de aceite | Design / endpoint / tela | Milestone | Teste planejado | Estado |
 |---|---|---|---|---|---|
-| `NFR-TECH-01` | `TECH-BACKEND-01` | .NET 10, Controllers, EF Core SQLite 10, JWT e lock NuGet; ADR-0001 | M1–M5 | `TECH-BACKEND-001`, build e suíte `BE-*` | M5 revalidado: restore locked, build com 0 warnings/erros e 101 integrações sem skips passaram no target Docker fixado. |
-| `NFR-TECH-02` | `TECH-FRONTEND-01` | Angular standalone/strict, Material, Reactive Forms, signals, npm/lock/allowlist | M1–M5 | `TECH-FRONTEND-001`, build e suíte `FE-*` | M5 revalidado: npm `11.17.0` com allowlist estrita, 0 vulnerabilidades, lint, 57 testes sem skips e build sem warnings passaram no target Docker fixado. |
-| `NFR-DATA-01` | `OPS-DOCKER-01`, `OPS-DOCKER-03` | SQLite, migrations e volume; ADR-0002 | M1, M6 | `BE-DB-001`, `OPS-PERSIST-001`, `OPS-COMPOSE-001` | Parcial M4: smoke isolado recriou a API e confirmou persistência de perfil/senha no SQLite; revalidação final de M6 permanece pendente. |
-| `NFR-OPS-01` | `OPS-DOCKER-01` | `compose.yaml`, Nginx com `413/503 ProblemDetails`, API e volume; `/health` e `/swagger` | M1, M6 | `OPS-COMPOSE-001`, `OPS-ORIGIN-001` | Parcial M4 concluída: config, origem, PUTs, atomicidade, persistência, `413/415`, `503`, logs e cleanup foram aprovados em projeto/volume isolados; validação final permanece M6. |
-| `NFR-OPS-02` | `OPS-DOCKER-02` | Origem única, builds multi-stage, perfis de teste e inventário exato; ADR-0004 | M1, M5, M6 | `OPS-COMPOSE-001`, `OPS-TAGS-001`, `CI-001`, `DOC-RUN-001` | M5 concluído na fatia: todas as imagens/linhas `FROM`, `404` de assets, somente `web:8080`, quatro perfis sem SDK local e workflow por SHAs foram comprovados; walkthrough limpo final permanece M6. |
-| `NFR-CONFIG-01` | `SEC-SECRET-01`, `OPS-DOCKER-01` | Base e `.env.example` opcional em M1; chave validada em M3; auditoria em M5 | M1, M3, M5 | `BE-CONFIG-001`, `OPS-SECRET-001`, revisão de configuração | M5 concluído: chave externa validada, falha fechada, fallback somente Development, Compose sem `.env` e auditoria acumulada sem segredo versionado/logado. |
-| `NFR-SEC-01` | `SEC-AUTH-01`, `SEC-SESSION-01`, `SEC-SECRET-01`, `SEC-LOG-01` | ADR-0003, DTOs, logging, allowlists, wiring de produção e `sessionStorage` | M2–M5 | `BE-AUTH-*`, `BE-CONFIG-001`, `BE-PASS-004`, `BE-DTO-001`, `FE-INT-001/002`, `FE-PASS-002`, `FE-WIRE-001`, `OPS-SECRET-001`, `CI-001` | M5 concluído: identidade por `sub`, sessão reprotegida, dependências decididas, filtro de diagnósticos testado e artefatos sem senha/JWT foram comprovados; nenhum achado ficou aberto. |
-| `NFR-TEST-01` | `TEST-FLOW-01` | Estratégia com integração principal, frontend, E2E, Compose e CI | M1–M6 | Gates de `04-test-strategy.md`, `E2E-*`, `CI-001` | M5 concluído na fatia: 101 integrações, 57 testes frontend, três jornadas Playwright, contrato e smoke passaram; workflow equivalente foi validado estaticamente, com execução hospedada condicionada ao futuro push. |
-| `NFR-DOC-01` | `DOC-RUN-01` | README raiz futuro; índice SDD atual | M6 | `DOC-RUN-001` | Pendente de implementação/README. |
-| `NFR-SDD-01` | `DOC-SDD-01`, `DOC-TRACE-01` | `00`–`06`, OpenAPI, plano, testes e ADRs | M1–M6 | `SPEC-TRACE-001`, revisão do índice | Parcial: documentação, contrato e evidências M1–M5 foram atualizados/revalidados; fechamento integral permanece obrigatório em M6. |
+| `NFR-TECH-01` | `TECH-BACKEND-01` | .NET 10, Controllers, EF Core SQLite 10, JWT e lock NuGet; ADR-0001 | M1–M6 | `TECH-BACKEND-001`, build e suíte `BE-*` | Verified (M6): build sem cache e target Docker aprovaram restore/build; 101 integrações passaram sem falha/skip. |
+| `NFR-TECH-02` | `TECH-FRONTEND-01` | Angular standalone/strict, Material, Reactive Forms, signals, npm/lock/allowlist | M1–M6 | `TECH-FRONTEND-001`, build e suíte `FE-*` | Verified (M6): npm/lint, 57 testes sem skip e build de produção passaram no target Docker fixado. |
+| `NFR-DATA-01` | `OPS-DOCKER-01`, `OPS-DOCKER-03` | SQLite, migrations e volume; ADR-0002 | M1, M6 | `BE-DB-001`, `OPS-PERSIST-001`, `OPS-COMPOSE-001` | Verified (M6): volume foi resetado, migrations criaram banco vazio e nome/email persistiram após restart dos containers. |
+| `NFR-OPS-01` | `OPS-DOCKER-01` | `compose.yaml`, Nginx com `413/503 ProblemDetails`, API e volume; `/health` e `/swagger` | M1, M6 | `OPS-COMPOSE-001`, `OPS-ORIGIN-001` | Verified (M6): config sem `.env`, build sem cache, healthchecks, origem/Swagger, restart, smoke e cleanup passaram. |
+| `NFR-OPS-02` | `OPS-DOCKER-02` | Origem única, builds multi-stage, perfis de teste e inventário exato; ADR-0004 | M1, M5, M6 | `OPS-COMPOSE-001`, `OPS-TAGS-001`, `CI-001`, `DOC-RUN-001` | Verified (M6): somente `web` publica `127.0.0.1:8080`, tags completas, quatro profiles Docker-only, README reproduzível e workflow por SHAs foram revalidados. |
+| `NFR-CONFIG-01` | `SEC-SECRET-01`, `OPS-DOCKER-01` | Base e `.env.example` opcional em M1; chave validada em M3; auditoria em M5 | M1, M3, M5–M6 | `BE-CONFIG-001`, `OPS-SECRET-001`, revisão de configuração | Verified (M6): Compose iniciou sem `.env`; chave real/banco não estão versionados; fallback efêmero e restrição de lifetime estão documentados. |
+| `NFR-SEC-01` | `SEC-AUTH-01`, `SEC-SESSION-01`, `SEC-SECRET-01`, `SEC-LOG-01` | ADR-0003, DTOs, logging, allowlists, wiring de produção e `sessionStorage` | M2–M6 | `BE-AUTH-*`, `BE-CONFIG-001`, `BE-PASS-004`, `BE-DTO-001`, `FE-INT-001/002`, `FE-PASS-002`, `FE-WIRE-001`, `OPS-SECRET-001`, `CI-001` | Verified (M6): revisão independente, suíte e smoke aprovaram hash, JWT, `sub`, DTOs, logs/artefatos e ausência de segredo; 0 Alto/Médio aberto. |
+| `NFR-TEST-01` | `TEST-FLOW-01` | Estratégia com integração principal, frontend, E2E, Compose e CI | M1–M6 | Gates de `04-test-strategy.md`, `E2E-*`, `CI-001` | Verified localmente (M6): 101 integrações, 57 frontend, 3 E2E, contrato, actionlint e smoke passaram; execução hospedada continua Pending até push. |
+| `NFR-DOC-01` | `DOC-RUN-01` | README raiz e índice/relatório SDD | M6 | `DOC-RUN-001` | Verified (M6): README contém execução, URLs, fluxo, testes Docker-only, operação, variáveis, estrutura, decisões, limitações, IA e troubleshooting. |
+| `NFR-SDD-01` | `DOC-SDD-01`, `DOC-TRACE-01` | `00`–`07`, OpenAPI, plano, testes e ADRs | M1–M6 | `SPEC-TRACE-001`, revisão do índice | Verified (M6): índice, plano, matriz, relatório, OpenAPI, ADRs e testes foram confrontados; links locais e contrato passaram. |
 | `NFR-SDD-02` | `DOC-SDD-01` | ADR-0001 a ADR-0004 | Design e contínuo | Revisão de decisões relevantes | Atendido nesta etapa; revisão contínua. |
-| `NFR-TRACE-01` | `DOC-TRACE-01` | Este documento e extensões `x-*` do OpenAPI | M1–M6 | `SPEC-TRACE-001` | Parcial: evidências M1–M5 e extensões de contrato estão mapeadas/aprovadas; revalidação final permanece M6. |
-| `NFR-AI-01` | `AI-SDD-01`, `AI-EXPLAIN-01` | `ai-usage.md`, registros resumidos e walkthrough humano | Todos | Revisão de diff/decisões e `DOC-EXPLAIN-001` | Parcial: uso de IA, auditorias e validação de M5 estão resumidos sem transcrição; walkthrough humano permanece M6. |
-| `NFR-DELIVERY-01` | `DEL-REPO-01` | Publicação explícita pelo responsável | Entrega | Verificação manual da URL pública | Pendente da entrega; nenhum push nesta etapa. |
+| `NFR-TRACE-01` | `DOC-TRACE-01` | Este documento e extensões `x-*` do OpenAPI | M1–M6 | `SPEC-TRACE-001` | Verified (M6): 19 requisitos funcionais, 14 não funcionais, 18 premissas e 40 critérios permanecem mapeados com estados coerentes. |
+| `NFR-AI-01` | `AI-SDD-01`, `AI-EXPLAIN-01` | `ai-usage.md`, registros resumidos e walkthrough humano | Todos | Revisão de diff/decisões e `DOC-EXPLAIN-001` | Parcial: `AI-SDD-01` e o roteiro técnico estão Verified; `AI-EXPLAIN-01` permanece Pending human confirmation. |
+| `NFR-DELIVERY-01` | `DEL-REPO-01` | Publicação explícita pelo responsável | Entrega | Verificação manual da URL pública | Pending: nenhum remote/push foi configurado por instrução; entrega está pronta para essa ação externa. |
 
 ## Premissas aprovadas
 
@@ -64,8 +66,8 @@
 |---|---|---|---|---|---|
 | `PREM-ARCH-01` | `DOC-SDD-01` | Monólito modular; ADR-0001 | M1 | Inspeção da solution e build | M1 comprovado: uma API modular direta e build aprovado. |
 | `PREM-ARCH-02` | `TECH-BACKEND-01` | Um `UserProfile.Api` e um `tests/backend/UserProfile.Api.IntegrationTests` | M1 | Inspeção da solution | M1 comprovado: exatamente um executável e um projeto de integração na solution. |
-| `PREM-ARCH-03` | `DOC-TRACE-01` | Features `Auth`/`Profile`; sem patterns proibidos | M1–M6 | Revisão de diff por milestone | Parcial M5: `Auth`/`Profile` seguem diretas e M5 não acrescentou camada ou funcionalidade de negócio; revisão final permanece M6. |
-| `PREM-DATA-01` | `OPS-DOCKER-01`, `OPS-DOCKER-03` | EF Core SQLite, migrations e volume; ADR-0002 | M1, M6 | `BE-DB-001`, `OPS-PERSIST-001` | Parcial M4 aprovada: EF/SQLite/migration/volume e persistência dos dados cadastrais e da senha após recriação foram revalidados; repetição final permanece M6. |
+| `PREM-ARCH-03` | `DOC-TRACE-01` | Features `Auth`/`Profile`; sem patterns proibidos | M1–M6 | Revisão de diff por milestone | Verified (M6): fluxo direto e proporcional preservado; a correção final ficou no bind/teste operacional, sem funcionalidade, layer ou dependência nova. |
+| `PREM-DATA-01` | `OPS-DOCKER-01`, `OPS-DOCKER-03` | EF Core SQLite, migrations e volume; ADR-0002 | M1, M6 | `BE-DB-001`, `OPS-PERSIST-001` | Verified (M6): migration em banco vazio e persistência de perfil após restart foram observadas no volume padrão. |
 | `PREM-DATA-02` | `DOC-TRACE-01` | Decisão interna do ADR-0002: entidade/migration `User`, timestamps e índice `UX_Users_NormalizedEmail` | M1–M4 | `BE-DB-001`, `BE-REG-001`, `BE-PROF-003`, `BE-PASS-003` | M4 concluído na fatia: schema/índice e relógio controlado comprovam preservação de `CreatedAtUtc` e avanço de `UpdatedAtUtc` somente em atualizações válidas. |
 | `PREM-FE-01` | `UI-STATE-01` | Angular standalone/strict, Reactive Forms, Material | M1–M5 | Build, suíte `FE-*` e `E2E-*` | M5 concluído na fatia: quatro telas Material, formulários tipados, signals, locators por nomes acessíveis, responsividade, lint/build, 57 testes e três jornadas passaram. |
 | `PREM-LANG-01` | `DOC-SDD-01` | Código/IDs em inglês; documentação em português | Todos | Revisão de diff | Design concluído; verificação contínua. |
@@ -78,8 +80,8 @@
 | `PREM-AUTH-02` | `AC-DASH-01` | Dashboard usa `getCurrentProfile` com estado por ativação | M3–M5 | `FE-DASH-001`, `FE-WIRE-001`, `E2E-001` | M5 comprovado: dashboard usa `GET /api/profile`, isola respostas e a jornada real mostra o nome cadastrado e depois o atualizado. |
 | `PREM-AUTH-03` | `SEC-SESSION-01` | JWT de 15 minutos em `sessionStorage`, sem refresh | M3 | `BE-LOGIN-001`, `FE-LOGIN-002`, `FE-INT-002` | M3 concluído: duração, claims, armazenamento, logout e limpeza em `401` somente para a mesma sessão foram aprovados; não há refresh. |
 | `PREM-ERR-01` | `API-ERROR-01` | ProblemDetails na API e nas falhas de transporte do proxy, inclusive `413/415` | M1–M5 | `BE-ERR-*`, `BE-HEALTH-001`, `SPEC-OAS-005`, `OPS-COMPOSE-001`, `OPS-ORIGIN-001`, `CI-001` | M5 concluído na fatia: integração, contrato e proxy comprovam a matriz de erros; workflow versionado repete esses gates. |
-| `PREM-SEED-01` | `DOC-RUN-01` | Dados criados pelo cadastro e por factories de teste | M2, M5, M6 | `E2E-001`, `DOC-RUN-001` | Parcial M5: cadastro/factories/E2E criam dados independentes sem seed; instrução final do README permanece M6. |
-| `PREM-OPS-01` | `OPS-DOCKER-01` | Compose inicia sem criar ou copiar `.env` | M1–M6 | `OPS-COMPOSE-001`, `OPS-SECRET-001` | M1–M5 aprovados sem `.env`, inclusive profiles, E2E e smoke/log; repetição em checkout limpo permanece M6. |
+| `PREM-SEED-01` | `DOC-RUN-01` | Dados criados pelo cadastro e por factories de teste | M2, M5, M6 | `E2E-001`, `DOC-RUN-001` | Verified (M6): README não promete seed; fluxos manuais/E2E usaram cadastros sintéticos e emails únicos. |
+| `PREM-OPS-01` | `OPS-DOCKER-01` | Compose inicia sem criar ou copiar `.env` | M1–M6 | `OPS-COMPOSE-001`, `OPS-SECRET-001` | Verified (M6): `.env` ausente; config, build e `up --wait` passaram com defaults seguros de Development. |
 
 ## Evidência executável de M1
 
@@ -151,6 +153,21 @@ A execução anterior à revisão registrou 29/29 integrações backend e 12/12 
 | `CI-001` | `.github/workflows/ci.yml`, `actionlint:1.7.12`, helpers shell e execução local dos perfis/scripts | Workflow válido: Actions por SHA, checkout sem credencial persistida, diagnóstico filtrado, nomes efêmeros registrados, cleanup antes do upload e precedência de falhas testada. A execução hospedada exige push explicitamente fora do escopo. |
 | `FR-UI-01`, `PREM-FE-01` | Specs DOM, `E2E-*` e inspeção real desktop/360 px | Shell/telas Material consistentes, landmarks/headings/labels, `aria-live`, foco de erro, skip link, loading e ações responsivas aprovados sem layout excessivo. |
 
+## Evidência executável de M6
+
+| ID | Comando/artefato observado em 2026-08-27 | Estado |
+|---|---|---|
+| `TECH-BACKEND-001`, `BE-*` | Profile `backend-tests`, após build de produção sem cache | Verified: 101/101 integrações, 0 falhas, 0 skips, HTTP/EF Core/SQLite reais. |
+| `TECH-FRONTEND-001`, `FE-*` | Profile `frontend-tests` | Verified: npm/lint, 57/57 testes em 9 arquivos e build de 317,42 kB. |
+| `SPEC-OAS-001`–`005` | Profile `contract-tests`; Swagger runtime | Verified: 6 operações, 53 referências locais e quatro URLs públicas da origem única em `200`. |
+| `OPS-COMPOSE-001`, `OPS-ORIGIN-001`, `OPS-TAGS-001` | config, build `--no-cache`, `up --wait`, inventário e smoke | Verified: sem `.env`, somente web em `127.0.0.1:8080`, tags completas, health/Swagger/SPA e falha upstream corretos. |
+| `OPS-PERSIST-001` | Fluxo sintético, update, `docker compose restart`, nova espera de health e login | Verified: nome/email sobreviveram; chave efêmera invalidou apenas o token, não o usuário. |
+| `OPS-SECRET-001`, `SEC-*` | Quatro revisões somente leitura, scans Git/dependências e smoke de logs/sanitizador | Verified: 0 Alto/Médio aberto e nenhum segredo, banco, hash ou token real versionado/exposto. |
+| `E2E-001`–`003`, `CI-001` | `e2e-playwright.sh`, `actionlint:1.7.12` e smoke | Verified localmente: 3/3 jornadas em 7,3 s e workflow válido; execução hospedada Pending até publicação. |
+| `DOC-RUN-001`, `DOC-SDD-01`, `DOC-TRACE-01` | README raiz, SDD 00–07, ADRs, links e relatório | Verified: comandos e estados refletem a execução; raiz/índice/plano/matriz/IA foram finalizados. |
+| `DOC-EXPLAIN-001`, `AI-EXPLAIN-01` | Roteiro técnico no README | Roteiro Verified; capacidade humana Pending human confirmation. |
+| `DEL-REPO-01` | Remote e URL pública | Pending: nenhum remote ou push por instrução explícita. |
+
 ## Cobertura após a revisão de M2
 
 - Todos os 19 requisitos funcionais estão ligados a operação/tela, milestone e teste planejado.
@@ -184,4 +201,12 @@ A execução anterior à revisão registrou 29/29 integrações backend e 12/12 
 - A suíte acumulada aprovou 101 integrações backend, 57 testes frontend e exatamente três jornadas E2E independentes, sem falhas, skips, retries ou seed compartilhado.
 - Contrato OpenAPI, configuração/tags/profiles Compose, smoke acumulado, imagens de produção, workflow CI e cleanup isolado foram validados; a indisponibilidade do upstream permanece no smoke, sem quarta jornada E2E.
 - A auditoria de segurança encontrou e encerrou o vazamento inicial de senha sintética em metadados de trace: a versão final gera os segredos no navegador, passa apenas chaves não sensíveis e teve três traces forçados/report/JUnit verificados com 0 senha ou JWT.
-- M6 permanece pendente para README raiz, reprodução em checkout limpo, revalidação final integral, walkthrough humano e publicação explícita. Nenhum push foi realizado em M5.
+- M6 permanecia pendente para README raiz, reprodução limpa, revalidação integral e publicação explícita; a seção seguinte registra seu fechamento técnico.
+
+## Cobertura após M6
+
+- Todos os 19 requisitos funcionais, 14 não funcionais, 18 premissas e 40 critérios permanecem ligados a design, milestone, teste e estado; nenhum item foi promovido sem evidência.
+- Build sem cache, Compose sem `.env`, banco vazio/migration, URLs, restart/persistência, 101 integrações, 57 testes frontend, três E2E, contrato, actionlint e smoke foram observados somente com Docker.
+- A auditoria independente terminou com 0 achado Alto ou Médio aberto. Os riscos baixos aceitos e as limitações de produção constam em [`07-validation-report.md`](07-validation-report.md).
+- `DOC-RUN-001`, `DOC-SDD-01` e `DOC-TRACE-01` estão Verified; o roteiro `DOC-EXPLAIN-001` existe e foi revisado.
+- `AI-EXPLAIN-01`, a execução hospedada da CI e `DEL-REPO-01` permanecem Pending por dependerem, respectivamente, de confirmação humana e publicação; nenhum push foi realizado.

@@ -11,9 +11,10 @@ Este diretório reúne os artefatos versionados do processo Spec-Driven Developm
 5. [`04-test-strategy.md`](04-test-strategy.md) — níveis, cenários e gates de teste.
 6. [`05-execution-plan.md`](05-execution-plan.md) — plano executável M1–M6.
 7. [`06-traceability.md`](06-traceability.md) — ligação entre requisitos, design, plano e evidências.
-8. [`adr/`](adr/) — decisões arquiteturais relevantes e suas consequências.
-9. [`review-log.md`](review-log.md) — revisões independentes, achados, decisões e validações.
-10. [`ai-usage.md`](ai-usage.md) — regras e registros resumidos do uso de IA.
+8. [`07-validation-report.md`](07-validation-report.md) — auditoria final, comandos e evidências reais.
+9. [`adr/`](adr/) — decisões arquiteturais relevantes e suas consequências.
+10. [`review-log.md`](review-log.md) — revisões independentes, achados, decisões e validações.
+11. [`ai-usage.md`](ai-usage.md) — regras e registros resumidos do uso de IA.
 
 ## Estado atual
 
@@ -21,13 +22,14 @@ Este diretório reúne os artefatos versionados do processo Spec-Driven Developm
 |---|---|---|
 | [`00-challenge.md`](00-challenge.md) | Preservar o enunciado, com requisitos originais e decisões aprovadas claramente separados. | Concluído nesta etapa. |
 | [`01-requirements.md`](01-requirements.md) | Definir escopo, atores, casos de uso, requisitos, critérios, premissas, exclusões e Definition of Done. | Funcionalidades M1–M4 e gate de qualidade M5 implementados e validados, sem ampliar o escopo de negócio. |
-| [`02-technical-design.md`](02-technical-design.md) | Definir arquitetura, modelo de dados, segurança, frontend, operação e versões fixadas. | M1–M5 validados, inclusive perfis Compose, npm estrito, Playwright, Actions por SHA e política segura de artefatos. |
+| [`02-technical-design.md`](02-technical-design.md) | Definir arquitetura, modelo de dados, segurança, frontend, operação e versões fixadas. | M1–M6 validados, inclusive bind de loopback, perfis Compose, npm estrito, Playwright, Actions por SHA e política segura de artefatos. |
 | [`03-api-contract.yaml`](03-api-contract.yaml) | Definir requests, responses, schemas, autenticação e erros da API. | Seis operações normativas e 53 referências locais aprovadas; Swagger runtime também validado. |
 | [`04-test-strategy.md`](04-test-strategy.md) | Definir integração, frontend, E2E, Docker e gates. | 101 integrações backend, 57 testes frontend, três jornadas E2E reforçadas e smoke corretivo final aprovados. |
-| [`05-execution-plan.md`](05-execution-plan.md) | Organizar a implementação incremental em M1–M6. | M1–M5 concluídos; M6 pendente. |
-| [`06-traceability.md`](06-traceability.md) | Relacionar requisito, critério, design, milestone, teste e estado. | M5 concluído com evidências automatizadas, Compose, E2E e inspeção da UI real. |
-| [`review-log.md`](review-log.md) | Registrar revisão independente, achados, decisões, comandos e riscos. | Revisões independentes de design e M1–M5 registradas; M5 encerrou também `REV-M1-015`–`017`. |
-| [`ai-usage.md`](ai-usage.md) | Definir e registrar de forma resumida o uso responsável de IA. | Uso de IA, auditorias e revisão independente até M5 resumidos. |
+| [`05-execution-plan.md`](05-execution-plan.md) | Organizar a implementação incremental em M1–M6. | M1–M6 concluídos quanto ao escopo técnico; publicação e confirmação humana permanecem externas. |
+| [`06-traceability.md`](06-traceability.md) | Relacionar requisito, critério, design, milestone, teste e estado. | Gates técnicos/operacionais/documentais de M6 reexecutados e marcados somente com evidência real. |
+| [`07-validation-report.md`](07-validation-report.md) | Registrar a auditoria final independente. | Concluído: 0 Alto/Médio aberto, comandos Docker, resultados, riscos e pendências externas registrados. |
+| [`review-log.md`](review-log.md) | Registrar revisão independente, achados, decisões, comandos e riscos. | Revisões de design e M1–M5 preservadas; a auditoria final está consolidada no relatório 07. |
+| [`ai-usage.md`](ai-usage.md) | Definir e registrar de forma resumida o uso responsável de IA. | Uso de IA e auditorias até M6 resumidos; explicação humana não foi presumida pela IA. |
 
 ## Governança
 
@@ -45,12 +47,12 @@ Este diretório reúne os artefatos versionados do processo Spec-Driven Developm
 
 Novas decisões relevantes devem criar ou substituir ADR; registrar apenas uma premissa em tabela não substitui essa análise.
 
-## Pendências para as próximas etapas
+## Estado de entrega e pendências externas
 
 | Item | Estado |
 |---|---|
-| Código, dependências, Dockerfiles e Compose | Walking skeleton M1, cadastro M2, login/autorização/dashboard M3, perfil/senha M4 e qualidade/E2E/CI M5 concluídos; somente M6 permanece pendente. |
-| Testes automatizados e evidências observadas | 101 integrações backend, 57 testes frontend e três jornadas E2E aprovados sem skips, além de OpenAPI normativo/runtime, perfis Compose, npm estrito, smoke final e UI real. |
-| README de execução e validação na raiz | Planejado para M6. |
-| Atualização de estados da matriz e do plano | Obrigatória em cada milestone. |
+| Código, dependências, Dockerfiles e Compose | M1–M5 implementados; M6 restringiu o bind publicado ao loopback e o tornou gate operacional, sem criar funcionalidade de negócio. |
+| Testes automatizados e evidências observadas | 101 integrações backend, 57 testes frontend, três jornadas E2E, OpenAPI, actionlint, build sem cache, restart/persistência e smoke aprovados somente com Docker. |
+| README de execução e validação na raiz | Concluído e confrontado com os comandos observados em M6. |
+| Atualização de estados da matriz e do plano | Concluída para M6; publicação e confirmação da explicação humana permanecem Pending. |
 | ADRs adicionais | Criar somente se surgir nova decisão relevante. |
