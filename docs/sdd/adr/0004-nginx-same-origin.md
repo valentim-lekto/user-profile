@@ -9,7 +9,8 @@ O avaliador deve iniciar frontend, backend e persistência com Compose e acessar
 ## Decisão
 
 - Compilar o Angular em uma imagem multi-stage e servir os arquivos estáticos com Nginx.
-- Publicar somente `http://localhost:8080` pelo serviço `web`.
+- Publicar somente `http://localhost:8080` pelo serviço `web`, com o bind
+  `127.0.0.1:8080:8080` restrito ao loopback IPv4 do host.
 - Encaminhar `/api/*`, `/swagger/*` e `/health` ao serviço interno `api:8080`.
 - Converter falha de conexão ou timeout gerada pelo próprio Nginx (`502`/`504`) em `503 application/problem+json`, sem interceptar respostas já formatadas pela API.
 - Executar a única probe do Compose no serviço `web`, com BusyBox `wget` contra `http://127.0.0.1:8080/health`; `web` depende de `api` apenas como `service_started`.

@@ -297,6 +297,13 @@ data_volume="${COMPOSE_PROJECT_NAME}_user-profile-data"
 docker volume inspect "$data_volume" >/dev/null 2>&1 ||
   fail 'the isolated SQLite volume was not created'
 
+web_container_id=$(docker compose ps -q web)
+published_web_bindings=$(docker inspect --format \
+  '{{range (index .NetworkSettings.Ports "8080/tcp")}}{{printf "%s:%s\n" .HostIp .HostPort}}{{end}}' \
+  "$web_container_id")
+[ "$published_web_bindings" = '127.0.0.1:8080' ] ||
+  fail "web publishes outside the expected loopback binding: $published_web_bindings"
+
 api_container_id=$(docker compose ps -q api)
 published_api_ports=$(docker inspect --format \
   '{{range $port, $bindings := .NetworkSettings.Ports}}{{if $bindings}}{{$port}} {{end}}{{end}}' \
