@@ -1,0 +1,40 @@
+name: Backend mutation testing
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  mutation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      COMPOSE_PROJECT_NAME: user-profile-mutation-${{ github.run_id }}-${{ github.run_attempt }}
+      MUTATION_ARTIFACTS_DIR: ${{ github.workspace }}/artifacts/mutation
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Prepare mutation report directory
+        run: mkdir -p "$MUTATION_ARTIFACTS_DIR"
+
+      - name: Run backend mutation tests
+        run: docker compose --profile mutation-tests run --rm --build mutation-tests
+
+      - name: Cleanup mutation Compose resources
+        if: always()
+        run: docker compose --profile mutation-tests down --remove-orphans
+
+      - name: Upload mutation reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/mutation
+          if-no-files-found: warn
+          retention-days: 14

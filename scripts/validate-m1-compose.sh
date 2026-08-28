@@ -145,6 +145,7 @@ trap 'exit 143' TERM
 
 docker compose \
   --profile backend-tests \
+  --profile mutation-tests \
   --profile frontend-tests \
   --profile contract-tests \
   --profile e2e \
@@ -152,6 +153,7 @@ docker compose \
 
 compose_services=$(docker compose \
   --profile backend-tests \
+  --profile mutation-tests \
   --profile frontend-tests \
   --profile contract-tests \
   --profile e2e \
@@ -162,6 +164,7 @@ expected_compose_services=$(printf '%s\n' \
   'contract-tests' \
   'e2e' \
   'frontend-tests' \
+  'mutation-tests' \
   'web' \
   'web-e2e')
 [ "$compose_services" = "$expected_compose_services" ] ||
@@ -169,6 +172,7 @@ expected_compose_services=$(printf '%s\n' \
 
 compose_images=$(docker compose \
   --profile backend-tests \
+  --profile mutation-tests \
   --profile frontend-tests \
   --profile contract-tests \
   --profile e2e \
@@ -179,6 +183,7 @@ expected_compose_images=$(printf '%s\n' \
   'user-profile-backend-tests:0.1.0' \
   'user-profile-e2e-tests:0.1.0' \
   'user-profile-frontend-tests:0.1.0' \
+  'user-profile-mutation-tests:0.1.0' \
   'user-profile-web:0.1.0')
 [ "$compose_images" = "$expected_compose_images" ] ||
   fail "unexpected Compose images: $compose_images"
@@ -187,6 +192,7 @@ backend_froms=$(grep '^FROM ' src/backend/UserProfile.Api/Dockerfile)
 expected_backend_froms=$(printf '%s\n' \
   'FROM mcr.microsoft.com/dotnet/sdk:10.0.400-noble AS build' \
   'FROM mcr.microsoft.com/dotnet/sdk:10.0.400-noble AS test' \
+  'FROM test AS mutation-test' \
   'FROM mcr.microsoft.com/dotnet/aspnet:10.0.11-noble AS final')
 [ "$backend_froms" = "$expected_backend_froms" ] || fail 'unexpected backend FROM stages'
 
@@ -219,7 +225,8 @@ fi
 workflow_uses=$(sed -n \
   -e 's/^[[:space:]]*-[[:space:]]*uses:[[:space:]]*//p' \
   -e 's/^[[:space:]]*uses:[[:space:]]*//p' \
-  .github/workflows/ci.yml)
+  .github/workflows/ci.yml \
+  .github/workflows/mutation.yml | sort -u)
 expected_workflow_uses=$(printf '%s\n' \
   'actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2' \
   'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1')
@@ -233,8 +240,74 @@ checkout_credentials_count=$(awk '
     count++
   }
   END { print count + 0 }
-' .github/workflows/ci.yml)
-[ "$checkout_credentials_count" -eq 1 ] || fail 'checkout persists Git credentials'
+' .github/workflows/ci.yml .github/workflows/mutation.yml)
+checkout_count=$(grep -hEc '^[[:space:]]*- uses: actions/checkout@' \
+  .github/workflows/ci.yml .github/workflows/mutation.yml | \
+  awk '{ total += $1 } END { print total + 0 }')
+[ "$checkout_credentials_count" -eq "$checkout_count" ] ||
+  fail 'checkout persists Git credentials'
+
+grep -Fq '"version": "4.16.0"' .config/dotnet-tools.json ||
+  fail 'dotnet-stryker is not fixed at 4.16.0'
+[ -x scripts/run-mutation-tests.sh ] || fail 'mutation runner is not executable'
+[ -x scripts/validate-mutation-report.sh ] || fail 'mutation report gate is not executable'
+grep -Fq 'CMD ["/src/scripts/run-mutation-tests.sh", "--output", "/artifacts", "--skip-version-check"]' \
+  src/backend/UserProfile.Api/Dockerfile ||
+  fail 'mutation target does not run the report gate'
+grep -Fq '"mutation-level": "standard"' \
+  tests/backend/UserProfile.Api.IntegrationTests/stryker-config.json ||
+  fail 'Stryker mutation level is not standard'
+grep -Fq '"coverage-analysis": "perTest"' \
+  tests/backend/UserProfile.Api.IntegrationTests/stryker-config.json ||
+  fail 'Stryker coverage analysis is not perTest'
+grep -Fq '"concurrency": 2' \
+  tests/backend/UserProfile.Api.IntegrationTests/stryker-config.json ||
+  fail 'Stryker does not use exactly two workers'
+grep -Fq '"additional-timeout": 5000' \
+  tests/backend/UserProfile.Api.IntegrationTests/stryker-config.json ||
+  fail 'Stryker additional timeout is not five seconds'
+grep -Fq '"break-on-initial-test-failure": true' \
+  tests/backend/UserProfile.Api.IntegrationTests/stryker-config.json ||
+  fail 'Stryker does not fail on an initially red suite'
+for threshold in high low break; do
+  grep -Fq "\"$threshold\": 97" \
+    tests/backend/UserProfile.Api.IntegrationTests/stryker-config.json ||
+    fail "unexpected Stryker $threshold threshold"
+done
+for reporter in progress html json; do
+  grep -Fq "\"$reporter\"" \
+    tests/backend/UserProfile.Api.IntegrationTests/stryker-config.json ||
+    fail "missing Stryker $reporter reporter"
+done
+if grep -Eq '"ignore-(mutations|methods)"' \
+  tests/backend/UserProfile.Api.IntegrationTests/stryker-config.json; then
+  fail 'Stryker contains a global mutation ignore'
+fi
+
+mutate_files=$(sed -n '/"mutate": \[/,/^[[:space:]]*\]/{
+  s/^[[:space:]]*"\([^"]*\.cs\)"[,]*$/\1/p
+}' tests/backend/UserProfile.Api.IntegrationTests/stryker-config.json)
+expected_mutate_files=$(printf '%s\n' \
+  'Features/Auth/AuthController.cs' \
+  'Features/Auth/LoginRequest.cs' \
+  'Features/Auth/RegisterRequest.cs' \
+  'Features/Profile/ProfileController.cs' \
+  'Features/Profile/ChangePasswordRequest.cs' \
+  'Features/Profile/UpdateProfileRequest.cs' \
+  'Security/JwtBearerConfiguration.cs' \
+  'Security/JwtTokenIssuer.cs' \
+  'Configuration/JwtOptions.cs' \
+  'Data/DatabaseHealthCheck.cs' \
+  'Data/UserConfiguration.cs')
+[ "$mutate_files" = "$expected_mutate_files" ] ||
+  fail 'unexpected Stryker mutation allowlist'
+
+grep -Fq 'cron: "0 6 * * 1"' .github/workflows/mutation.yml ||
+  fail 'unexpected mutation workflow schedule'
+if grep -Eq '^[[:space:]]+(push|pull_request):' \
+  .github/workflows/mutation.yml; then
+  fail 'mutation testing unexpectedly blocks push or pull requests'
+fi
 
 sanitizer_marker='SYNTHETIC_CI_SECRET_MARKER'
 sanitizer_jwt='eyJzeW50aGV0aWMiOiJ0ZXN0In0.eyJzdWIiOiJ0ZXN0In0.c3ludGhldGljLXNpZ25hdHVyZQ'
