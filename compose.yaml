@@ -50,6 +50,16 @@ services:
       dockerfile: src/backend/UserProfile.Api/Dockerfile
       target: test
 
+  mutation-tests:
+    profiles: ["mutation-tests"]
+    image: user-profile-mutation-tests:0.1.0
+    build:
+      context: .
+      dockerfile: src/backend/UserProfile.Api/Dockerfile
+      target: mutation-test
+    volumes:
+      - "${MUTATION_ARTIFACTS_DIR:-./artifacts/mutation}:/artifacts"
+
   frontend-tests:
     profiles: ["frontend-tests"]
     image: user-profile-frontend-tests:0.1.0

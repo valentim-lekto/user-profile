@@ -333,6 +333,23 @@ public sealed class ProfileUpdateTests(ApiFactory factory) : IClassFixture<ApiFa
         using var response = await PutPasswordAsync(client, token, payload);
 
         var responseText = await AssertValidationProblemAsync(response, "currentPassword");
+        if (scenario == "wrong")
+        {
+            using var body = JsonDocument.Parse(responseText);
+            Assert.Equal("Bad Request", body.RootElement.GetProperty("title").GetString());
+            Assert.Equal(
+                "Check the errors object for details.",
+                body.RootElement.GetProperty("detail").GetString());
+            Assert.Equal("about:blank", body.RootElement.GetProperty("type").GetString());
+            Assert.Equal(
+                "Current password is incorrect.",
+                Assert.Single(
+                    body.RootElement
+                        .GetProperty("errors")
+                        .GetProperty("currentPassword")
+                        .EnumerateArray())
+                    .GetString());
+        }
         Assert.DoesNotContain(account.Password, responseText, StringComparison.Ordinal);
         Assert.DoesNotContain(newPassword, responseText, StringComparison.Ordinal);
         Assert.Equal(before, await LoadUserAsync(factory, account.Id));
@@ -792,6 +809,7 @@ public sealed class ProfileUpdateTests(ApiFactory factory) : IClassFixture<ApiFa
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStreamAsync());
         Assert.Equal(401, body.RootElement.GetProperty("status").GetInt32());
+        Assert.Equal("Unauthorized", body.RootElement.GetProperty("title").GetString());
         Assert.Equal("A valid Bearer token is required.", body.RootElement.GetProperty("detail").GetString());
         Assert.Equal(expectedInstance, body.RootElement.GetProperty("instance").GetString());
     }
@@ -804,6 +822,7 @@ public sealed class ProfileUpdateTests(ApiFactory factory) : IClassFixture<ApiFa
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStreamAsync());
         Assert.Equal(404, body.RootElement.GetProperty("status").GetInt32());
+        Assert.Equal("Not Found", body.RootElement.GetProperty("title").GetString());
         Assert.Equal(
             "The current profile could not be found.",
             body.RootElement.GetProperty("detail").GetString());

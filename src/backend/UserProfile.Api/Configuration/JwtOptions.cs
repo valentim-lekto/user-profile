@@ -52,7 +52,15 @@ public sealed class JwtOptions
         }
 
         var configuredSigningKey = section["SigningKey"];
-        byte[] signingKey;
+        var signingKey = LoadSigningKey(configuredSigningKey, environment);
+
+        return new JwtOptions(issuer, audience, signingKey);
+    }
+
+    private static byte[] LoadSigningKey(
+        string? configuredSigningKey,
+        IHostEnvironment environment)
+    {
         if (string.IsNullOrEmpty(configuredSigningKey))
         {
             if (!environment.IsDevelopment())
@@ -60,28 +68,30 @@ public sealed class JwtOptions
                 throw new InvalidOperationException("JWT signing key configuration is required.");
             }
 
-            signingKey = RandomNumberGenerator.GetBytes(MinimumSigningKeyBytes);
+            return RandomNumberGenerator.GetBytes(MinimumSigningKeyBytes);
         }
-        else
+
+        var signingKey = DecodeSigningKey(configuredSigningKey);
+        if (signingKey.Length < MinimumSigningKeyBytes)
         {
-            try
-            {
-                signingKey = Convert.FromBase64String(configuredSigningKey);
-            }
-            catch (FormatException exception)
-            {
-                throw new InvalidOperationException(
-                    "JWT signing key configuration must be valid Base64.",
-                    exception);
-            }
-
-            if (signingKey.Length < MinimumSigningKeyBytes)
-            {
-                throw new InvalidOperationException(
-                    $"JWT signing key configuration must decode to at least {MinimumSigningKeyBytes} bytes.");
-            }
+            throw new InvalidOperationException(
+                $"JWT signing key configuration must decode to at least {MinimumSigningKeyBytes} bytes.");
         }
 
-        return new JwtOptions(issuer, audience, signingKey);
+        return signingKey;
+    }
+
+    private static byte[] DecodeSigningKey(string configuredSigningKey)
+    {
+        try
+        {
+            return Convert.FromBase64String(configuredSigningKey);
+        }
+        catch (FormatException exception)
+        {
+            throw new InvalidOperationException(
+                "JWT signing key configuration must be valid Base64.",
+                exception);
+        }
     }
 }

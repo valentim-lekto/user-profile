@@ -37,6 +37,18 @@ RUN dotnet build UserProfile.sln --configuration Release --no-restore --property
 
 CMD ["dotnet", "test", "UserProfile.sln", "--configuration", "Release", "--no-build", "--no-restore", "--verbosity", "minimal"]
 
+FROM test AS mutation-test
+WORKDIR /src
+
+COPY .config/dotnet-tools.json .config/dotnet-tools.json
+RUN dotnet tool restore
+
+COPY scripts/run-mutation-tests.sh scripts/validate-mutation-report.sh /src/scripts/
+RUN chmod +x /src/scripts/run-mutation-tests.sh /src/scripts/validate-mutation-report.sh
+
+WORKDIR /src/tests/backend/UserProfile.Api.IntegrationTests
+CMD ["/src/scripts/run-mutation-tests.sh", "--output", "/artifacts", "--skip-version-check"]
+
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.11-noble AS final
 WORKDIR /app
 

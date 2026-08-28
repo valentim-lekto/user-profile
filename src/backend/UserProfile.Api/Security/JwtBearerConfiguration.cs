@@ -77,22 +77,32 @@ public static class JwtBearerConfiguration
 
     private static bool HasValidRequiredClaims(System.Security.Claims.ClaimsPrincipal? principal)
     {
-        if (!TryGetSingleClaim(principal, JwtRegisteredClaimNames.Sub, out var subject) ||
-            !Guid.TryParse(subject, out var userId) ||
-            userId == Guid.Empty)
+        if (!TryGetSingleClaim(principal, JwtRegisteredClaimNames.Sub, out var subject))
         {
             return false;
         }
 
-        if (!TryGetSingleClaim(principal, JwtRegisteredClaimNames.Jti, out var jwtId) ||
-            !Guid.TryParse(jwtId, out var parsedJwtId) ||
-            parsedJwtId == Guid.Empty)
+        if (!Guid.TryParse(subject, out var userId) || userId == Guid.Empty)
         {
             return false;
         }
 
-        return TryGetPositiveUnixTimestamp(principal, JwtRegisteredClaimNames.Iat, out var issuedAt) &&
-            TryGetPositiveUnixTimestamp(principal, JwtRegisteredClaimNames.Exp, out var expiresAt) &&
+        if (!TryGetSingleClaim(principal, JwtRegisteredClaimNames.Jti, out var jwtId))
+        {
+            return false;
+        }
+
+        if (!Guid.TryParse(jwtId, out var parsedJwtId) || parsedJwtId == Guid.Empty)
+        {
+            return false;
+        }
+
+        if (!TryGetPositiveUnixTimestamp(principal, JwtRegisteredClaimNames.Iat, out var issuedAt))
+        {
+            return false;
+        }
+
+        return TryGetPositiveUnixTimestamp(principal, JwtRegisteredClaimNames.Exp, out var expiresAt) &&
             expiresAt > issuedAt;
     }
 
@@ -102,12 +112,16 @@ public static class JwtBearerConfiguration
         out long value)
     {
         value = 0;
-        return TryGetSingleClaim(principal, claimType, out var claimValue) &&
-            long.TryParse(
-                claimValue,
-                NumberStyles.None,
-                CultureInfo.InvariantCulture,
-                out value) &&
+        if (!TryGetSingleClaim(principal, claimType, out var claimValue))
+        {
+            return false;
+        }
+
+        return long.TryParse(
+            claimValue,
+            NumberStyles.None,
+            CultureInfo.InvariantCulture,
+            out value) &&
             value > 0;
     }
 
@@ -116,6 +130,7 @@ public static class JwtBearerConfiguration
         string claimType,
         out string value)
     {
+        // Stryker disable once String: callers ignore this output on false and success overwrites it.
         value = string.Empty;
         if (principal is null)
         {

@@ -260,9 +260,11 @@ public sealed class AuthenticationTests(ApiFactory factory) : IClassFixture<ApiF
             response.Content.Headers.ContentType?.MediaType);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStreamAsync());
         Assert.Equal(404, body.RootElement.GetProperty("status").GetInt32());
+        Assert.Equal("Not Found", body.RootElement.GetProperty("title").GetString());
         Assert.Equal(
             "The current profile could not be found.",
             body.RootElement.GetProperty("detail").GetString());
+        Assert.Equal("/api/profile", body.RootElement.GetProperty("instance").GetString());
     }
 
     [Fact]
