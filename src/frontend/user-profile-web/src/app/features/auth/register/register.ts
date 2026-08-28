@@ -6,11 +6,8 @@ import { ErrorStateMatcher } from '@angular/material/core';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { Router, RouterLink } from '@angular/router';
-import {
-  ProblemDetails,
-  RegisterRequest,
-  RegistrationService,
-} from '../registration.service';
+import { ProblemDetails } from '../../../core/http/problem-details';
+import { RegisterRequest, RegistrationService } from '../registration.service';
 import { passwordsMatch, trimmedEmail, trimmedLength } from './register.validators';
 
 type RegisterField = keyof RegisterRequest;

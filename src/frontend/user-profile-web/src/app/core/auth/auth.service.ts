@@ -1,7 +1,8 @@
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Injectable, OnDestroy, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
+import { ProblemDetails, toProblemDetails } from '../http/problem-details';
 
 export const AUTH_TOKEN_STORAGE_KEY = 'user-profile.access-token';
 
@@ -16,13 +17,6 @@ interface LoginResponse {
   accessToken: string;
 }
 
-export interface AuthProblemDetails {
-  status: number;
-  title?: string;
-  detail?: string;
-  errors?: Record<string, string[]>;
-}
-
 @Injectable({ providedIn: 'root' })
 export class AuthService implements OnDestroy {
   private readonly http = inject(HttpClient);
@@ -31,7 +25,7 @@ export class AuthService implements OnDestroy {
   private expirationTimer: ReturnType<typeof setTimeout> | undefined;
 
   readonly loading = signal(false);
-  readonly error = signal<AuthProblemDetails | null>(null);
+  readonly error = signal<ProblemDetails | null>(null);
 
   constructor() {
     this.getValidAccessToken();
@@ -159,43 +153,6 @@ function readUnexpiredJwtExpiration(value: unknown): number | null {
   } catch {
     return null;
   }
-}
-
-function toProblemDetails(error: unknown): AuthProblemDetails {
-  if (!(error instanceof HttpErrorResponse)) {
-    return { status: 0 };
-  }
-
-  if (!isRecord(error.error)) {
-    return { status: error.status };
-  }
-
-  return {
-    status: typeof error.error['status'] === 'number' ? error.error['status'] : error.status,
-    title: readString(error.error['title']),
-    detail: readString(error.error['detail']),
-    errors: readValidationErrors(error.error['errors']),
-  };
-}
-
-function readString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
-}
-
-function readValidationErrors(value: unknown): Record<string, string[]> | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  const errors = Object.entries(value).flatMap(([field, messages]) => {
-    if (!Array.isArray(messages) || !messages.every((message) => typeof message === 'string')) {
-      return [];
-    }
-
-    return [[field, messages] as const];
-  });
-
-  return errors.length > 0 ? Object.fromEntries(errors) : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

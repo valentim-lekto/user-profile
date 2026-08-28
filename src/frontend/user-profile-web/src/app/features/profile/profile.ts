@@ -13,12 +13,12 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
+import { ProblemDetails } from '../../core/http/problem-details';
 import { trimmedEmail, trimmedLength } from '../auth/register/register.validators';
 import {
   ChangePasswordRequest,
   MessageResponse,
   Profile as ProfileResponse,
-  ProfileProblemDetails,
   ProfileService,
   UpdateProfileRequest,
 } from './profile.service';
@@ -264,7 +264,7 @@ export class Profile implements OnInit {
     );
   }
 
-  private applyProfileProblem(problem: ProfileProblemDetails | null): void {
+  private applyProfileProblem(problem: ProblemDetails | null): void {
     if (problem?.status === 400) {
       const fieldErrors = mapFieldErrors(problem.errors, PROFILE_API_FIELDS);
       this.profileApiFieldErrors.set(fieldErrors);
@@ -298,7 +298,7 @@ export class Profile implements OnInit {
     this.profileError.set('Não foi possível atualizar seus dados. Tente novamente.');
   }
 
-  private applyPasswordProblem(problem: ProfileProblemDetails | null): void {
+  private applyPasswordProblem(problem: ProblemDetails | null): void {
     if (problem?.status === 400) {
       const fieldErrors = mapFieldErrors(problem.errors, PASSWORD_API_FIELDS);
       this.passwordApiFieldErrors.set(fieldErrors);
