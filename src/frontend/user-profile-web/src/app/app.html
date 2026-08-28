@@ -1,8 +1,19 @@
 <a class="skip-link" href="#main-content">Ir para o conteúdo</a>
 
-<header>
+<header class="app-header">
   <mat-toolbar class="app-toolbar" aria-label="Cabeçalho da aplicação">
-    <span>{{ appName }}</span>
+    <div class="toolbar-content">
+      <span class="brand-mark" aria-hidden="true">P</span>
+      <span class="brand-copy">
+        <span class="brand-title">{{ appName }}</span>
+        <span class="brand-tagline">Sua conta, simples e segura</span>
+      </span>
+      <span class="toolbar-accent" aria-hidden="true">
+        <span></span>
+        <span></span>
+        <span></span>
+      </span>
+    </div>
   </mat-toolbar>
 </header>
 

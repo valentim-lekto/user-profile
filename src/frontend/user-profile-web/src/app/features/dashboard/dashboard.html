@@ -1,32 +1,52 @@
 <section class="dashboard-page" aria-labelledby="dashboard-title">
-  <mat-card appearance="outlined">
-    <mat-card-header>
-      <h1 mat-card-title id="dashboard-title">Início</h1>
-    </mat-card-header>
+  <header class="dashboard-heading">
+    <div>
+      <p class="eyebrow">Visão geral</p>
+      <h1 id="dashboard-title">Início</h1>
+    </div>
+    <span class="account-status"><span aria-hidden="true"></span> Conta ativa</span>
+  </header>
 
-    <mat-card-content>
-      @if (profiles.loading()) {
-        <p class="loading-message" role="status" aria-live="polite">Carregando seu perfil…</p>
-      } @else if (profiles.profile(); as profile) {
-        <h2 class="welcome-title">Boas-vindas, {{ profile.name }}!</h2>
-        <p>Consulte ou atualize seus dados no perfil.</p>
-      } @else if (profiles.errorStatus() !== null) {
-        <div class="error-message" role="alert" aria-live="assertive">
-          <p>
-            {{
-              profiles.errorStatus() === 503
-                ? 'O serviço está indisponível no momento. Tente novamente em breve.'
-                : 'Não foi possível carregar seu perfil. Tente novamente.'
-            }}
-          </p>
-          <button mat-button type="button" (click)="reload()">Tentar novamente</button>
+  @if (profiles.loading()) {
+    <div class="dashboard-state">
+      <p class="loading-message" role="status" aria-live="polite">
+        Carregando seu perfil…
+      </p>
+    </div>
+  } @else if (profiles.profile(); as profile) {
+    <mat-card class="welcome-card" appearance="outlined">
+      <mat-card-content class="welcome-content">
+        <div class="welcome-copy">
+          <p class="welcome-kicker">Olá, que bom ter você aqui</p>
+          <h2 class="welcome-title">Boas-vindas, {{ profile.name }}!</h2>
+          <p class="welcome-description">Consulte ou atualize seus dados no perfil.</p>
+
+          <div class="dashboard-actions">
+            <a mat-flat-button routerLink="/profile">Ir para o perfil</a>
+            <button class="logout-action" mat-button type="button" (click)="logout()">Sair</button>
+          </div>
         </div>
-      }
-    </mat-card-content>
 
-    <mat-card-actions align="end">
-      <a mat-button routerLink="/profile">Ir para o perfil</a>
-      <button mat-flat-button type="button" (click)="logout()">Sair</button>
-    </mat-card-actions>
-  </mat-card>
+        <aside class="profile-preview" aria-label="Resumo do perfil atual">
+          <span class="profile-preview-label">Seu perfil</span>
+          <span class="profile-avatar" aria-hidden="true">
+            {{ profile.name.charAt(0).toUpperCase() }}
+          </span>
+          <strong>{{ profile.name }}</strong>
+          <span class="profile-email">{{ profile.email }}</span>
+        </aside>
+      </mat-card-content>
+    </mat-card>
+  } @else if (profiles.errorStatus() !== null) {
+    <div class="dashboard-state error-message" role="alert" aria-live="assertive">
+      <p>
+        {{
+          profiles.errorStatus() === 503
+            ? 'O serviço está indisponível no momento. Tente novamente em breve.'
+            : 'Não foi possível carregar seu perfil. Tente novamente.'
+        }}
+      </p>
+      <button mat-button type="button" (click)="reload()">Tentar novamente</button>
+    </div>
+  }
 </section>

@@ -142,6 +142,9 @@ describe('Register', () => {
     const headings = harness.routeNativeElement?.querySelectorAll('h1') ?? [];
     expect(headings).toHaveLength(1);
     expect(headings[0]?.textContent).toContain('Criar conta');
+    expect(
+      harness.routeNativeElement?.querySelector('.auth-intro-title')?.textContent,
+    ).toContain('Uma conta feita para acompanhar você');
     expect(document.activeElement?.getAttribute('formControlName')).toBe('name');
 
     const confirmation = harness.routeNativeElement?.querySelector<HTMLInputElement>(

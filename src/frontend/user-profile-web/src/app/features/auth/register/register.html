@@ -1,13 +1,38 @@
-<section class="register-page" aria-labelledby="register-title">
-  <mat-card appearance="outlined">
+<section class="auth-page register-page" aria-labelledby="register-title">
+  <aside class="auth-intro" aria-label="Sobre a criação da conta">
+    <div class="auth-intro-content">
+      <p class="eyebrow">Comece por aqui</p>
+      <p class="auth-intro-title">Uma conta feita para acompanhar você.</p>
+      <p class="auth-intro-copy">
+        Informe seus dados, crie uma senha e deixe o restante por nossa conta.
+      </p>
+      <ul class="auth-benefits">
+        <li>
+          <span class="auth-benefit-marker" aria-hidden="true">✓</span>
+          <span>Cadastro simples e direto</span>
+        </li>
+        <li>
+          <span class="auth-benefit-marker" aria-hidden="true">✓</span>
+          <span>Validações claras em cada etapa</span>
+        </li>
+        <li>
+          <span class="auth-benefit-marker" aria-hidden="true">✓</span>
+          <span>Senha armazenada de forma protegida</span>
+        </li>
+      </ul>
+    </div>
+  </aside>
+
+  <mat-card class="auth-card" appearance="outlined">
     <mat-card-header>
+      <p class="form-kicker">Nova conta</p>
       <h1 mat-card-title id="register-title">Criar conta</h1>
       <mat-card-subtitle>Preencha seus dados para começar.</mat-card-subtitle>
     </mat-card-header>
 
     <mat-card-content>
       <form
-        class="register-form"
+        class="auth-form register-form"
         [formGroup]="form"
         (ngSubmit)="submit()"
         [attr.aria-busy]="registration.loading()"

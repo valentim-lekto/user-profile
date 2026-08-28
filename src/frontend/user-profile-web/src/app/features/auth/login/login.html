@@ -1,8 +1,33 @@
-<section class="login-page" aria-labelledby="login-title">
-  <mat-card appearance="outlined">
+<section class="auth-page login-page" aria-labelledby="login-title">
+  <aside class="auth-intro" aria-label="Sobre a área de perfil">
+    <div class="auth-intro-content">
+      <p class="eyebrow">Sua área</p>
+      <p class="auth-intro-title">Seu perfil, sempre do seu jeito.</p>
+      <p class="auth-intro-copy">
+        Consulte e atualize seus dados em uma experiência simples, acolhedora e segura.
+      </p>
+      <ul class="auth-benefits">
+        <li>
+          <span class="auth-benefit-marker" aria-hidden="true">✓</span>
+          <span>Dados pessoais em um só lugar</span>
+        </li>
+        <li>
+          <span class="auth-benefit-marker" aria-hidden="true">✓</span>
+          <span>Sessão curta e protegida</span>
+        </li>
+        <li>
+          <span class="auth-benefit-marker" aria-hidden="true">✓</span>
+          <span>Atualizações com feedback claro</span>
+        </li>
+      </ul>
+    </div>
+  </aside>
+
+  <mat-card class="auth-card" appearance="outlined">
     <mat-card-header>
+      <p class="form-kicker">Acesse sua conta</p>
       <h1 mat-card-title id="login-title">Entrar</h1>
-      <mat-card-subtitle>Entre para acessar seu perfil.</mat-card-subtitle>
+      <mat-card-subtitle>Use seu email e sua senha para continuar.</mat-card-subtitle>
     </mat-card-header>
 
     <mat-card-content>
@@ -19,7 +44,7 @@
       }
 
       <form
-        class="login-form"
+        class="auth-form login-form"
         [formGroup]="form"
         (ngSubmit)="submit()"
         [attr.aria-busy]="auth.loading()"

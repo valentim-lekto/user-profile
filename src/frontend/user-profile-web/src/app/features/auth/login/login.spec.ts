@@ -84,6 +84,9 @@ describe('Login', () => {
     const headings = harness.routeNativeElement?.querySelectorAll('h1') ?? [];
     expect(headings).toHaveLength(1);
     expect(headings[0]?.textContent).toContain('Entrar');
+    expect(
+      harness.routeNativeElement?.querySelector('.auth-intro-title')?.textContent,
+    ).toContain('Seu perfil, sempre do seu jeito');
     expect(document.activeElement?.getAttribute('formControlName')).toBe('email');
   });
 

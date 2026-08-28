@@ -27,6 +27,7 @@ function createAccount(prefix: string): Account {
 
 async function register(page: Page, account: Account): Promise<void> {
   await page.goto('/register');
+  await expectNoHorizontalOverflow(page);
   await page.getByLabel('Nome').fill(account.name);
   await page.getByLabel('Email').fill(account.email);
   await submitWithSecrets(
@@ -46,10 +47,12 @@ async function register(page: Page, account: Account): Promise<void> {
     () => page.getByRole('button', { name: 'Criar conta' }).click(),
   );
   await expectPath(page, '/login');
+  await expectNoHorizontalOverflow(page);
   await expect(page.getByText('Cadastro realizado com sucesso. Faça login para continuar.')).toBeVisible();
 }
 
 async function login(page: Page, account: Account): Promise<void> {
+  await expectNoHorizontalOverflow(page);
   await page.getByLabel('Email').fill(account.email);
   await submitWithSecrets(
     page,
@@ -151,19 +154,134 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
     .toBe(true);
 }
 
+async function expectAuthFormInShortLandscape(
+  page: Page,
+  path: '/login' | '/register',
+  heading: 'Entrar' | 'Criar conta',
+  firstField: 'Email' | 'Nome',
+  lastField: 'Senha' | 'Confirmação de senha',
+  primaryAction: 'Entrar' | 'Criar conta',
+): Promise<void> {
+  await page.setViewportSize({ width: 667, height: 375 });
+  await page.goto(path);
+  await expectNoHorizontalOverflow(page);
+  await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeInViewport({ ratio: 1 });
+  await expect(page.getByLabel(firstField, { exact: true })).toBeInViewport({ ratio: 0.9 });
+
+  const finalInput = page.getByLabel(lastField, { exact: true });
+  const submit = page.getByRole('button', { name: primaryAction, exact: true });
+  await finalInput.scrollIntoViewIfNeeded();
+  await expect(finalInput).toBeVisible();
+  await expect(finalInput).toBeEnabled();
+  await expect(finalInput).toBeInViewport({ ratio: 0.99 });
+  await submit.scrollIntoViewIfNeeded();
+  await expect(submit).toBeVisible();
+  await expect(submit).toBeEnabled();
+  await expect(submit).toBeInViewport({ ratio: 0.99 });
+}
+
+async function expectStackedActionsFollowFocusOrder(
+  page: Page,
+  lastField: Locator,
+  secondaryAction: Locator,
+  primaryAction: Locator,
+): Promise<void> {
+  await lastField.focus();
+  await page.keyboard.press('Tab');
+  await expect(secondaryAction).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(primaryAction).toBeFocused();
+
+  const [secondaryBox, primaryBox] = await Promise.all([
+    secondaryAction.boundingBox(),
+    primaryAction.boundingBox(),
+  ]);
+
+  expect(secondaryBox).not.toBeNull();
+  expect(primaryBox).not.toBeNull();
+  expect(secondaryBox!.y).toBeLessThan(primaryBox!.y);
+}
+
+async function expectTextVisuallyLimitedToLines(locator: Locator, maximumLines: number): Promise<void> {
+  await expect
+    .poll(() =>
+      locator.evaluate((element, lines) => {
+        const style = getComputedStyle(element);
+        const fontSize = Number.parseFloat(style.fontSize);
+        const parsedLineHeight = Number.parseFloat(style.lineHeight);
+        const minimumLineHeight = Number.isFinite(parsedLineHeight) ? parsedLineHeight : fontSize;
+        const maximumLineHeight = Number.isFinite(parsedLineHeight) ? parsedLineHeight : fontSize * 1.6;
+        const box = element.getBoundingClientRect();
+        const viewportWidth = document.documentElement.clientWidth;
+        let fitsClippingAncestors = true;
+        let ancestor = element.parentElement;
+
+        while (ancestor && fitsClippingAncestors) {
+          const ancestorStyle = getComputedStyle(ancestor);
+
+          if (ancestorStyle.overflowX === 'hidden' || ancestorStyle.overflowX === 'clip') {
+            const ancestorBox = ancestor.getBoundingClientRect();
+            fitsClippingAncestors = box.left >= ancestorBox.left - 1
+              && box.right <= ancestorBox.right + 1;
+          }
+
+          ancestor = ancestor.parentElement;
+        }
+
+        return style.overflow === 'hidden'
+          && style.webkitLineClamp === String(lines)
+          && style.visibility !== 'hidden'
+          && Number.parseFloat(style.opacity) > 0
+          && box.width > 0
+          && element.scrollWidth <= element.clientWidth + 1
+          && box.left >= -1
+          && box.right <= viewportWidth + 1
+          && fitsClippingAncestors
+          && box.height >= minimumLineHeight - 1
+          && box.height <= maximumLineHeight * lines + 1;
+      }, maximumLines),
+    )
+    .toBe(true);
+}
+
 test('E2E-001 registration, profile update, fresh dashboard and logout', async ({ page }) => {
   const account = createAccount('e2e-profile');
   const updatedName = `Responsive ${'N'.repeat(189)}`;
   const updatedEmail = `updated-${randomUUID()}@example.test`;
 
-  await page.setViewportSize({ width: 360, height: 800 });
+  await expectAuthFormInShortLandscape(
+    page,
+    '/register',
+    'Criar conta',
+    'Nome',
+    'Confirmação de senha',
+    'Criar conta',
+  );
+  await expectAuthFormInShortLandscape(page, '/login', 'Entrar', 'Email', 'Senha', 'Entrar');
+
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto('/register');
+  await expectStackedActionsFollowFocusOrder(
+    page,
+    page.getByLabel('Confirmação de senha', { exact: true }),
+    page.getByRole('link', { name: 'Voltar para o login' }),
+    page.getByRole('button', { name: 'Criar conta' }),
+  );
   await register(page, account);
+  await expectStackedActionsFollowFocusOrder(
+    page,
+    page.getByLabel('Senha', { exact: true }),
+    page.getByRole('link', { name: 'Criar conta' }),
+    page.getByRole('button', { name: 'Entrar' }),
+  );
   await login(page, account);
   await expectNoHorizontalOverflow(page);
 
   await page.getByRole('link', { name: 'Ir para o perfil' }).click();
   await expectPath(page, '/profile');
   await expectNoHorizontalOverflow(page);
+  await expect(page.getByLabel('Nome')).toBeVisible();
+  await expect(page.getByText('Identificador da conta')).toHaveCount(0);
   await page.getByLabel('Nome').fill(updatedName);
   await page.getByLabel('Email').fill(updatedEmail);
   await page.getByRole('button', { name: 'Salvar dados' }).click();
@@ -171,7 +289,16 @@ test('E2E-001 registration, profile update, fresh dashboard and logout', async (
 
   await page.getByRole('link', { name: 'Voltar ao dashboard' }).click();
   await expectPath(page, '/dashboard');
-  await expect(page.getByRole('heading', { name: `Boas-vindas, ${updatedName}!` })).toBeVisible();
+  const welcome = page.getByRole('heading', { name: `Boas-vindas, ${updatedName}!` });
+  const profilePreviewName = page.locator('.profile-preview strong');
+  await expect(welcome).toBeVisible();
+  await expect(profilePreviewName).toBeVisible();
+  await expect(profilePreviewName).toHaveText(updatedName);
+  await expectTextVisuallyLimitedToLines(welcome, 3);
+  await expectTextVisuallyLimitedToLines(profilePreviewName, 2);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(page.getByRole('link', { name: 'Ir para o perfil' })).toBeInViewport({ ratio: 1 });
+  await expect(page.getByRole('button', { name: 'Sair' })).toBeInViewport({ ratio: 1 });
   await expectNoHorizontalOverflow(page);
 
   await page.getByRole('link', { name: 'Ir para o perfil' }).click();

@@ -1,25 +1,141 @@
+:host {
+  display: block;
+  min-height: 100svh;
+}
+
 .skip-link {
-  background: var(--mat-sys-primary);
-  color: var(--mat-sys-on-primary);
+  background: var(--brand-yellow);
+  border-radius: 999px;
+  color: #321e00;
+  font-weight: 750;
   left: 1rem;
   padding: 0.75rem 1rem;
   position: fixed;
   top: -5rem;
-  z-index: 10;
+  z-index: 100;
 
   &:focus {
     top: 1rem;
   }
 }
 
+.app-header {
+  background: rgb(255 255 255 / 88%);
+  border-bottom: 1px solid rgb(132 36 174 / 9%);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
 .app-toolbar {
-  box-shadow: 0 1px 4px rgb(0 0 0 / 18%);
-  font-weight: 600;
-  overflow-wrap: anywhere;
+  background: transparent;
+  height: 4.75rem;
+  padding: 0 1.25rem;
+}
+
+.toolbar-content {
+  align-items: center;
+  display: flex;
+  gap: 0.8rem;
+  margin: 0 auto;
+  max-width: 74rem;
+  width: 100%;
+}
+
+.brand-mark {
+  align-items: center;
+  background: linear-gradient(145deg, #982fc0, var(--brand-purple-dark));
+  border-radius: 0.85rem;
+  box-shadow: 0 0.55rem 1.25rem rgb(132 36 174 / 24%);
+  color: #ffffff;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 1.35rem;
+  font-weight: 800;
+  height: 2.75rem;
+  justify-content: center;
+  position: relative;
+  width: 2.75rem;
+}
+
+.brand-mark::after {
+  background: var(--brand-yellow);
+  border-radius: 999px;
+  bottom: 0.35rem;
+  content: "";
+  height: 0.18rem;
+  position: absolute;
+  width: 1.15rem;
+}
+
+.brand-copy {
+  display: grid;
+  line-height: 1.15;
+}
+
+.brand-title {
+  color: var(--brand-ink);
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+}
+
+.brand-tagline {
+  color: var(--brand-muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  margin-top: 0.2rem;
+}
+
+.toolbar-accent {
+  display: flex;
+  gap: 0.35rem;
+  margin-left: auto;
+}
+
+.toolbar-accent span {
+  border-radius: 50%;
+  height: 0.55rem;
+  width: 0.55rem;
+
+  &:nth-child(1) {
+    background: var(--brand-purple);
+  }
+
+  &:nth-child(2) {
+    background: var(--brand-coral);
+  }
+
+  &:nth-child(3) {
+    background: var(--brand-yellow);
+  }
 }
 
 .app-content {
   margin: 0 auto;
-  max-width: 64rem;
-  padding: clamp(1.5rem, 4vw, 4rem) 1rem;
+  max-width: 76.5rem;
+  min-height: calc(100svh - 4.75rem);
+  padding: clamp(1.5rem, 4vw, 3.5rem) 1.25rem 4rem;
+}
+
+@media (max-width: 30rem) {
+  .app-toolbar {
+    height: 4.25rem;
+    padding-inline: 1rem;
+  }
+
+  .brand-mark {
+    border-radius: 0.7rem;
+    height: 2.35rem;
+    width: 2.35rem;
+  }
+
+  .brand-tagline {
+    display: none;
+  }
+
+  .app-content {
+    min-height: calc(100svh - 4.25rem);
+    padding: 1rem 0.85rem 2.5rem;
+  }
 }

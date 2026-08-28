@@ -69,6 +69,9 @@ describe('Dashboard', () => {
     expect(harness.routeNativeElement?.textContent).toContain(
       'Consulte ou atualize seus dados no perfil.',
     );
+    expect(harness.routeNativeElement?.querySelector('.profile-preview')?.textContent).toContain(
+      'ana@example.test',
+    );
     const profileLink = harness.routeNativeElement?.querySelector<HTMLAnchorElement>(
       'a[href="/profile"]',
     );
@@ -77,6 +80,21 @@ describe('Dashboard', () => {
     profileLink?.click();
     await harness.fixture.whenStable();
     expect(router.url).toBe('/profile');
+  });
+
+  it('keeps the dashboard focused on required actions without redundant explanatory cards', async () => {
+    http.expectOne('/api/profile').flush({
+      id: '00000000-0000-4000-8000-000000000001',
+      name: 'Ana Example',
+      email: 'ana@example.test',
+    });
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+
+    const content = harness.routeNativeElement?.textContent ?? '';
+    expect(content).not.toContain('Mantenha seu nome e email sempre atualizados.');
+    expect(content).not.toContain('Altere sua senha com confirmação e feedback claros.');
+    expect(content).not.toContain('Encerre seu acesso com segurança quando terminar.');
   });
 
   it('wraps a defensively long name without losing the welcome content', async () => {

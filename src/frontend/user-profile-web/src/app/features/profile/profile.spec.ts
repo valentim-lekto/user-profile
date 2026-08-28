@@ -52,7 +52,7 @@ describe('Profile', () => {
     sessionStorage.clear();
   });
 
-  it('loads the current profile into the form and displays its immutable id', async () => {
+  it('loads the current profile into the form without rendering its transport id', async () => {
     harness.detectChanges();
     expect(harness.routeNativeElement?.querySelector('[role="status"]')?.textContent).toContain(
       'Carregando seu perfil',
@@ -64,11 +64,13 @@ describe('Profile', () => {
       name: CURRENT_PROFILE.name,
       email: CURRENT_PROFILE.email,
     });
-    expect(harness.routeNativeElement?.textContent).toContain(CURRENT_PROFILE.id);
+    expect(harness.routeNativeElement?.textContent).not.toContain(CURRENT_PROFILE.id);
     expect(harness.routeNativeElement?.textContent).toContain('Dados pessoais');
     expect(harness.routeNativeElement?.textContent).toContain('Alterar senha');
     expect(harness.routeNativeElement?.querySelectorAll('h1')).toHaveLength(1);
     expect(harness.routeNativeElement?.querySelectorAll('h2')).toHaveLength(2);
+    expect(harness.routeNativeElement?.querySelectorAll('.profile-card')).toHaveLength(2);
+    expect(harness.routeNativeElement?.textContent).not.toContain('Identificador da conta');
   });
 
   it('shows a load error and retries the real profile request', async () => {

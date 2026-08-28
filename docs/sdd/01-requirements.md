@@ -54,8 +54,8 @@ A solução deve fornecer:
 | `FR-AUTH-01` | Dashboard e operações de perfil devem estar disponíveis somente para usuário autenticado. |
 | `FR-AUTH-02` | Endpoints de perfil devem identificar o usuário exclusivamente pelo claim `sub` do JWT, sem receber `userId` do frontend. |
 | `FR-DASH-01` | O dashboard deve buscar o perfil atual na API e exibir uma mensagem de boas-vindas com o nome do usuário. |
-| `FR-DASH-02` | O dashboard deve oferecer navegação para edição dos dados cadastrais. |
-| `FR-PROF-01` | O usuário deve poder consultar o próprio identificador imutável, nome e email e acessar a operação de alteração de senha; a senha atual não é um dado consultável. |
+| `FR-DASH-02` | O dashboard deve oferecer navegação direta para edição dos dados cadastrais, sem repetir as operações disponíveis em cartões meramente descritivos. |
+| `FR-PROF-01` | O usuário deve poder consultar o próprio nome e email e acessar a operação de alteração de senha; a senha atual e o identificador técnico da conta não são dados exibidos na interface. |
 | `FR-PROF-02` | O usuário deve poder atualizar nome e email, aplicando as validações equivalentes às do cadastro. |
 | `FR-PROF-03` | A atualização de nome/email deve informar sucesso ou erro. |
 | `FR-PASS-01` | A alteração de senha deve solicitar senha atual, nova senha e confirmação da nova senha. |
@@ -112,14 +112,14 @@ IDs publicados não devem ser renumerados nem reutilizados para outro comportame
 |---|---|
 | `AC-DASH-01` | Após autenticação, o dashboard consulta o perfil atual na API e exibe boas-vindas contendo o nome retornado. |
 | `AC-DASH-02` | Sem JWT válido, dashboard e perfil não ficam acessíveis e a API rejeita chamadas a recursos protegidos. Se o JWT expirar enquanto uma dessas rotas estiver ativa, o frontend remove a sessão e conduz ao login ao alcançar `exp`, no primeiro ciclo de execução disponível após eventual suspensão da aba ou do sistema; uma chamada protegida iniciada sem token válido também não é enviada anonimamente e conduz ao login. |
-| `AC-DASH-03` | O dashboard oferece navegação para edição dos dados cadastrais. |
+| `AC-DASH-03` | O dashboard oferece navegação direta para edição dos dados cadastrais e não apresenta cartões informativos sem ação para dados pessoais, senha ou sessão. |
 | `AC-DASH-04` | A consulta do perfil apresenta estado de carregamento e, em caso de falha, estado de erro. |
 
 ### Perfil e senha
 
 | ID | Critério |
 |---|---|
-| `AC-PROF-01` | O usuário autenticado consulta o próprio `id`, nome e email, sem enviar `userId`, e acessa uma operação separada para alterar a senha. |
+| `AC-PROF-01` | O usuário autenticado consulta o próprio nome e email na tela, sem enviar `userId`, e acessa uma operação separada para alterar a senha. O `id` continua no `ProfileResponse` como dado técnico do contrato, mas não é renderizado pelo frontend. |
 | `AC-PROF-02` | Nome e email são alterados em operação distinta da alteração de senha. |
 | `AC-PROF-03` | Nome/email inválidos são rejeitados segundo as mesmas regras do cadastro, sem alterar parcialmente nome, email normalizado ou timestamps. |
 | `AC-PROF-04` | Alterar o email para o email normalizado de outra conta é rejeitado sem alterar qualquer dado; manter o próprio email não produz conflito. |
@@ -134,6 +134,7 @@ IDs publicados não devem ser renumerados nem reutilizados para outro comportame
 | ID | Critério |
 |---|---|
 | `UI-STATE-01` | Cadastro, login, consulta e edições apresentam estado de carregamento e resultado de sucesso ou erro conforme aplicável. Enquanto uma edição estiver em andamento, o formulário correspondente impede nova submissão e alteração dos campos associados à requisição pendente. |
+| `UI-RESP-01` | Em viewports com largura mínima de 320 px, login, cadastro, dashboard e perfil permanecem operáveis sem overflow horizontal. Quando a viewport é simultaneamente estreita e baixa, o formulário de autenticação aparece na primeira viewport sem ser antecedido pelo conteúdo editorial não essencial. A ordem visual das ações coincide com a ordem de foco; e um nome válido no limite defensivo não empurra as ações `Ir para o perfil` e `Sair` do dashboard para fora da primeira viewport, embora o valor integral permaneça no DOM e na tela de perfil. |
 | `API-ERROR-01` | Respostas HTTP de erro produzidas pela API seguem `ProblemDetails`; falhas de validação seguem `ValidationProblemDetails`. Login com credenciais não reconhecidas usa `401 ProblemDetails` genérico; recursos protegidos usam `401 ProblemDetails` com challenge Bearer. Quando o proxy de mesma origem não alcança a API, ele converte a falha de transporte em `503 ProblemDetails`, sem devolver HTML ao frontend. |
 | `SEC-AUTH-01` | Endpoints de perfil identificam o usuário exclusivamente pelo claim `sub` do JWT e não aceitam `userId` do cliente. |
 | `SEC-SESSION-01` | O JWT de curta duração fica em `sessionStorage` e não há refresh token. |
@@ -174,7 +175,7 @@ M2, para que não sejam apresentados como requisitos originais do desafio.
 | `PREM-REG-01` | Cadastro bem-sucedido redireciona ao login com mensagem de sucesso e não autentica automaticamente. |
 | `PREM-PASS-01` | Alterar senha exige senha atual, nova senha e confirmação; no sucesso, o frontend encerra a sessão. |
 | `PREM-PROF-01` | Atualização de nome/email e alteração de senha serão operações separadas. |
-| `PREM-AUTH-01` | O usuário autenticado será identificado pelo ID no claim `sub`; endpoints de perfil não receberão `userId`. `ProfileResponse` pode devolver esse ID imutável junto de nome e email. |
+| `PREM-AUTH-01` | O usuário autenticado será identificado pelo ID no claim `sub`; endpoints de perfil não receberão `userId`. `ProfileResponse` devolve esse ID imutável junto de nome e email como parte do contrato técnico, sem exigir sua exibição no frontend. |
 | `PREM-AUTH-02` | O dashboard buscará o perfil atual na API. |
 | `PREM-AUTH-03` | Será usado JWT de curta duração em `sessionStorage`, sem refresh token. |
 | `PREM-ERR-01` | Erros HTTP usarão `ProblemDetails`/`ValidationProblemDetails`. |

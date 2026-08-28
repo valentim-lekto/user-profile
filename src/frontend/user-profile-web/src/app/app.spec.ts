@@ -37,6 +37,10 @@ describe('App', () => {
       '#main-content',
     );
     expect(compiled.querySelector('main')?.getAttribute('tabindex')).toBe('-1');
+    expect(compiled.querySelector('.brand-mark')?.getAttribute('aria-hidden')).toBe('true');
+    expect(compiled.querySelector('.brand-tagline')?.textContent).toContain(
+      'Sua conta, simples e segura',
+    );
     expect(compiled.querySelector('router-outlet')).not.toBeNull();
   });
 

@@ -1,27 +1,33 @@
 <section class="profile-page" aria-labelledby="profile-title">
   <header class="page-heading">
-    <div>
+    <div class="page-heading-copy">
+      <p class="eyebrow">Minha conta</p>
       <h1 id="profile-title">Perfil</h1>
       <p>Consulte e atualize seus dados cadastrais.</p>
     </div>
-    <a mat-button routerLink="/dashboard">Voltar ao dashboard</a>
+    <a class="back-link" mat-button routerLink="/dashboard">Voltar ao dashboard</a>
   </header>
 
   @if (profiles.loading()) {
-    <p class="loading-message page-message" role="status" aria-live="polite">
-      Carregando seu perfil…
-    </p>
-  } @else if (profiles.profile(); as profile) {
-    <p class="profile-id">
-      <span>Identificador da conta</span>
-      <code>{{ profile.id }}</code>
-    </p>
-
+    <div class="page-message loading-panel">
+      <p class="loading-message" role="status" aria-live="polite">
+        Carregando seu perfil…
+      </p>
+    </div>
+  } @else if (profiles.profile()) {
     <div class="profile-sections">
-      <mat-card appearance="outlined" aria-labelledby="personal-data-title">
+      <mat-card
+        class="profile-card profile-card-personal"
+        appearance="outlined"
+        aria-labelledby="personal-data-title"
+      >
         <mat-card-header>
-          <h2 mat-card-title id="personal-data-title">Dados pessoais</h2>
-          <mat-card-subtitle>Altere seu nome e email.</mat-card-subtitle>
+          <span class="section-number" aria-hidden="true">01</span>
+          <div class="card-heading-copy">
+            <p class="card-kicker">Informações da conta</p>
+            <h2 mat-card-title id="personal-data-title">Dados pessoais</h2>
+            <mat-card-subtitle>Altere seu nome e email.</mat-card-subtitle>
+          </div>
         </mat-card-header>
 
         <form
@@ -88,10 +94,18 @@
         </form>
       </mat-card>
 
-      <mat-card appearance="outlined" aria-labelledby="password-title">
+      <mat-card
+        class="profile-card profile-card-password"
+        appearance="outlined"
+        aria-labelledby="password-title"
+      >
         <mat-card-header>
-          <h2 mat-card-title id="password-title">Alterar senha</h2>
-          <mat-card-subtitle>Você precisará entrar novamente após a alteração.</mat-card-subtitle>
+          <span class="section-number" aria-hidden="true">02</span>
+          <div class="card-heading-copy">
+            <p class="card-kicker">Acesso seguro</p>
+            <h2 mat-card-title id="password-title">Alterar senha</h2>
+            <mat-card-subtitle>Você precisará entrar novamente após a alteração.</mat-card-subtitle>
+          </div>
         </mat-card-header>
 
         <form
