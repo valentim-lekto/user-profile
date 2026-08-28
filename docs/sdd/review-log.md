@@ -1297,3 +1297,46 @@ E2E/smoke não foram repetidos porque não houve mudança em API, rota, template
 Re-revisões somente leitura encontraram lacunas nos oráculos, corrigidas antes do fechamento: landscape conferia apenas o topo do formulário e não a visibilidade/habilitação dos controles finais; o resumo truncado poderia teoricamente passar invisível ou recortado lateralmente por um ancestral. O E2E final alcança último campo/submit visíveis e habilitados, exige geometria/visibilidade e contenção horizontal do texto, percorre as quatro telas em 320 px e mantém `Ir para o perfil`/`Sair` na primeira viewport.
 
 Nenhum arquivo backend, OpenAPI, banco, payload, rota ou configuração Compose mudou. Contas de inspeção permaneceram sintéticas no volume local, sessões foram encerradas e credenciais descartadas; nenhum segredo, commit ou push foi produzido.
+
+## 2026-08-28 — Revisão focada em banco de dados e correções
+
+- **Escopo:** constraints, concorrência de escrita, migrations/health, timeouts, índices e fidelidade dos testes SQLite; revisão inicialmente somente leitura, seguida de implementação autorizada.
+- **Apoio:** revisores independentes somente leitura examinaram concorrência/constraints, migrations/health e timeout/Compose. Os achados foram consolidados antes da edição.
+- **Resultado:** 0 P0/P1, 2 P2 e 2 P3 confirmados; todos corrigidos sem funcionalidade, migration, tabela, coluna ou endpoint novo.
+
+### `REV-DB-001` — P2 — troca concorrente de senha permitia dois vencedores
+
+- **Evidência:** duas requests sincronizadas, ambas com a mesma senha atual, retornavam `200`; o último `SaveChanges` sobrescrevia o primeiro hash.
+- **Correção:** compare-and-swap direto via `ExecuteUpdateAsync`, condicionado a `Id` e ao `PasswordHash` observado. Zero linha afetada reutiliza o `400 ValidationProblemDetails` de senha atual incorreta.
+- **Prova:** `BE-PASS-005` falhou com `[200, 200]` antes da correção e passou com exatamente `[200, 400]`; somente a senha vencedora autentica, e dados/timestamps não relacionados permanecem íntegros.
+
+### `REV-DB-002` — P2 — timeout SQLite sem margem antes do proxy
+
+- **Evidência:** a connection string do Compose substituía integralmente o appsettings e omitia `Default Timeout=5`, restaurando o padrão de 30 segundos, igual ao timeout do Nginx.
+- **Correção:** o Compose fixa `Default Timeout=5`; o health usa 1 segundo e o proxy permanece em 30 segundos. O smoke valida o valor renderizado.
+- **Prova:** `docker compose config` e `validate-m1-compose.sh` aprovaram a margem e os fluxos reais sem `.env`.
+
+### `REV-DB-003` — P3 — health aceitava histórico de migrations diferente
+
+- **Evidência:** o check comparava apenas `COUNT(*)`; IDs inesperados na mesma quantidade eram declarados saudáveis.
+- **Correção:** leitura parametrizada pelo provider dos `MigrationId`, comparação ordinal por igualdade exata de conjuntos e timeout próprio de 1 segundo.
+- **Prova:** `BE-HEALTH-001` falhou como `Healthy` antes do código e passou como `Unhealthy` depois.
+
+### `REV-DB-004` — P3 — contrato do conflito concorrente não era assertado
+
+- **Evidência:** a corrida de cadastro verificava somente `[201, 409]` e uma linha persistida; um `409` sem ProblemDetails poderia passar.
+- **Correção:** o response conflitante real da corrida usa o mesmo assert completo das demais duplicidades.
+- **Prova:** `BE-REG-004` verifica media type, `status`, `title`, `detail` e `instance`.
+
+### Gates finais
+
+| Gate | Resultado |
+|---|---|
+| Regressões focadas | Vermelho esperado 1/3 antes do código; verde 3/3 depois. |
+| Backend Docker | Build Release com 0 warnings/erros; 113/113 integrações, 0 falha/skip. |
+| OpenAPI e Compose | Seis operações/53 referências; config completa e `Default Timeout=5` aprovados. |
+| Smoke Docker | Health, migrations, origem única, fluxos, autorização, persistência, erros e cleanup isolado aprovados. |
+| Mutation testing | 193 killed, 5 survived equivalentes, 108 ignored, 3 `CompileError` classificados, 0 timeout/`NoCoverage`/erro; score 97,47%, ratchet 97/97/97 e exit 0. |
+| Aplicação publicada | `api`/`web` healthy; `/`, `/health` e `/swagger/index.html` em `200` no localhost:8080, com volume preservado. |
+
+A lente KISS manteve a solução proporcional: nenhum concurrency token global, repository, transação manual, migration ou abstração adicional. A integridade existente permaneceu adequada para o escopo — PK Guid, colunas obrigatórias/limites e índice único normalizado — e a limitação de concorrência ampla do SQLite continua documentada para a instância única de demonstração. Nenhum recurso de outro projeto foi alterado; nenhum segredo, banco, relatório, commit ou push foi produzido.

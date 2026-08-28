@@ -128,6 +128,7 @@ IDs publicados não devem ser renumerados nem reutilizados para outro comportame
 | `AC-PASS-02` | Senha atual incorreta não altera o hash nem qualquer outro dado do usuário e produz mensagem de erro. |
 | `AC-PASS-03` | Nova senha ausente ou menor que 6 caracteres, ou confirmação divergente, não altera o hash, os timestamps nem qualquer outro dado do usuário e produz erro de validação. |
 | `AC-PASS-04` | Após alteração válida, o frontend informa o resultado e encerra a sessão que iniciou a requisição removendo seu JWT de `sessionStorage`; uma resposta tardia não remove nem redireciona uma sessão autenticada posteriormente. |
+| `AC-PASS-05` | Duas alterações concorrentes que verificaram o mesmo hash de senha anterior não podem ambas confirmar sucesso: no máximo uma persiste a nova senha; a perdedora retorna `400 ValidationProblemDetails` em `currentPassword`, e somente a senha vencedora autentica. |
 
 ### Operação, segurança, documentação e qualidade
 
@@ -142,7 +143,7 @@ IDs publicados não devem ser renumerados nem reutilizados para outro comportame
 | `SEC-LOG-01` | Logs não expõem senhas, segredos ou tokens. |
 | `TECH-BACKEND-01` | A solução de backend compila usando ASP.NET Core/C#, EF Core SQLite e autenticação JWT nas versões fixadas pelo design. |
 | `TECH-FRONTEND-01` | O frontend compila usando Angular standalone/strict, Reactive Forms e Angular Material nas versões fixadas pelo design. |
-| `OPS-DOCKER-01` | Em checkout limpo, `docker compose up` disponibiliza frontend, backend e persistência SQLite em volume, sem exigir criação manual de `.env`. |
+| `OPS-DOCKER-01` | Em checkout limpo, `docker compose up` disponibiliza frontend, backend e persistência SQLite em volume, sem exigir criação manual de `.env`. O health exige o conjunto exato de migrations esperado, e o timeout de espera por lock do SQLite permanece menor que o timeout do proxy, deixando margem para a aplicação concluir ou falhar e devolver sua resposta. |
 | `OPS-DOCKER-02` | A aplicação pode ser acessada e validada sem instalar SDKs, runtimes ou banco de dados fora do Docker e Docker Compose. |
 | `OPS-DOCKER-03` | Os dados SQLite sobrevivem à recriação dos contêineres da aplicação enquanto o volume Docker for preservado. |
 | `DOC-RUN-01` | O README permite iniciar e validar a solução e informa comandos, URLs, portas e dados de teste ou o procedimento de cadastro para criá-los. |

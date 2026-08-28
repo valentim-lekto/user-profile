@@ -1,6 +1,6 @@
 # 02 — Design técnico
 
-**Status:** aprovado e implementado em M1–M6; extensões locais de mutation testing, refinamento visual e correção responsiva pós-M6 implementadas · **Data:** 2026-08-28 · **Fontes normativas:** [`00-challenge.md`](00-challenge.md), [`01-requirements.md`](01-requirements.md) e [`03-api-contract.yaml`](03-api-contract.yaml)
+**Status:** aprovado e implementado em M1–M6; mutation testing, refinamento visual/responsivo e robustez SQLite pós-M6 validados localmente · **Data:** 2026-08-28 · **Fontes normativas:** [`00-challenge.md`](00-challenge.md), [`01-requirements.md`](01-requirements.md) e [`03-api-contract.yaml`](03-api-contract.yaml)
 
 ## Objetivo
 
@@ -164,7 +164,7 @@ M2 e M4 sem ampliar o contrato HTTP.
 - `Email` armazena o valor aparado para exibição; `NormalizedEmail` existe apenas para busca e unicidade.
 - Como todo email aceito é ASCII, `Email.Trim().ToUpperInvariant()` produz uma chave canônica sem as lacunas de case folding Unicode que permitiriam duas contas equivalentes, como `ß` e `ẞ`.
 - A atualização cadastral valida todo o request antes de mutar a entidade e persiste `Name`, `Email`, `NormalizedEmail` e `UpdatedAtUtc` em um único `SaveChangesAsync`; validação ou conflito não deixam alterações parciais.
-- A troca de senha só atribui o novo hash e `UpdatedAtUtc` depois de validar integralmente senha atual, nova senha e confirmação; qualquer falha preserva a entidade sem persistência parcial.
+- A troca de senha lê o usuário sem tracking, valida integralmente senha atual, nova senha e confirmação e persiste `PasswordHash`/`UpdatedAtUtc` em um único `UPDATE` condicionado ao `Id` do `sub` e ao hash observado. Assim, duas requisições que validaram o mesmo hash anterior têm no máximo uma vencedora; zero linhas afetadas usa o mesmo `400 ValidationProblemDetails` de senha atual incorreta, sem persistência parcial.
 - O índice único `UX_Users_NormalizedEmail` é a garantia autoritativa contra corrida.
 - Uma consulta prévia pode melhorar a mensagem, mas violação do índice também deve ser convertida em `409 Conflict`.
 - Na edição, o próprio email normalizado é permitido; somente outro usuário gera conflito.
@@ -175,17 +175,20 @@ A API aplica `Database.MigrateAsync()` antes de começar a atender requisições
 
 Em uma implantação concorrente ou de produção, migrations seriam uma etapa separada. Esse cenário está fora de escopo.
 
-O health check consulta a tabela de histórico de migrations, não apenas abre uma
-conexão. O comando dessa consulta usa timeout explícito de 1 segundo, independente
-do timeout geral da conexão, para não manter threads ocupadas depois dos limites
-de 2 segundos da probe do Compose. O proxy admite até 30 segundos de leitura para
-acomodar o primeiro hash de senha sob contenção; esse limite é independente do SLO
-de menos de 5 segundos exigido pelo teste de indisponibilidade do health. Falha durante o startup
-mantém o serviço fora do ar; `503` representa uma perda de acesso ao SQLite depois
-de um startup bem-sucedido. O teste dessa transição usa bloqueio exclusivo do
-arquivo SQLite temporário, conserva o timeout padrão de 30 segundos na conexão da
-API e exige resposta em menos de 5 segundos, sem substituir o health check por um
-mock.
+O health check consulta os IDs da tabela de histórico de migrations, não apenas
+abre uma conexão ou compara cardinalidades. Ele só fica saudável quando o conjunto
+aplicado coincide exatamente com o conjunto esperado e existe ao menos uma
+migration. O comando dessa consulta usa timeout explícito de 1 segundo,
+independente do timeout geral da conexão, para não manter threads ocupadas depois
+dos limites de 2 segundos da probe do Compose. O proxy admite até 30 segundos de
+leitura para acomodar o primeiro hash de senha sob contenção; esse limite é
+independente do SLO de menos de 5 segundos exigido pelo teste de indisponibilidade
+do health. Falha durante o startup mantém o serviço fora do ar; `503` representa
+uma perda de acesso ao SQLite depois de um startup bem-sucedido. O teste dessa
+transição usa bloqueio exclusivo do arquivo SQLite temporário, conserva o timeout
+padrão de 30 segundos na conexão da fixture para provar que o comando do health é
+independente e exige resposta em menos de 5 segundos, sem substituir o health check
+por um mock.
 
 ## Contrato HTTP
 
@@ -286,7 +289,7 @@ O token fica somente em `sessionStorage`. O estado de autenticação é um signa
 - Cada execução da suíte E2E recebe projeto Compose, volume e diretório de artefatos próprios; cada jornada recebe contexto e dados próprios. Emails são únicos; senhas sintéticas são geradas e mantidas dentro do contexto do navegador, e o runner Playwright recebe somente chaves não sensíveis. Relatórios JUnit/HTML são gravados sempre que o runner Playwright chega a iniciar; screenshot de inputs mascarados e trace minimizado, sem snapshots, sources ou attachments, são retidos somente em falha. Falhas anteriores ao runner preservam os diagnósticos do Compose disponíveis. O `finally` limpa os inputs em melhor esforço, sem ser tratado como a única defesa de artefatos. Os traps de E2E e smoke registram o nome do projeto, persistem `ps`, imagens/serviços e logs processados por um filtro compartilhado/testado antes do teardown quando há falha, e nunca publicam a cópia bruta. Falha de teardown reprova uma execução antes bem-sucedida, preserva a falha primária quando já existe e deixa saída filtrada; a CI tenta novamente somente projetos sob seu prefixo único e faz upload depois do cleanup.
 - `web` publica `127.0.0.1:8080:8080`, restringindo a demonstração HTTP ao
   loopback IPv4 do host; `api` expõe `8080` apenas para a rede interna.
-- Nginx escuta em `8080`, encaminha `/api/`, `/swagger/` e `/health` para `http://api:8080`, usa timeout explícito de conexão de 2 segundos e de resposta de 30 segundos, converte falha de conexão/timeout do upstream em `503 application/problem+json`, converte corpo acima de 1 MiB em `413 application/problem+json`, devolve `404` para assets com extensão que não existem e usa fallback para `index.html` somente nas rotas da SPA. A janela de resposta acomoda o primeiro hash de senha em runners Docker sob contenção sem criar retry; indisponibilidade de conexão continua falhando rapidamente.
+- Nginx escuta em `8080`, encaminha `/api/`, `/swagger/` e `/health` para `http://api:8080`, usa timeout explícito de conexão de 2 segundos e de resposta de 30 segundos, converte falha de conexão/timeout do upstream em `503 application/problem+json`, converte corpo acima de 1 MiB em `413 application/problem+json`, devolve `404` para assets com extensão que não existem e usa fallback para `index.html` somente nas rotas da SPA. A API do Compose limita a espera por lock do SQLite a 5 segundos; a margem restante reduz o risco de a contenção do banco consumir toda a janela do proxy. A janela de resposta ainda acomoda o primeiro hash de senha em runners Docker sob contenção sem criar retry; indisponibilidade de conexão continua falhando rapidamente.
 - Existe um único health check do Compose no serviço `web`: `wget -q -O /dev/null http://127.0.0.1:8080/health`, usando o BusyBox presente na imagem Alpine. `web` depende de `api` com `condition: service_started`; como a probe atravessa Nginx, API e a consulta SQLite, `docker compose up --wait` só conclui quando a pilha inteira está saudável, sem instalar cliente HTTP na imagem da API.
 - O inventário exato das imagens Compose, incluindo todos os perfis, é: `ruby:3.4.10-slim-bookworm`, `user-profile-api:0.1.0`, `user-profile-backend-tests:0.1.0`, `user-profile-e2e-tests:0.1.0`, `user-profile-frontend-tests:0.1.0`, `user-profile-mutation-tests:0.1.0` e `user-profile-web:0.1.0`. O Dockerfile backend contém, nesta ordem, os stages `build`, `test`, `mutation-test` (derivado de `test`) e `final`; o frontend contém `dependencies`, `test`, `build` e o stage final Nginx; o E2E contém somente o stage Playwright. Todas as linhas `FROM` e esse conjunto renderizado são comparados às versões completas deste documento; `latest`, `lts`, `stable` ou apenas major/minor são proibidos. Todas as linhas `uses:` de terceiros nos workflows usam SHA completo e pertencem ao inventário aprovado; checkout não persiste credenciais Git.
 
@@ -304,7 +307,7 @@ docker compose --profile mutation-tests run --rm --build mutation-tests
 
 A primeira baseline usa `thresholds.break = 0` somente de forma temporária. Depois de classificar survivors, o score final `S` fixa `break = floor(S)`, `low = max(60, break)` e `high = max(80, low)`; `break = 0` não pode permanecer na entrega. Mutantes observáveis ligados a requisitos recebem testes focados; regras de negócio não são distorcidas para elevar score. Survivors não equivalentes fora de requisito podem permanecer visíveis e compor a baseline, enquanto `NoCoverage`, timeout ou erro de execução no alvo crítico exigem explicação ou correção.
 
-A baseline limpa observada foi `S = 97,41%`: 188 mutantes mortos, 5 sobreviventes, 106 ignorados, 2 com erro de compilação gerado pelo mutador e nenhum `NoCoverage`, timeout ou erro de execução. Portanto, a configuração final fixa `break = low = high = 97`. Os cinco survivors foram classificados como equivalentes e permanecem visíveis no JSON/HTML; a única exclusão pontual documenta a atribuição inicial de um parâmetro `out` cujo valor é ignorado no retorno falso e sempre sobrescrito no retorno verdadeiro. Os arquivos de request permanecem na allowlist, embora o nível `standard` não tenha produzido mutante executável neles nesta versão.
+A baseline limpa corrente, recalibrada em 2026-08-28 após a correção DB, foi `S = 97,47%`: 193 mutantes mortos, 5 sobreviventes, 108 ignorados, 3 com erro de compilação gerado pelo mutador e nenhum `NoCoverage`, timeout ou erro de execução. Portanto, a configuração final continua com `break = low = high = 97`. Os cinco survivors equivalentes anteriores permanecem visíveis no JSON/HTML; a única exclusão pontual documenta a atribuição inicial de um parâmetro `out` cujo valor é ignorado no retorno falso e sempre sobrescrito no retorno verdadeiro. Os arquivos de request permanecem na allowlist, embora o nível `standard` não tenha produzido mutante executável neles nesta versão.
 
 `CI-MUT-001` é um workflow próprio, somente `workflow_dispatch` e cron semanal na segunda-feira às `06:00 UTC`, em `ubuntu-24.04`, com timeout de 90 minutos, projeto Compose exclusivo, cleanup obrigatório e upload dos relatórios HTML/JSON por 14 dias quando produzidos. Ele não executa em `push` ou `pull_request` e, portanto, não bloqueia PRs. Sua execução hospedada permanece pendente até publicação e observação real.
 
@@ -316,7 +319,7 @@ Configurações previstas:
 
 | Chave | Sensível | Regra |
 |---|---|---|
-| `ConnectionStrings__Default` | Não | No Compose, aponta para `/data/user-profile.db`. |
+| `ConnectionStrings__Default` | Não | No Compose, aponta para `/data/user-profile.db` e fixa `Default Timeout=5`; o health mantém timeout próprio de 1 segundo. |
 | `Jwt__Issuer` | Não | Valor padrão de demonstração substituível. |
 | `Jwt__Audience` | Não | Valor padrão de demonstração substituível. |
 | `Jwt__LifetimeMinutes` | Não | `15`; mudança exige revisão deste design. |

@@ -151,6 +151,11 @@ docker compose \
   --profile e2e \
   config --quiet
 
+rendered_compose=$(docker compose config)
+printf '%s\n' "$rendered_compose" |
+  grep -Fq 'ConnectionStrings__Default: Data Source=/data/user-profile.db;Default Timeout=5' ||
+  fail 'SQLite lock timeout must be 5 seconds and remain below the proxy timeout'
+
 compose_services=$(docker compose \
   --profile backend-tests \
   --profile mutation-tests \

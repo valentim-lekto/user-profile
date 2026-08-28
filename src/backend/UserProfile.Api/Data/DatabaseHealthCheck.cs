@@ -22,14 +22,23 @@ public sealed class DatabaseHealthCheck(IServiceScopeFactory scopeFactory) : IHe
             await dbContext.Database.OpenConnectionAsync(cancellationToken);
 
             await using var command = dbContext.Database.GetDbConnection().CreateCommand();
-            command.CommandText = "SELECT COUNT(*) FROM \"__EFMigrationsHistory\";";
+            command.CommandText = "SELECT \"MigrationId\" FROM \"__EFMigrationsHistory\";";
             command.CommandTimeout = 1;
 
-            var appliedMigrationCount = Convert.ToInt32(
-                await command.ExecuteScalarAsync(cancellationToken));
-            var expectedMigrationCount = dbContext.Database.GetMigrations().Count();
+            var appliedMigrations = new HashSet<string>(StringComparer.Ordinal);
+            await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+            {
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    appliedMigrations.Add(reader.GetString(0));
+                }
+            }
 
-            return appliedMigrationCount == expectedMigrationCount && expectedMigrationCount > 0
+            var expectedMigrations = dbContext.Database
+                .GetMigrations()
+                .ToHashSet(StringComparer.Ordinal);
+
+            return expectedMigrations.Count > 0 && appliedMigrations.SetEquals(expectedMigrations)
                 ? HealthCheckResult.Healthy()
                 : HealthCheckResult.Unhealthy("Database schema is not current.");
         }

@@ -12,7 +12,7 @@ Somente um milestone pode estar em andamento. O próximo começa após o anterio
 - `AC-LOGIN-01`–`AC-LOGIN-03` — autenticação e sessão.
 - `AC-DASH-01`–`AC-DASH-04` — dashboard protegido.
 - `AC-PROF-01`–`AC-PROF-05` — consulta e edição de perfil.
-- `AC-PASS-01`–`AC-PASS-04` — alteração de senha e encerramento da sessão.
+- `AC-PASS-01`–`AC-PASS-05` — alteração de senha, concorrência e encerramento da sessão.
 - `UI-STATE-01`, `API-ERROR-01` — estados de UI e erros HTTP.
 - `SEC-AUTH-01`, `SEC-SESSION-01`, `SEC-SECRET-01`, `SEC-LOG-01` — segurança.
 - `TECH-BACKEND-01`, `TECH-FRONTEND-01` — tecnologias obrigatórias e builds reproduzíveis.
@@ -225,6 +225,26 @@ Gates observáveis:
 - navegador real confirma login/cadastro em landscape curto, sequência de foco coerente e dashboard utilizável em 320/360 px com nome no limite;
 - `git diff --check` passa e backend, OpenAPI, banco, Compose e contratos permanecem inalterados.
 
+### Atividade pós-M6 — robustez de persistência após revisão DB
+
+**Estado:** concluída localmente em 2026-08-28
+
+Entregas:
+
+- tornar a troca de senha um compare-and-swap atômico pelo `Id` do `sub` e pelo hash observado, sem migration ou token de concorrência global;
+- exigir no healthcheck igualdade entre os conjuntos de IDs de migrations aplicadas e esperadas, preservando timeout de um segundo e cancelamento;
+- restaurar no Compose o timeout SQLite de cinco segundos, mantendo margem para os 30 segundos do proxy;
+- fortalecer a corrida de cadastro para validar integralmente o `409 ProblemDetails` do caminho autoritativo do índice único;
+- atualizar contrato, estratégia, rastreabilidade e baseline de mutation testing afetada pelos arquivos críticos.
+
+Gates observáveis:
+
+- regressões novas falham contra o comportamento anterior e passam após as correções;
+- suíte backend Docker, contrato OpenAPI, configuração Compose e smoke acumulado passam;
+- mutation testing é recalibrado a partir de execução real, sem manter contagens ou `CompileError` obsoletos;
+- nenhuma senha, hash, token, chave ou banco entra no diff, logs ou relatórios;
+- `git diff --check` passa e frontend/funcionalidades de negócio permanecem fora do escopo.
+
 ## Progresso
 
 - `2026-08-24` — `design concluído` — artefatos de design e planejamento criados; M1–M6 permanecem pendentes e nenhum código foi implementado.
@@ -251,6 +271,7 @@ Gates observáveis:
 - `2026-08-28` — `refinamento visual ajustado ao escopo original` — o `id` imutável permaneceu no `ProfileResponse`, conforme contrato M3, mas foi removido do DOM da tela de perfil por não ser dado cadastral exigido pelo enunciado. A regressão falhou primeiro contra a apresentação anterior e, após a remoção direta do bloco/estilos, lint, 67/67 testes, build e 3/3 E2E passaram.
 - `2026-08-28` — `dashboard simplificado ao escopo do desafio` — os três cartões sem ação de dados pessoais, senha e sessão foram retirados por repetirem funções já acessíveis no perfil/logout. A regressão falhou primeiro com 67/68 testes; depois da remoção direta do markup e dos estilos órfãos, lint, 68/68 testes, build, 3/3 E2E e inspeção real do dashboard passaram.
 - `2026-08-28` — `correção responsiva da revisão concluída` — três regressões sequenciais reproduziram formulário fora da viewport em `667×375`, ordem visual inversa ao Tab em `360×800` e nome defensivo sem limite vertical. Media query, ordem de coluna e clamps CSS diretos encerraram os achados; lint, 68/68 testes, build, 3/3 E2E e inspeção real em `320×568`, `360×800` e `667×375` passaram.
+- `2026-08-28` — `robustez de persistência pós-revisão DB concluída` — regressões reproduziram health falso-positivo e duas trocas concorrentes aceitas; CAS por hash, conjunto exato de migrations, timeout SQLite de cinco segundos e contrato do `409` concorrente foram implementados. Build/113 integrações, OpenAPI, config/smoke Compose e Stryker 97,47% passaram; frontend e schema permaneceram inalterados.
 
 ## Evidências de M1
 
@@ -364,10 +385,20 @@ O relatório detalhado, incluindo as correções do próprio script de auditoria
 
 | Gate | Execução observada | Resultado |
 |---|---|---|
-| Suíte backend normal | `docker compose --profile backend-tests run --rm --build backend-tests` | Restore/build Release aprovados e 111/111 integrações passaram, sem falha ou skip. |
-| Baseline Stryker | Profile `mutation-tests` com `thresholds.break = 0` temporário | 465 mutantes criados; baseline limpa de 97,41% em 00:04:41, com 188 killed, 5 survived, 106 ignored, 2 mutações C# inválidas em `CompileError` e zero `NoCoverage`, timeout ou erro de execução. |
-| Ratchet e relatórios | `stryker-config.json` final e `docker compose --profile mutation-tests run --rm --build mutation-tests` | `break/low/high = 97/97/97`; execução definitiva em 00:02:43 com 188 killed, 5 survived, 0 timeout/erro, HTML/JSON e gate do relatório aprovados; os cinco survivors equivalentes permanecem visíveis. |
+| Suíte backend normal | `docker compose --profile backend-tests run --rm --build backend-tests` | Restore/build Release aprovados e 113/113 integrações passaram, sem falha ou skip. |
+| Baseline Stryker | Profile `mutation-tests` com `break-at = 0` temporário, recalibrado após a correção DB | 473 mutantes criados e 198 executados; baseline limpa de 97,47% em 00:03:21, com 193 killed, 5 survived, 108 ignored, 3 mutações não compiláveis em `CompileError` e zero `NoCoverage`, timeout ou erro de execução. |
+| Ratchet e relatórios | `stryker-config.json` final e `docker compose --profile mutation-tests run --rm --build mutation-tests` | `break/low/high = 97/97/97`; execução definitiva em 00:03:00 com 193 killed, 5 survived, 0 timeout/erro, HTML/JSON e gate de 3 `CompileError` aprovados; os cinco survivors equivalentes permanecem visíveis. |
 | Infraestrutura local | `docker compose --profile mutation-tests config --quiet`, smoke Compose, actionlint e revisão estática | Profile isolado, inventários, gate contra falso-verde por timeout e workflow manual/semanal aprovados localmente; cleanup não usa `--volumes`. Execução hospedada permanece Pending até publicação e observação. |
+
+## Evidências da robustez de persistência pós-revisão DB
+
+| Gate | Execução observada em 2026-08-28 | Resultado |
+|---|---|---|
+| Regressões antes da correção | Três integrações focadas no profile `backend-tests` | Cadastro concorrente permaneceu verde; health com IDs divergentes retornou `Healthy` e duas trocas concorrentes retornaram `200`, produzindo exatamente 2 falhas/1 sucesso. |
+| Backend final | `docker compose --profile backend-tests run --rm --build backend-tests` | Build Release sem warnings e 113/113 integrações aprovadas; reexecução final em 6 s. O CAS produziu um único vencedor e o health rejeitou cardinalidade igual com IDs errados. |
+| Contrato e operação | Profile `contract-tests`, `docker compose config` e `./scripts/validate-m1-compose.sh` | OpenAPI 6 operações/53 referências, timeout SQLite renderizado em 5 s e smoke completo aprovados; projeto/volume efêmeros foram removidos. |
+| Mutação final | Baseline temporária e profile `mutation-tests` final | Score 97,47%, ratchet 97/97/97, 193 killed/5 survived/108 ignored/3 `CompileError`, sem timeout, `NoCoverage` ou erro de runtime; HTML/JSON e gate aprovados. |
+| Aplicação principal | Rebuild/restart preservando volume; requests a `/`, `/health` e `/swagger/index.html` | Containers `api`/`web` saudáveis e três URLs em `200`; recursos de outros projetos não foram alterados. |
 
 ## Evidências correntes do refinamento visual pós-M6
 
@@ -495,4 +526,4 @@ Os nomes de scripts npm devem ser confirmados no scaffold e então congelados. M
 
 ## Resultado final
 
-M1–M6 estão concluídos quanto ao escopo técnico e documental. A conclusão original de M6 repetiu o ambiente somente com Docker; a revisão independente posterior corrigiu a reproteção visual no `exp`, e a revisão completa seguinte estabilizou o gate Vitest e centralizou a leitura de `ProblemDetails`, sem alterar API ou ampliar o escopo de negócio. A evidência corrente contém 111 integrações backend, 68 testes frontend, três jornadas Playwright, contrato, actionlint e smoke completo aprovados. A atividade pós-M6 de mutation testing foi concluída localmente com baseline limpa de 97,41%, ratchet 97/97/97 e relatórios HTML/JSON. O refinamento visual e sua correção responsiva pós-revisão também foram concluídos com lint/test/build, as três jornadas e inspeção real desktop, portrait e landscape curta; o dashboard corrente preserva somente conteúdo e ações úteis. A execução hospedada da CI, a confirmação de `AI-EXPLAIN-01` por uma pessoa e `DEL-REPO-01` permanecem ações externas e não foram marcadas como Verified.
+M1–M6 estão concluídos quanto ao escopo técnico e documental. As revisões posteriores corrigiram sessão, estabilidade, apresentação e robustez SQLite sem ampliar funcionalidade. A evidência corrente contém 113 integrações backend, 68 testes frontend, três jornadas Playwright, contrato e smoke completo aprovados. Mutation testing foi recalibrado localmente para 97,47%, com ratchet 97/97/97 e relatórios HTML/JSON; concorrência de senha, health exato e margem de timeout do Compose estão comprovados. A execução hospedada da CI, a confirmação de `AI-EXPLAIN-01` por uma pessoa e `DEL-REPO-01` permanecem ações externas e não foram marcadas como Verified.

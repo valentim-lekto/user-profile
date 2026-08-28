@@ -127,32 +127,39 @@ public sealed class ProfileController(
             return BearerUnauthorized();
         }
 
-        var user = await dbContext.Users.SingleOrDefaultAsync(
-            candidate => candidate.Id == userId,
-            cancellationToken);
+        var user = await dbContext.Users
+            .AsNoTracking()
+            .SingleOrDefaultAsync(candidate => candidate.Id == userId, cancellationToken);
         if (user is null)
         {
             return CurrentProfileNotFound();
         }
 
+        var observedPasswordHash = user.PasswordHash;
         if (passwordHasher.VerifyHashedPassword(
                 user,
-                user.PasswordHash,
+                observedPasswordHash,
                 request.CurrentPassword!) == PasswordVerificationResult.Failed)
         {
-            ModelState.AddModelError("currentPassword", "Current password is incorrect.");
-            return ValidationProblem(
-                detail: "Check the errors object for details.",
-                instance: HttpContext.Request.Path,
-                statusCode: StatusCodes.Status400BadRequest,
-                title: "Bad Request",
-                type: "about:blank",
-                modelStateDictionary: ModelState);
+            return CurrentPasswordIncorrect();
         }
 
-        user.PasswordHash = passwordHasher.HashPassword(user, request.NewPassword!);
-        user.UpdatedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
-        await dbContext.SaveChangesAsync(cancellationToken);
+        var newPasswordHash = passwordHasher.HashPassword(user, request.NewPassword!);
+        var updatedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
+        var affectedRows = await dbContext.Users
+            .Where(candidate =>
+                candidate.Id == userId &&
+                candidate.PasswordHash == observedPasswordHash)
+            .ExecuteUpdateAsync(
+                updates => updates
+                    .SetProperty(candidate => candidate.PasswordHash, newPasswordHash)
+                    .SetProperty(candidate => candidate.UpdatedAtUtc, updatedAtUtc),
+                cancellationToken);
+
+        if (affectedRows == 0)
+        {
+            return CurrentPasswordIncorrect();
+        }
 
         return Ok(new MessageResponse("Password changed successfully."));
     }
@@ -180,6 +187,18 @@ public sealed class ProfileController(
             instance: HttpContext.Request.Path,
             statusCode: StatusCodes.Status404NotFound,
             title: "Not Found");
+    }
+
+    private ActionResult CurrentPasswordIncorrect()
+    {
+        ModelState.AddModelError("currentPassword", "Current password is incorrect.");
+        return ValidationProblem(
+            detail: "Check the errors object for details.",
+            instance: HttpContext.Request.Path,
+            statusCode: StatusCodes.Status400BadRequest,
+            title: "Bad Request",
+            type: "about:blank",
+            modelStateDictionary: ModelState);
     }
 
     private ObjectResult EmailConflict()

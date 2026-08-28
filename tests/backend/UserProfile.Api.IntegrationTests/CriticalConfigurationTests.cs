@@ -212,6 +212,51 @@ public sealed class CriticalConfigurationTests
     }
 
     [Fact]
+    public async Task DatabaseHealthCheckRejectsDifferentMigrationIdsWithExpectedCount()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = """
+                CREATE TABLE "__EFMigrationsHistory" (
+                    "MigrationId" TEXT NOT NULL PRIMARY KEY,
+                    "ProductVersion" TEXT NOT NULL
+                );
+                """;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        using var provider = CreateHealthServiceProvider(
+            connection,
+            typeof(UserProfileDbContext).Assembly.GetName().Name!);
+        using (var scope = provider.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<UserProfileDbContext>();
+            var expectedMigrations = dbContext.Database.GetMigrations().ToArray();
+            Assert.NotEmpty(expectedMigrations);
+
+            for (var index = 0; index < expectedMigrations.Length; index++)
+            {
+                await using var command = connection.CreateCommand();
+                command.CommandText = """
+                    INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+                    VALUES ($migrationId, '10.0.11');
+                    """;
+                command.Parameters.AddWithValue("$migrationId", $"unexpected-{index:D4}");
+                await command.ExecuteNonQueryAsync();
+            }
+        }
+
+        var healthCheck = CreateHealthCheck(provider);
+
+        var result = await healthCheck.CheckHealthAsync(new HealthCheckContext());
+
+        Assert.Equal(HealthStatus.Unhealthy, result.Status);
+        Assert.Equal("Database schema is not current.", result.Description);
+    }
+
+    [Fact]
     public async Task DatabaseHealthCheckReportsUnavailableDatabaseAndHonorsCancellation()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");

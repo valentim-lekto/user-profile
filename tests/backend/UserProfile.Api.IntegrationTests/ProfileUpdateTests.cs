@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -473,6 +474,95 @@ public sealed class ProfileUpdateTests(ApiFactory factory) : IClassFixture<ApiFa
     }
 
     [Fact]
+    public async Task ConcurrentPasswordChangesAcceptCurrentPasswordOnlyOnce()
+    {
+        var barrier = new PasswordUpdateBarrier();
+        using var raceFactory = ApiFactory.WithInterceptor(barrier);
+        using var client = raceFactory.CreateClient();
+        var account = await RegisterAsync(raceFactory, client, "Password Race User");
+        var before = await LoadUserAsync(raceFactory, account.Id);
+        var token = await GetAccessTokenAsync(client, account.Email, account.Password);
+        var candidatePasswords = new[] { CreatePassword(), CreatePassword() };
+        raceFactory.AdvanceTime(TimeSpan.FromMinutes(1));
+        barrier.Enable();
+
+        var responses = await Task.WhenAll(
+            PutPasswordAsync(
+                client,
+                token,
+                new
+                {
+                    currentPassword = account.Password,
+                    newPassword = candidatePasswords[0],
+                    newPasswordConfirmation = candidatePasswords[0]
+                }),
+            PutPasswordAsync(
+                client,
+                token,
+                new
+                {
+                    currentPassword = account.Password,
+                    newPassword = candidatePasswords[1],
+                    newPasswordConfirmation = candidatePasswords[1]
+                }));
+
+        try
+        {
+            Assert.Equal(
+                [HttpStatusCode.OK, HttpStatusCode.BadRequest],
+                responses.Select(response => response.StatusCode).Order());
+            Assert.Equal(2, barrier.Arrivals);
+
+            var winnerIndex = Array.FindIndex(
+                responses,
+                response => response.StatusCode == HttpStatusCode.OK);
+            var loserIndex = 1 - winnerIndex;
+            var loserResponseText = await AssertValidationProblemAsync(
+                responses[loserIndex],
+                "currentPassword");
+            var winnerResponseText = await responses[winnerIndex].Content.ReadAsStringAsync();
+
+            foreach (var password in candidatePasswords.Append(account.Password))
+            {
+                Assert.DoesNotContain(password, winnerResponseText, StringComparison.Ordinal);
+                Assert.DoesNotContain(password, loserResponseText, StringComparison.Ordinal);
+            }
+
+            var after = await LoadUserAsync(raceFactory, account.Id);
+            Assert.Equal(before.Id, after.Id);
+            Assert.Equal(before.Name, after.Name);
+            Assert.Equal(before.Email, after.Email);
+            Assert.Equal(before.NormalizedEmail, after.NormalizedEmail);
+            Assert.NotEqual(before.PasswordHash, after.PasswordHash);
+            Assert.Equal(before.CreatedAtUtc, after.CreatedAtUtc);
+            Assert.Equal(raceFactory.UtcNow.UtcDateTime, after.UpdatedAtUtc);
+
+            await AssertLoginStatusAsync(
+                client,
+                account.Email,
+                account.Password,
+                HttpStatusCode.Unauthorized);
+            await AssertLoginStatusAsync(
+                client,
+                account.Email,
+                candidatePasswords[winnerIndex],
+                HttpStatusCode.OK);
+            await AssertLoginStatusAsync(
+                client,
+                account.Email,
+                candidatePasswords[loserIndex],
+                HttpStatusCode.Unauthorized);
+        }
+        finally
+        {
+            foreach (var response in responses)
+            {
+                response.Dispose();
+            }
+        }
+    }
+
+    [Fact]
     public async Task PasswordChangeUsesOnlySubjectAndRejectsUserIdOverposting()
     {
         using var client = factory.CreateClient();
@@ -848,6 +938,42 @@ public sealed class ProfileUpdateTests(ApiFactory factory) : IClassFixture<ApiFa
         {
             if (eventData.Context?.ChangeTracker.Entries<User>()
                     .Any(entry => entry.State == EntityState.Modified) != true)
+            {
+                return result;
+            }
+
+            if (Interlocked.Increment(ref arrivals) == 2)
+            {
+                bothRequestsArrived.TrySetResult(true);
+            }
+
+            await bothRequestsArrived.Task.WaitAsync(
+                TimeSpan.FromSeconds(10),
+                cancellationToken);
+            return result;
+        }
+    }
+
+    private sealed class PasswordUpdateBarrier : DbCommandInterceptor
+    {
+        private readonly TaskCompletionSource<bool> bothRequestsArrived =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int arrivals;
+        private int enabled;
+
+        public int Arrivals => Volatile.Read(ref arrivals);
+
+        public void Enable() => Volatile.Write(ref enabled, 1);
+
+        public override async ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (Volatile.Read(ref enabled) == 0 ||
+                !command.CommandText.Contains("UPDATE \"Users\"", StringComparison.Ordinal) ||
+                !command.CommandText.Contains("\"PasswordHash\"", StringComparison.Ordinal))
             {
                 return result;
             }

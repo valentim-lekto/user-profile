@@ -211,7 +211,7 @@ E2E e smoke funcional não foram repetidos nesta correção porque rotas, templa
 
 ## Adendo — mutation testing crítico do backend após M6
 
-`BE-MUT-001` e a infraestrutura local de `CI-MUT-001` foram implementados em 2026-08-27 sem alterar endpoint, OpenAPI, schema/migration, frontend ou regra de negócio. A execução hospedada continua Pending até o workflow ser publicado e observado.
+`BE-MUT-001` e a infraestrutura local de `CI-MUT-001` foram implementados em 2026-08-27. A revisão DB de 2026-08-28 alterou lógica interna coberta pela allowlist e acrescentou duas regressões, por isso a baseline foi recalibrada; endpoint, status HTTP, schema/migration e frontend permaneceram iguais. A execução hospedada continua Pending até o workflow ser publicado e observado.
 
 ### Implementação confrontada
 
@@ -219,16 +219,16 @@ E2E e smoke funcional não foram repetidos nesta correção porque rotas, templa
 - `stryker-config.json` usa `Release`, `net10.0`, nível `standard`, análise `perTest`, dois workers, timeout adicional de 5 segundos, falha para suíte inicial vermelha e reporters progress/HTML/JSON;
 - a allowlist contém exatamente os onze arquivos aprovados de autenticação, perfil, JWT, health e configuração EF; migrations, DTOs passivos, Swagger, entidade/DbContext e `Program.cs` não recebem mutante ativo;
 - o target/profile `mutation-tests` não sobe a aplicação, não publica porta e grava em `${MUTATION_ARTIFACTS_DIR:-./artifacts/mutation}`;
-- o runner valida o JSON depois do Stryker e reprova relatório ausente, `Timeout`, `NoCoverage`, `RuntimeError` ou quantidade de `CompileError` diferente dos dois mutantes inválidos classificados;
+- o runner valida o JSON depois do Stryker e reprova relatório ausente, `Timeout`, `NoCoverage`, `RuntimeError` ou quantidade de `CompileError` diferente dos três mutantes inválidos classificados;
 - o workflow separado possui somente disparo manual e cron de segunda-feira às `06:00 UTC`, runner `ubuntu-24.04`, limite de 90 minutos, `contents: read`, projeto Compose exclusivo, Actions por SHA, cleanup sem `--volumes` e upload por 14 dias.
 
 ### Comandos e resultados observados
 
 | Comando ou gate | Resultado resumido |
 |---|---|
-| `docker compose --profile backend-tests run --rm --build backend-tests` | Build Release reutilizado sem warning/erro; 111/111 integrações passaram, 0 falha e 0 skip, em 6 s de testes. |
-| Baseline temporária com `thresholds.break = 0` | Depois dos testes focados, 465 mutantes foram criados e 193 executados; 188 killed, 5 survived, 106 ignored, 2 `CompileError`, 0 `NoCoverage`, 0 timeout e 0 erro de execução; `S = 97,41%` em `00:04:41`. |
-| `docker compose --profile mutation-tests run --rm --build mutation-tests`, configuração final | Execução definitiva da imagem com o gate incorporado: 188 killed, 5 survived, 0 timeout, 0 erro de execução, score `97,41%`; HTML/JSON gerados; gate do relatório aprovado; exit code 0 em `00:02:43`. |
+| `docker compose --profile backend-tests run --rm --build backend-tests` | Build Release reutilizado sem warning/erro; 113/113 integrações passaram, 0 falha e 0 skip, em 6 s na reexecução final. |
+| Baseline temporária com `thresholds.break = 0`, recalibrada após a correção DB | 473 mutantes foram criados e 198 executados; 193 killed, 5 survived, 108 ignored, 3 `CompileError`, 0 `NoCoverage`, 0 timeout e 0 erro de execução; `S = 97,47%` em `00:03:21`. |
+| `docker compose --profile mutation-tests run --rm --build mutation-tests`, configuração final | Execução definitiva da imagem com o gate incorporado: 193 killed, 5 survived, 108 ignored, 3 `CompileError` classificados, 0 `NoCoverage`, timeout ou erro de execução, score `97,47%`; HTML/JSON gerados; gate do relatório aprovado; exit code 0 em `00:03:00`. |
 | Prova negativa do gate | Um passe sob contenção produziu score `97,93%`, mas 12 timeouts; o Stryker retornou sucesso pelo score e o gate adicional encerrou o comando com exit code 1. Esse relatório foi rejeitado e substituído pela execução limpa. |
 | `docker compose --profile mutation-tests config --quiet` | Configuração renderizada aprovada sem `.env`. |
 | `docker run --rm --volume "$PWD:/repo:ro" --workdir /repo rhysd/actionlint:1.7.12` | Workflows aprovados sem diagnóstico. |
@@ -240,11 +240,11 @@ O host compartilhava o daemon com containers de outros projetos em reinício e p
 
 ### Baseline, ratchet e escopo
 
-O score limpo `S = 188 / (188 + 5) = 97,41%` resultou em `floor(S) = 97`; logo, `break = 97`, `low = 97` e `high = 97`. O valor temporário zero não permanece na configuração. Não há `ignore-mutations` nem `ignore-methods` global.
+O score limpo corrente `S = 193 / (193 + 5) = 97,47%` resultou em `floor(S) = 97`; logo, `break = 97`, `low = 97` e `high = 97`. O valor temporário zero não permanece na configuração. Não há `ignore-mutations` nem `ignore-methods` global.
 
 O JSON do Stryker preserva algumas fontes fora da allowlist como `Ignored` pelo mutate filter; a auditoria encontrou zero mutante killed, survived, timeout, `NoCoverage` ou `CompileError` fora dos onze alvos. Os quatro arquivos de request estão explicitamente selecionados, mas o nível `standard` do Stryker `4.16.0` não gerou mutante executável em seus atributos/auto-properties.
 
-Os 106 ignored do relatório incluem 56 mutantes de `Program.cs` removidos pelo mutate filter, 49 removidos pelo filtro de bloco já coberto e uma exclusão pontual. Os dois `CompileError` são mutações C# inválidas: trocar `Count()` por `Sum()` sobre IDs de migration em `DatabaseHealthCheck` e remover o initializer que satisfaz o membro obrigatório `HttpContext` de `ProblemDetailsContext` em `JwtBearerConfiguration`.
+Os 108 ignored do relatório corrente incluem 56 removidos pelo mutate filter, 51 pelo filtro de bloco já coberto e uma exclusão pontual. Os três `CompileError` são mutações C# inválidas: tornar a comparação de quantidade esperada impossível (`Count < 0`) e trocar `Count` por `Sum` sobre IDs de migration em `DatabaseHealthCheck`; e remover o initializer obrigatório usado por `JwtBearerConfiguration`.
 
 ### Classificação dos cinco survivors
 
@@ -319,4 +319,42 @@ Em 2026-08-28, uma revisão somente leitura focada em responsividade encontrou d
 
 As execuções E2E usaram projetos/volumes efêmeros e o cleanup do script os removeu. A inspeção publicada criou somente contas sintéticas no volume local da demonstração; logout encerrou as sessões, credenciais foram descartadas e nenhum segredo, token, relatório ou banco foi versionado.
 
-**Resultado:** `UI-RESP-01`, `FE-VISUAL-001`, `FR-UI-01` e `PREM-FE-01` estão Verified localmente. Os 19 requisitos funcionais, 14 não funcionais, 18 premissas e 41 critérios correntes permanecem rastreados; nenhuma funcionalidade de negócio nova foi criada.
+**Resultado:** `UI-RESP-01`, `FE-VISUAL-001`, `FR-UI-01` e `PREM-FE-01` estão Verified localmente. Os 19 requisitos funcionais, 14 não funcionais, 18 premissas e 42 critérios correntes permanecem rastreados; nenhuma funcionalidade de negócio nova foi criada.
+
+## Adendo — revisão focada em banco e correções
+
+Em 2026-08-28, uma revisão somente leitura focada em constraints, concorrência, migrations e limites operacionais encontrou dois P2 e dois P3. As correções foram precedidas por `AC-PASS-05` e pelos testes correspondentes; não criaram endpoint, status HTTP, migration, tabela, coluna ou funcionalidade de negócio.
+
+### Achados e disposições
+
+| Achado | Severidade | Correção aplicada | Evidência |
+|---|---|---|---|
+| Duas trocas simultâneas aceitavam a mesma senha atual e ambas retornavam `200`, com last-writer-wins. | P2 | `PUT /api/profile/password` passou a atualizar por compare-and-swap de `Id + PasswordHash` observado; zero linha afetada devolve o mesmo `400 ValidationProblemDetails` de senha atual incorreta. | `BE-PASS-005` sincroniza ambas as escritas: exatamente um `200`, um `400`, somente a senha vencedora autentica e os demais dados permanecem íntegros. |
+| A connection string do Compose sobrescrevia o timeout defensivo do appsettings e deixava o SQLite em 30 s, igual ao timeout do proxy. | P2 | O Compose fixa `Default Timeout=5`; o health usa timeout próprio de 1 s e o Nginx permanece em 30 s. | Configuração renderizada e assert do smoke confirmaram a margem `1 < 5 < 30`. |
+| O health considerava somente a quantidade de migrations aplicadas. Um histórico diferente com a mesma contagem poderia ser declarado saudável. | P3 | O check lê `MigrationId` e exige igualdade exata, ordinal, com o conjunto conhecido pelo assembly. | `BE-HEALTH-001` inseriu IDs inesperados na mesma quantidade e passou a receber `Unhealthy`. |
+| A corrida de email duplicado verificava os status e a cardinalidade, mas não o corpo da resposta concorrente. | P3 | O teste reutiliza o assert completo de conflito no response `409` real da corrida. | `BE-REG-004` comprova `application/problem+json`, `status`, `title`, `detail` e `instance`. |
+
+### Comandos e resultados observados
+
+| Comando ou gate | Resultado resumido |
+|---|---|
+| Regressões focadas antes do código | 1/3 passou e 2/3 falharam como esperado: health retornou `Healthy` para IDs divergentes e as duas trocas retornaram `200`. |
+| Regressões focadas após o código | 3/3 passaram: corrida de cadastro, histórico divergente e CAS de senha. |
+| `docker compose --profile backend-tests run --rm --build backend-tests` | Build Release com 0 warnings/erros; 113/113 integrações, 0 falha e 0 skip, em 6 s na reexecução final. |
+| Profile `contract-tests` | OpenAPI aprovado com seis operações e 53 referências locais. |
+| `docker compose --profile mutation-tests config --quiet` e configuração renderizada | Aprovados sem `.env`; connection string contém `Default Timeout=5`. |
+| `./scripts/validate-m1-compose.sh` | Inventário, builds, origem única, migrations, health, cadastro/login/perfil/senha, autorização, persistência, `413/415/503`, logs e cleanup isolado aprovados. |
+| Baseline Stryker temporária | 473 criados, 198 executados, 193 killed, 5 survived equivalentes, 108 ignored, 3 `CompileError` classificados, 0 timeout/`NoCoverage`/erro de execução; 97,47% em `00:03:21`. |
+| Profile `mutation-tests` final | Mesmas contagens e score, ratchet 97/97/97, relatórios HTML/JSON, gate aprovado e exit code zero em `00:03:00`. |
+| Stack padrão e probes HTTP | `api` e `web` healthy; `/`, `/health` e `/swagger/index.html` responderam `200` em `http://localhost:8080`, com o volume existente preservado. |
+
+### Segurança, escopo e limites
+
+- a senha continua processada apenas pelo `PasswordHasher<User>`; o CAS compara hashes parametrizados pelo EF Core e não inclui senha/hash em logs ou responses;
+- a identidade continua vindo somente de `sub`; DTOs e contratos não ganharam `userId` nem campos de entidade;
+- o índice único `UX_Users_NormalizedEmail` permanece a constraint autoritativa e nenhuma migration foi necessária;
+- a aplicação, OpenAPI e frontend mantêm o mesmo comportamento público; somente a descrição normativa de concorrência foi explicitada;
+- o SQLite continua uma escolha proporcional para uma única instância de demonstração. O CAS resolve esta corrida de aplicação, mas não transforma o banco em solução para escrita concorrente de alta escala;
+- a execução hospedada semanal/manual de mutation testing permanece Pending até o workflow ser publicado e observado.
+
+**Resultado:** os quatro achados foram corrigidos e revalidados; não restou finding DB alto ou médio dentro do escopo. A baseline corrente é 113 integrações e mutation score de 97,47%, sem timeout ou `NoCoverage`.

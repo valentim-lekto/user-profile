@@ -228,6 +228,8 @@ public sealed class RegisterTests(ApiFactory factory) : IClassFixture<ApiFactory
             Assert.Equal(
                 [HttpStatusCode.Created, HttpStatusCode.Conflict],
                 responses.Select(response => response.StatusCode).Order());
+            await AssertEmailConflictAsync(
+                responses.Single(response => response.StatusCode == HttpStatusCode.Conflict));
             Assert.Equal(2, barrier.Arrivals);
             using var scope = raceFactory.Services.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<UserProfileDbContext>();

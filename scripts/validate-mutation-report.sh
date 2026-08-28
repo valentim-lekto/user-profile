@@ -19,9 +19,9 @@ done
 
 compile_error_count=$(grep -o '"status"[[:space:]]*:[[:space:]]*"CompileError"' \
   "$report_path" | wc -l | tr -d ' ')
-if [ "$compile_error_count" -ne 2 ]; then
-  echo "Expected exactly 2 classified CompileError mutants, found $compile_error_count." >&2
+if [ "$compile_error_count" -ne 3 ]; then
+  echo "Expected exactly 3 classified CompileError mutants, found $compile_error_count." >&2
   exit 1
 fi
 
-echo "Mutation report gate passed: no timeout, no coverage gap, no runtime error, 2 classified compile errors."
+echo "Mutation report gate passed: no timeout, no coverage gap, no runtime error, 3 classified compile errors."

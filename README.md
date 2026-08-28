@@ -86,7 +86,7 @@ Os dois scripts `./scripts/...` pressupõem macOS, Linux ou WSL com shell POSIX,
 
 O E2E cria projeto, rede e volume próprios, executa exatamente três jornadas independentes e remove seus recursos ao terminar. Screenshot e trace são retidos somente em falha.
 
-O profile `mutation-tests` executa Stryker.NET somente sobre a allowlist crítica do backend. A baseline limpa observada foi `97,41%` (188 killed, 5 survived, 106 ignored, 2 `CompileError` gerados por mutações C# inválidas, 0 timeout, 0 `NoCoverage` e 0 erro de execução); o ratchet versionado é `break/low/high = 97/97/97`. Um gate adicional do relatório reprova timeout, lacuna de cobertura, erro de runtime ou alteração na quantidade dos dois erros de compilação já classificados. HTML e JSON são gravados em `artifacts/mutation/reports/` por padrão e nunca devem ser versionados. Os cinco survivors equivalentes permanecem visíveis no relatório limpo; a estratégia e as justificativas estão em [`docs/sdd/04-test-strategy.md`](docs/sdd/04-test-strategy.md) e [`docs/sdd/07-validation-report.md`](docs/sdd/07-validation-report.md).
+O profile `mutation-tests` executa Stryker.NET somente sobre a allowlist crítica do backend. A baseline limpa corrente foi recalibrada após a revisão DB para `97,47%` (193 killed, 5 survived, 108 ignored, 3 `CompileError` gerados por mutações não compiláveis, 0 timeout, 0 `NoCoverage` e 0 erro de execução); o ratchet versionado continua `break/low/high = 97/97/97`. Um gate adicional do relatório reprova timeout, lacuna de cobertura, erro de runtime ou alteração na quantidade dos três erros de compilação já classificados. HTML e JSON são gravados em `artifacts/mutation/reports/` por padrão e nunca devem ser versionados. Os cinco survivors equivalentes permanecem visíveis no relatório limpo; a estratégia e as justificativas estão em [`docs/sdd/04-test-strategy.md`](docs/sdd/04-test-strategy.md) e [`docs/sdd/07-validation-report.md`](docs/sdd/07-validation-report.md).
 
 O smoke completo usa a porta 8080; encerre antes a pilha principal sem remover seu volume:
 
@@ -176,6 +176,7 @@ Para sessões sobreviverem ao restart local, gere uma chave própria fora do rep
 ## Decisões e trade-offs
 
 - SQLite, migrations no startup e uma única instância mantêm a demonstração simples; não são uma estratégia de rollout concorrente.
+- Alterações de senha usam compare-and-swap pelo hash observado; o health compara os IDs exatos das migrations e a API espera no máximo 5 segundos por lock SQLite, mantendo margem para os 30 segundos do proxy.
 - `sessionStorage` reduz persistência entre sessões do navegador, mas continua acessível a JavaScript; token curto e dependências controladas limitam parte da exposição, porém uma CSP não está configurada e permanece hardening de produção.
 - Não há refresh ou revogação: logout e troca de senha limpam a sessão cliente, enquanto um token capturado permanece válido até `exp`.
 - O `409` de cadastro torna email duplicado observável para cumprir o requisito; o login usa sempre o mesmo `401` genérico.

@@ -1,6 +1,6 @@
 # 06 — Matriz de rastreabilidade
 
-**Status:** M6, mutation testing e refinamento visual pós-M6 concluídos localmente; execuções hospedadas pendentes · **Data:** 2026-08-28
+**Status:** M6, mutation testing, refinamento visual e robustez DB pós-M6 concluídos localmente; execuções hospedadas pendentes · **Data:** 2026-08-28
 
 ## Convenções
 
@@ -16,6 +16,7 @@
 - **Pós-M6 em andamento:** especificação e ligação existem, mas implementação, baseline ou reexecução final ainda não possuem evidência completa.
 - **Verified (mutation testing pós-M6):** configuração final, suíte normal, execução Stryker, relatórios, ratchet e infraestrutura foram confrontados com execução real; não se aplica à execução hospedada até ela ser observada.
 - **Verified (refinamento visual pós-M6):** apresentação, responsividade e semântica das quatro telas foram confrontadas com suíte frontend, jornadas existentes e inspeção real desktop/mobile, sem mudança funcional.
+- **Verified (robustez DB pós-M6):** concorrência, integridade do histórico de migrations e margem de timeout foram confrontadas com regressões determinísticas, suíte completa e smoke isolado.
 - **Parcial:** parte documental já existe, mas o critério depende de implementação ou entrega futura.
 - **Pendente:** depende integralmente de milestone, ação humana ou evidência
   externa ainda não observada.
@@ -28,7 +29,7 @@
 |---|---|---|---|---|---|
 | `FR-REG-01` | `AC-REG-01`, `AC-REG-02`, `AC-REG-03`, `AC-REG-04` | DTO `RegisterRequest`, `registerUser`, `/register` | M2 | `BE-REG-001/002`, `FE-REG-001` | M2 concluído: contrato, endpoint, formulário e suíte corrigida aprovados. |
 | `FR-REG-02` | `AC-REG-02`, `AC-REG-03`, `AC-REG-04` | Schemas OpenAPI e Reactive Form de cadastro; refinamentos de `PREM-INPUT-01` | M2 | `BE-REG-001/002`, `FE-REG-001`, `SPEC-OAS-004` | M2 concluído: limites internos `200/320/128`, política ASCII, validação pós-`Trim`, espaços significativos em senha e JSON case-sensitive aprovados nas duas camadas. |
-| `FR-REG-03` | `AC-REG-05` | Normalização, política ASCII, índice `UX_Users_NormalizedEmail`, `registerUser` | M2 | `BE-REG-003/004` | M2 concluído: rejeição Unicode, colisões ASCII normalizadas e corrida pelo índice foram aprovadas. |
+| `FR-REG-03` | `AC-REG-05` | Normalização, política ASCII, índice `UX_Users_NormalizedEmail`, `registerUser` | M2, correção DB pós-M6 | `BE-REG-003/004` | Verified (robustez DB pós-M6): rejeição Unicode e colisões normalizadas permanecem aprovadas; a corrida pelo índice agora também comprova o `409 ProblemDetails` completo, além de um único registro persistido. |
 | `FR-REG-04` | `AC-REG-01`, `AC-REG-06` | `201 MessageResponse`, navegação `/register` → `/login` | M2 | `BE-REG-001`, `FE-REG-002`, `E2E-001` | M5 comprovado de ponta a ponta: cadastro retorna sucesso e conduz ao login antes do dashboard. |
 | `FR-LOGIN-01` | `AC-LOGIN-01`, `AC-LOGIN-02` | DTO `LoginRequest`, `loginUser`, `/login` | M3 | `BE-LOGIN-001/002/003`, `FE-LOGIN-001` | M3 concluído: login normalizado, validação e credenciais verificadas por integração/frontend/smoke. |
 | `FR-LOGIN-02` | `AC-LOGIN-01`, `SEC-SESSION-01` | Emissor JWT, `LoginResponse`, `AuthService`, `/dashboard` | M3 | `BE-LOGIN-001`, `FE-LOGIN-002` | M3 concluído: token curto com claims mínimas, sessão em `sessionStorage` e navegação ao dashboard aprovados. |
@@ -41,10 +42,10 @@
 | `FR-PROF-02` | `AC-PROF-02`, `AC-PROF-03`, `AC-PROF-04` | `UpdateProfileRequest`, `updateCurrentProfile`, formulário de dados | M4 | `BE-PROF-003/004/005/006`, `FE-PROF-001/002` | M4 concluído: validações equivalentes, borda positiva de email 320, normalização, unicidade/race, isolamento, payload mínimo e operações inválidas sem mutação foram aprovados. |
 | `FR-PROF-03` | `AC-PROF-05` | `ProfileResponse`, signals de loading/sucesso/erro | M4 | `BE-PROF-003`, `FE-PROF-002`, `E2E-001` | M5 comprovado: submissão/feedback/bloqueio passaram e a jornada real confirmou o novo nome no dashboard e o email em nova consulta do perfil. |
 | `FR-PASS-01` | `AC-PASS-01` | `ChangePasswordRequest`, `changeCurrentPassword`, formulário separado | M4 | `FE-PASS-001`, `SPEC-OAS-004` | M4 concluído: formulário e endpoint separados, campos obrigatórios, wiring DOM e limite inclusivo 128 foram aprovados. |
-| `FR-PASS-02` | `AC-PASS-02`, `AC-PASS-03` | PasswordHasher e `400 ValidationProblemDetails` | M4 | `BE-PASS-001/002`, `FE-PASS-001/002` | M4 concluído: senha atual inválida, confirmação divergente e novas senhas inválidas preservam integralmente usuário/hash; troca válida invalida a senha antiga e aceita a nova. |
-| `FR-PASS-03` | `AC-PASS-04` | `200 MessageResponse`, limpeza de `sessionStorage` condicionada ao token iniciador | M4 | `BE-PASS-003`, `FE-PASS-002`, `E2E-003` | M5 comprovado: sucesso encerra a sessão; antes de qualquer novo login, a jornada reprova o dashboard, depois rejeita a senha antiga e aceita a nova; o teste focado preserva uma sessão posterior. |
+| `FR-PASS-02` | `AC-PASS-02`, `AC-PASS-03`, `AC-PASS-05` | PasswordHasher, compare-and-swap por hash observado e `400 ValidationProblemDetails` | M4, correção DB pós-M6 | `BE-PASS-001/002/005`, `FE-PASS-001/002` | Verified (robustez DB pós-M6): duas trocas sincronizadas com a mesma senha atual produzem exatamente um `200` e um `400 ValidationProblemDetails`; a perdedora não sobrescreve hash, dados ou timestamps. |
+| `FR-PASS-03` | `AC-PASS-04`, `AC-PASS-05` | `200 MessageResponse`, CAS no backend e limpeza de `sessionStorage` condicionada ao token iniciador | M4, correção DB pós-M6 | `BE-PASS-003/005`, `FE-PASS-002`, `E2E-003` | Verified (robustez DB pós-M6): fluxo sequencial/sessão continuam verdes; na corrida, somente a senha vencedora autentica, enquanto a senha original e a candidata perdedora são rejeitadas. |
 | `FR-UI-01` | `UI-STATE-01`, `UI-RESP-01`, `AC-LOGIN-03`, `AC-DASH-04` | Signals e estados em cadastro, login, dashboard e perfil/senha; composição visual pós-M6 | M2–M5, pós-M6 | `FE-REG-001/002`, `FE-LOGIN-001`, `FE-DASH-001`, `FE-PROF-001/002`, `FE-PASS-002`, `FE-VISUAL-001`, `E2E-001/002/003` | Verified (correção responsiva pós-revisão): 68/68 testes, três jornadas e inspeção real confirmam estados, quatro telas sem overflow em 320 px, formulário completo em landscape curto, ordem visual/foco e nome defensivo contido com ambas as ações visíveis. |
-| `FR-ERR-01` | `API-ERROR-01` | Schemas/responses ProblemDetails; Nginx converte `413` e `502/504` → `503` | M1–M5 | `BE-ERR-001/002`, `BE-HEALTH-001`, `SPEC-OAS-005`, `OPS-COMPOSE-001`, `OPS-ORIGIN-001`, `CI-001` | M5 concluído na fatia: integração/contrato/smoke comprovam `400/401/404/405/409/413/415/500/503`; o workflow repete os gates sem criar quarta jornada E2E. |
+| `FR-ERR-01` | `API-ERROR-01` | Schemas/responses ProblemDetails; Nginx converte `413` e `502/504` → `503`; health exige migrations exatas | M1–M5, correção DB pós-M6 | `BE-ERR-001/002`, `BE-HEALTH-001`, `SPEC-OAS-005`, `OPS-COMPOSE-001`, `OPS-ORIGIN-001`, `CI-001` | Verified (robustez DB pós-M6): a matriz `400/401/404/405/409/413/415/500/503` permanece verde; as corridas de cadastro/senha comprovam o corpo ProblemDetails e o health rejeita histórico com mesma contagem, mas IDs incorretos. |
 
 ## Requisitos não funcionais
 
@@ -52,16 +53,16 @@
 |---|---|---|---|---|---|
 | `NFR-TECH-01` | `TECH-BACKEND-01` | .NET 10, Controllers, EF Core SQLite 10, JWT e lock NuGet; ADR-0001 | M1–M6 | `TECH-BACKEND-001`, build e suíte `BE-*` | Verified (M6): build sem cache e target Docker aprovaram restore/build; 101 integrações passaram sem falha/skip. |
 | `NFR-TECH-02` | `TECH-FRONTEND-01` | Angular standalone/strict, Material, Reactive Forms, signals, parser comum de ProblemDetails, npm/lock/allowlist e timeout Vitest limitado | M1–M6, correção pós-revisão | `TECH-FRONTEND-001`, build e suíte `FE-*` | Verified corrente: runner carrega timeout global de 30 segundos sem retry ou override local menor; depois das repetições de estabilidade com 67 testes, o profile final aprovou lint, 68/68 testes em 10 arquivos e build. |
-| `NFR-DATA-01` | `OPS-DOCKER-01`, `OPS-DOCKER-03` | SQLite, migrations e volume; ADR-0002 | M1, M6 | `BE-DB-001`, `OPS-PERSIST-001`, `OPS-COMPOSE-001` | Verified (M6): volume foi resetado, migrations criaram banco vazio e nome/email persistiram após restart dos containers. |
-| `NFR-OPS-01` | `OPS-DOCKER-01` | `compose.yaml`, Nginx com `413/503 ProblemDetails`, API e volume; `/health` e `/swagger` | M1, M6 | `OPS-COMPOSE-001`, `OPS-ORIGIN-001` | Verified (M6): config sem `.env`, build sem cache, healthchecks, origem/Swagger, restart, smoke e cleanup passaram. |
+| `NFR-DATA-01` | `OPS-DOCKER-01`, `OPS-DOCKER-03` | SQLite, migrations, health por conjunto exato e volume; ADR-0002 | M1, M6, correção DB pós-M6 | `BE-DB-001`, `BE-HEALTH-001`, `OPS-PERSIST-001`, `OPS-COMPOSE-001` | Verified (robustez DB pós-M6): banco vazio, volume e persistência seguem aprovados; o health lê IDs com timeout próprio e exige igualdade exata entre migrations conhecidas e aplicadas. |
+| `NFR-OPS-01` | `OPS-DOCKER-01` | `compose.yaml` com timeout SQLite menor que o proxy, Nginx com `413/503 ProblemDetails`, API e volume; `/health` e `/swagger` | M1, M6, correção DB pós-M6 | `OPS-COMPOSE-001`, `OPS-ORIGIN-001`, `BE-HEALTH-001` | Verified (robustez DB pós-M6): Compose renderiza `Default Timeout=5`, health usa 1 segundo e o proxy mantém 30 segundos; config, smoke isolado, persistência e URLs públicas foram reexecutados. |
 | `NFR-OPS-02` | `OPS-DOCKER-02` | Origem única, builds multi-stage, perfis de teste e inventário exato; ADR-0004 | M1, M5, M6 | `OPS-COMPOSE-001`, `OPS-TAGS-001`, `CI-001`, `DOC-RUN-001` | Verified (M6): somente `web` publica `127.0.0.1:8080`, tags completas, quatro profiles Docker-only, README reproduzível e workflow por SHAs foram revalidados. |
 | `NFR-CONFIG-01` | `SEC-SECRET-01`, `OPS-DOCKER-01` | Base e `.env.example` opcional em M1; chave validada em M3; auditoria em M5 | M1, M3, M5–M6 | `BE-CONFIG-001`, `OPS-SECRET-001`, revisão de configuração | Verified (M6): Compose iniciou sem `.env`; chave real/banco não estão versionados; fallback efêmero e restrição de lifetime estão documentados. |
 | `NFR-SEC-01` | `SEC-AUTH-01`, `SEC-SESSION-01`, `SEC-SECRET-01`, `SEC-LOG-01` | ADR-0003, DTOs, logging, allowlists, wiring de produção e `sessionStorage` | M2–M6 | `BE-AUTH-*`, `BE-CONFIG-001`, `BE-PASS-004`, `BE-DTO-001`, `FE-GUARD-001`, `FE-INT-001/002`, `FE-PASS-002`, `FE-WIRE-001`, `OPS-SECRET-001`, `CI-001` | Verified (revisão pós-M6): hash, JWT, `sub`, DTOs, logs/artefatos, ausência de segredo, expiração visual e races de sessão passaram; 0 Alto/Médio aberto. |
-| `NFR-TEST-01` | `TEST-FLOW-01` | Estratégia com integração principal, frontend, E2E, Compose, CI e mutation testing crítico do backend; timeout frontend global sem retry | M1–M6, correção pós-revisão e atividade pós-M6 | Gates de `04-test-strategy.md`, `E2E-*`, `CI-001`, `BE-MUT-001`, `CI-MUT-001` | Verified localmente: 111 integrações, baseline Stryker limpa de 97,41%, ratchet 97/97/97, reports e infraestrutura Docker/CI estática aprovados. Execuções hospedadas continuam Pending até publicação e observação. |
+| `NFR-TEST-01` | `TEST-FLOW-01` | Estratégia com integração principal, frontend, E2E, Compose, CI e mutation testing crítico do backend; timeout frontend global sem retry | M1–M6, correções e atividades pós-M6 | Gates de `04-test-strategy.md`, `E2E-*`, `CI-001`, `BE-MUT-001`, `CI-MUT-001` | Verified localmente: 113 integrações, baseline Stryker limpa de 97,47%, ratchet 97/97/97, reports e infraestrutura Docker/CI estática aprovados. Execuções hospedadas continuam Pending até publicação e observação. |
 | `NFR-DOC-01` | `DOC-RUN-01` | README raiz e índice/relatório SDD | M6 | `DOC-RUN-001` | Verified (M6): README contém execução, URLs, fluxo, testes Docker-only, operação, variáveis, estrutura, decisões, limitações, IA e troubleshooting. |
 | `NFR-SDD-01` | `DOC-SDD-01`, `DOC-TRACE-01` | `00`–`07`, OpenAPI, plano, testes e ADRs | M1–M6 | `SPEC-TRACE-001`, revisão do índice | Verified (revisão pós-M6): índice, plano, matriz, relatório/adendo, review log, OpenAPI, ADRs e testes foram confrontados; links locais e contrato passaram. |
 | `NFR-SDD-02` | `DOC-SDD-01` | ADR-0001 a ADR-0004 | Design e contínuo | Revisão de decisões relevantes | Atendido nesta etapa; revisão contínua. |
-| `NFR-TRACE-01` | `DOC-TRACE-01` | Este documento e extensões `x-*` do OpenAPI | M1–M6, pós-M6 | `SPEC-TRACE-001` | Verified corrente: 19 requisitos funcionais, 14 não funcionais, 18 premissas e 41 critérios permanecem mapeados com estados coerentes. |
+| `NFR-TRACE-01` | `DOC-TRACE-01` | Este documento e extensões `x-*` do OpenAPI | M1–M6, pós-M6 | `SPEC-TRACE-001` | Verified corrente: 19 requisitos funcionais, 14 não funcionais, 18 premissas e 42 critérios permanecem mapeados com estados coerentes. |
 | `NFR-AI-01` | `AI-SDD-01`, `AI-EXPLAIN-01` | `ai-usage.md`, registros resumidos e walkthrough humano | Todos | Revisão de diff/decisões e `DOC-EXPLAIN-001` | Parcial: `AI-SDD-01` e o roteiro técnico estão Verified; `AI-EXPLAIN-01` permanece Pending human confirmation. |
 | `NFR-DELIVERY-01` | `DEL-REPO-01` | Publicação explícita pelo responsável | Entrega | Verificação manual da URL pública | Pending: nenhum remote/push foi configurado por instrução; entrega está pronta para essa ação externa. |
 
@@ -79,7 +80,7 @@
 | `PREM-EMAIL-01` | `AC-REG-05`, `AC-PROF-04` | Para emails ASCII aceitos: `Trim().ToUpperInvariant()` nos três fluxos | M2–M4 | `BE-REG-003/004`, `BE-LOGIN-003`, `BE-PROF-005` | M4 concluído: cadastro, login e edição reutilizam a mesma regra; colisões normalizadas amigáveis e concorrentes foram aprovadas. |
 | `PREM-INPUT-01` | `AC-REG-02`–`04`, `API-ERROR-01` | Refinamentos internos: nome/email `200/320` após `Trim`, email ASCII, senha/confirmação `128` sem aparar, JSON camelCase case-sensitive e corpo de 1 MiB com `413` | M2–M4 | `BE-REG-001/002/003`, `FE-REG-001`, `BE-LOGIN-002`, `BE-PROF-004`, `BE-PASS-001/002`, `SPEC-OAS-004/005`, `OPS-COMPOSE-001` | Decisão interna, não requisito original. Os usos de cadastro, login, edição e senha foram aprovados em backend, frontend, contrato e smoke até M4. |
 | `PREM-REG-01` | `AC-REG-01` | `201` sem token; `/register` → `/login` | M2 | `BE-REG-001`, `FE-REG-002` | M2 concluído: `201` mínimo, ausência de sessão/token e navegação foram aprovados. |
-| `PREM-PASS-01` | `AC-PASS-01`–`04` | Endpoint/form separado e limpeza da sessão | M4–M5 | `BE-PASS-*`, `FE-PASS-*`, `E2E-003` | M5 comprovado: operação/form separados, dashboard novamente protegido sem novo login e reautenticação real rejeitando senha antiga/aceitando a nova. |
+| `PREM-PASS-01` | `AC-PASS-01`–`05` | Endpoint/form separado, CAS por hash observado e limpeza da sessão | M4–M5, correção DB pós-M6 | `BE-PASS-*`, `FE-PASS-*`, `E2E-003` | Verified (robustez DB pós-M6): fluxo sequencial, sessão e corrida determinística comprovam operação separada, invalidação da senha antiga e apenas uma troca bem-sucedida por hash observado. |
 | `PREM-PROF-01` | `AC-PROF-02` | PUT de perfil separado do PUT de senha | M4 | `SPEC-OAS-002`, `BE-PROF-*`, `BE-PASS-*` | M4 concluído: operações, DTOs, formulários e payloads permanecem estritamente separados. |
 | `PREM-AUTH-01` | `SEC-AUTH-01` | `sub` validado; nenhum `userId` em requests; `ProfileResponse` pode devolver o ID imutável | M3–M4 | `BE-PROF-002/006`, `BE-PASS-004`, `SPEC-OAS-003` | M4 concluído: GET e ambos os PUTs são resolvidos pelo `sub`; IDs arbitrários/overposting não selecionam nem alteram outro usuário. |
 | `PREM-AUTH-02` | `AC-DASH-01` | Dashboard usa `getCurrentProfile` com estado por ativação | M3–M5 | `FE-DASH-001`, `FE-WIRE-001`, `E2E-001` | M5 comprovado: dashboard usa `GET /api/profile`, isola respostas e a jornada real mostra o nome cadastrado e depois o atualizado. |
@@ -92,8 +93,16 @@
 
 | Requisito | Critério de aceite | Design / endpoint / tela | Milestone | Teste planejado | Estado |
 |---|---|---|---|---|---|
-| `NFR-TEST-01` | `TEST-FLOW-01` | Stryker.NET `4.16.0`, allowlist da lógica crítica do backend, suíte xUnit HTTP/EF/SQLite real e ratchet derivado da baseline | Pós-M6 | `BE-MUT-001` | Verified localmente: suíte normal 111/111; baseline limpa 97,41% (188 killed, 5 survived, 106 ignored, 2 mutações inválidas em `CompileError`, 0 `NoCoverage`/timeout/erro de execução); ratchet final 97/97/97 e relatórios aprovados. |
+| `NFR-TEST-01` | `TEST-FLOW-01` | Stryker.NET `4.16.0`, allowlist da lógica crítica do backend, suíte xUnit HTTP/EF/SQLite real e ratchet derivado da baseline | Pós-M6 | `BE-MUT-001` | Verified localmente: suíte normal 113/113; baseline corrente 97,47% (193 killed, 5 survived, 108 ignored, 3 mutações inválidas em `CompileError`, 0 `NoCoverage`/timeout/erro de execução); ratchet final 97/97/97 e relatórios aprovados. |
 | `NFR-TEST-01` | `TEST-FLOW-01` | Target/profile Docker `mutation-tests`, gate do JSON, relatórios HTML/JSON e workflow manual/semanal sem gate de PR | Pós-M6 | `CI-MUT-001` | Verified localmente: profile/target, rejeição real de um falso-verde com timeout, execução limpa final, inventários, smoke, actionlint, cleanup sem volumes e upload configurado por 14 dias passaram. Execução hospedada continua Pending até publicação e observação. |
+
+## Atividade de qualidade pós-M6 — robustez de persistência
+
+| Requisito | Critério de aceite | Design / endpoint / tela | Milestone | Teste planejado | Estado |
+|---|---|---|---|---|---|
+| `FR-PASS-02`, `FR-PASS-03`, `PREM-PASS-01` | `AC-PASS-05` | Compare-and-swap de `PasswordHash` observado no `PUT /api/profile/password` | Correção DB pós-M6 | `BE-PASS-005` | Verified: regressão concorrente sincroniza duas escritas, obtém um único vencedor, preserva os demais dados e comprova qual senha autentica. |
+| `FR-REG-03`, `FR-ERR-01` | `AC-REG-05`, `API-ERROR-01` | Índice único `UX_Users_NormalizedEmail` e conversão da violação SQLite em `409 ProblemDetails` | Correção DB pós-M6 | `BE-REG-004` | Verified: corrida produz um `201`, um `409` com contrato completo e somente um registro. |
+| `NFR-DATA-01`, `NFR-OPS-01` | `OPS-DOCKER-01`, `OPS-DOCKER-03` | Health por conjunto exato de migrations; timeouts SQLite 5 s, health 1 s e proxy 30 s | Correção DB pós-M6 | `BE-HEALTH-001`, `OPS-COMPOSE-001`, `OPS-PERSIST-001` | Verified: regressão rejeitou IDs divergentes com mesma contagem; config e smoke isolado comprovaram timeout, health, persistência e origem única. |
 
 ## Atividade de qualidade pós-M6 — refinamento visual
 
@@ -218,8 +227,19 @@ A execução anterior à revisão registrou 29/29 integrações backend e 12/12 
 
 | ID | Comando/artefato observado em 2026-08-27 | Estado |
 |---|---|---|
-| `BE-MUT-001`, `TEST-FLOW-01` | Profile `backend-tests`; baseline e execução final do profile `mutation-tests`; HTML/JSON | Verified localmente: 111/111 integrações; baseline/execução definitiva limpa de 97,41%, ratchet 97/97/97 e exit code zero; cinco survivors equivalentes visíveis, uma exclusão pontual justificada e nenhum ignore global. |
+| `BE-MUT-001`, `TEST-FLOW-01` | Profile `backend-tests`; baseline e execução final do profile `mutation-tests`; HTML/JSON | Verified localmente e recalibrado em 2026-08-28: 113/113 integrações; baseline/execução definitiva limpa de 97,47%, ratchet 97/97/97 e exit code zero; cinco survivors equivalentes visíveis, uma exclusão pontual justificada e nenhum ignore global. |
 | `CI-MUT-001`, `OPS-DOCKER-02` | Target/profile `mutation-tests`, gate do relatório, `validate-m1-compose.sh`, `mutation.yml` e `actionlint:1.7.12` | Verified localmente: execução sem SDK host, rejeição observada de relatório com timeout, relatório limpo aprovado, diretório ignorado, cron/manual sem push/PR, Actions por SHA, projeto Compose exclusivo e cleanup sem `--volumes`; execução hospedada Pending. |
+
+## Evidência executável da robustez DB pós-M6
+
+| ID | Comando/artefato observado em 2026-08-28 | Estado |
+|---|---|---|
+| `BE-PASS-005`, `BE-HEALTH-001`, `BE-REG-004` | Execução focada antes e depois do código, no target Docker de integração | Vermelho esperado: 1/3 passou; health aceitou IDs divergentes e as duas trocas de senha retornaram `200`. Verde final: 3/3 passaram; a corrida de cadastro também validou o `409 ProblemDetails` completo. |
+| `TECH-BACKEND-001`, `BE-*` | `docker compose --profile backend-tests run --rm --build backend-tests` | Verified: build Release com 0 warnings/erros; 113/113 integrações passaram, 0 falha e 0 skip, em 6 s na reexecução final. |
+| `SPEC-OAS-001`–`005` | Profile `contract-tests` | Verified: seis operações e 53 referências locais; a descrição de concorrência do endpoint de senha permanece coerente com `AC-PASS-05`. |
+| `OPS-COMPOSE-001`, `OPS-ORIGIN-001`, `OPS-PERSIST-001`, `BE-HEALTH-001` | `docker compose --profile mutation-tests config --quiet`; configuração renderizada; `./scripts/validate-m1-compose.sh` | Verified: `Default Timeout=5` foi renderizado e protegido pelo smoke; health, origem única, fluxos, persistência, erros do proxy e cleanup isolado passaram. |
+| `BE-MUT-001`, `CI-MUT-001` | Baseline temporária e profile final `mutation-tests` | Verified: 473 mutantes criados, 198 executados; 193 killed, 5 survived equivalentes, 108 ignored, 3 `CompileError` classificados, 0 timeout/`NoCoverage`/erro de execução; score 97,47%, ratchet 97/97/97 e exit code zero. |
+| `OPS-ORIGIN-001` | Stack padrão com volume preservado; `curl` em `/`, `/health` e `/swagger/index.html` | Verified: os três recursos responderam `200` em `http://localhost:8080`; serviços `api` e `web` ficaram healthy. |
 
 ## Cobertura após a revisão de M2
 
@@ -266,10 +286,11 @@ A execução anterior à revisão registrou 29/29 integrações backend e 12/12 
 
 ## Cobertura corrente após as correções pós-revisão
 
-- Todos os 19 requisitos funcionais, 14 não funcionais, 18 premissas e 41 critérios permanecem ligados a design, etapa, teste e estado.
+- Todos os 19 requisitos funcionais, 14 não funcionais, 18 premissas e 42 critérios permanecem ligados a design, etapa, teste e estado; `AC-PASS-05` registra a garantia concorrente acrescentada pela revisão DB.
 - `AC-DASH-02` agora inclui e comprova expiração enquanto dashboard/perfil já está ativo, cancelamento local de request protegida sem token e preservação contra timers/respostas de sessões anteriores.
-- A suíte corrente aprovou 111 integrações backend e 68 testes frontend; as três jornadas E2E permanecem verdes na execução de 2026-08-28, enquanto actionlint, smoke acumulado e Compose config permanecem aprovados na última execução aplicável.
+- A suíte corrente aprovou 113 integrações backend e 68 testes frontend; as três jornadas E2E permanecem verdes na execução de 2026-08-28, enquanto actionlint, smoke acumulado e Compose config permanecem aprovados na última execução aplicável.
 - O profile frontend reconstruído e duas execuções simultâneas passaram sem timeout após a remoção dos overrides locais; a revisão completa terminou com o P2 de confiabilidade, seu resíduo satélite e o achado de simplicidade corrigidos, sem achado aberto.
-- O gate pós-M6 acrescentou Stryker.NET `4.16.0`: baseline limpa de 97,41%, ratchet 97/97/97, HTML/JSON e cinco survivors equivalentes visíveis; a execução hospedada semanal/manual ainda não foi observada.
+- O gate pós-M6 usa Stryker.NET `4.16.0`: baseline corrente limpa de 97,47%, ratchet 97/97/97, HTML/JSON e cinco survivors equivalentes visíveis; a execução hospedada semanal/manual ainda não foi observada.
+- A revisão DB encerrou os quatro achados: alteração de senha usa CAS, a corrida de cadastro valida o contrato completo, o health compara os IDs exatos e o timeout SQLite de 5 segundos fica abaixo dos 30 segundos do proxy.
 - `UI-RESP-01` está Verified: o E2E existente cobre landscape curto, sequência visual/Tab e nome válido de 200 caracteres em altura limitada; o profile frontend e a inspeção real confirmaram o mesmo sem nova jornada ou lógica de aplicação.
 - `AI-EXPLAIN-01`, CI hospedada e `DEL-REPO-01` continuam Pending; nenhum push ou confirmação humana foi presumido.

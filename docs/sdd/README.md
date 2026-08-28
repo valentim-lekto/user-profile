@@ -21,15 +21,15 @@ Este diretório reúne os artefatos versionados do processo Spec-Driven Developm
 | Artefato | Finalidade | Estado |
 |---|---|---|
 | [`00-challenge.md`](00-challenge.md) | Preservar o enunciado, com requisitos originais e decisões aprovadas claramente separados. | Concluído nesta etapa. |
-| [`01-requirements.md`](01-requirements.md) | Definir escopo, atores, casos de uso, requisitos, critérios, premissas, exclusões e Definition of Done. | Funcionalidades M1–M4, gate M5 e `UI-RESP-01` implementados e validados, sem ampliar o escopo de negócio. |
-| [`02-technical-design.md`](02-technical-design.md) | Definir arquitetura, modelo de dados, segurança, frontend, operação e versões fixadas. | M1–M6, revisão posterior, mutation testing, refinamento visual e correção responsiva — inclusive dashboard sem conteúdo redundante — validados localmente. |
+| [`01-requirements.md`](01-requirements.md) | Definir escopo, atores, casos de uso, requisitos, critérios, premissas, exclusões e Definition of Done. | Funcionalidades M1–M4, gate M5, `UI-RESP-01` e concorrência `AC-PASS-05` implementados e validados, sem nova funcionalidade de negócio. |
+| [`02-technical-design.md`](02-technical-design.md) | Definir arquitetura, modelo de dados, segurança, frontend, operação e versões fixadas. | M1–M6 e atividades pós-M6, inclusive robustez de concorrência/health/timeout SQLite, validados localmente. |
 | [`03-api-contract.yaml`](03-api-contract.yaml) | Definir requests, responses, schemas, autenticação e erros da API. | Seis operações normativas e 53 referências locais aprovadas; Swagger runtime também validado. |
-| [`04-test-strategy.md`](04-test-strategy.md) | Definir integração, frontend, E2E, Docker e gates. | 111 integrações backend, 68 testes frontend, três jornadas E2E, `FE-DASH-001`/`FE-VISUAL-001` — inclusive landscape curto, foco/ordem, nome-limite, dashboard sem cards redundantes e perfil sem `id` técnico — e baseline Stryker limpa de 97,41% aprovados localmente. |
-| [`05-execution-plan.md`](05-execution-plan.md) | Organizar a implementação incremental em M1–M6 e atividades de qualidade posteriores. | M1–M6, mutation testing, refinamento visual e correção responsiva local concluídos; publicação, CI hospedada e confirmação humana permanecem externas. |
-| [`06-traceability.md`](06-traceability.md) | Relacionar requisito, critério, design, milestone, teste e estado. | Mutation testing, refinamento visual e `UI-RESP-01` estão Verified localmente; execução hospedada continua Pending. |
-| [`07-validation-report.md`](07-validation-report.md) | Registrar a auditoria final independente. | Concluído com adendos pós-M6 de revisão, mutação e validação visual real, incluindo perfil sem ID técnico, dashboard sem cards redundantes e correções responsivas. |
-| [`review-log.md`](review-log.md) | Registrar revisão independente, achados, decisões, comandos e riscos. | Revisões de design e M1–M6, inclusive revisões pós-M6 completa e responsiva, preservadas. |
-| [`ai-usage.md`](ai-usage.md) | Definir e registrar de forma resumida o uso responsável de IA. | Uso de IA, revisão completa, correções, mutation testing e refinamentos visuais/responsivos resumidos; explicação humana não foi presumida pela IA. |
+| [`04-test-strategy.md`](04-test-strategy.md) | Definir integração, frontend, E2E, Docker e gates. | 113 integrações backend, 68 testes frontend, três jornadas E2E e baseline Stryker corrente de 97,47% aprovados localmente. |
+| [`05-execution-plan.md`](05-execution-plan.md) | Organizar a implementação incremental em M1–M6 e atividades de qualidade posteriores. | M1–M6, mutation testing, refinamentos visuais e robustez SQLite local concluídos; publicação, CI hospedada e confirmação humana permanecem externas. |
+| [`06-traceability.md`](06-traceability.md) | Relacionar requisito, critério, design, milestone, teste e estado. | Mutation testing, UI e correções DB estão Verified localmente; execução hospedada continua Pending. |
+| [`07-validation-report.md`](07-validation-report.md) | Registrar a auditoria final independente. | Concluído com adendos pós-M6 de revisão, mutação, validação visual e robustez DB. |
+| [`review-log.md`](review-log.md) | Registrar revisão independente, achados, decisões, comandos e riscos. | Revisões de design e M1–M6, inclusive revisões pós-M6 completa, responsiva e de banco de dados, preservadas. |
+| [`ai-usage.md`](ai-usage.md) | Definir e registrar de forma resumida o uso responsável de IA. | Uso de IA, revisões/correções, mutation testing e refinamentos resumidos; explicação humana não foi presumida pela IA. |
 
 ## Governança
 
@@ -51,8 +51,8 @@ Novas decisões relevantes devem criar ou substituir ADR; registrar apenas uma p
 
 | Item | Estado |
 |---|---|
-| Código, dependências, Dockerfiles e Compose | M1–M5 implementados; M6 restringiu o bind ao loopback; revisões posteriores corrigiram a reproteção no `exp`, adicionaram mutação e modernizaram/simplificaram/corrigiram somente a apresentação Angular, sem mudar contrato ou regra de negócio. |
-| Testes automatizados e evidências observadas | 111 integrações backend, 68 testes frontend, três jornadas E2E — com as quatro telas em 320 px e autenticação completa em landscape curto —, inspeção visual desktop, `320×568`, `360×800` e `667×375`, baseline Stryker limpa de 97,41%, OpenAPI, actionlint, restart/persistência e smoke aprovados somente com Docker. |
+| Código, dependências, Dockerfiles e Compose | M1–M6 e correções pós-revisão implementados; concorrência de senha, health de migrations e margem de timeout SQLite foram endurecidos sem migration ou nova funcionalidade. |
+| Testes automatizados e evidências observadas | 113 integrações backend, 68 testes frontend, três jornadas E2E, baseline Stryker limpa de 97,47%, OpenAPI, restart/persistência e smoke aprovados somente com Docker. |
 | README de execução e validação na raiz | Concluído e confrontado com os comandos observados em M6. |
-| Atualização de estados da matriz e do plano | Concluída para M6, revisões, mutation testing, refinamento visual e correção responsiva local; CI hospedada, publicação e confirmação da explicação humana permanecem Pending. |
+| Atualização de estados da matriz e do plano | Concluída para M6 e atividades pós-M6, inclusive correção DB; CI hospedada, publicação e confirmação da explicação humana permanecem Pending. |
 | ADRs adicionais | Criar somente se surgir nova decisão relevante. |

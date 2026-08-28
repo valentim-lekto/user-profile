@@ -246,8 +246,10 @@ paths:
       description: >-
         Verifica a senha atual e altera a senha do usuário identificado pelo
         claim sub. A nova senha não é aparada e deve ser idêntica à confirmação.
-        Falhas preservam o hash e os demais dados. Nenhum token novo é emitido;
-        após o sucesso, o frontend encerra a sessão.
+        Falhas preservam o hash e os demais dados. Se duas requisições concorrentes
+        validarem o mesmo hash anterior, no máximo uma confirma a alteração; a
+        perdedora usa o mesmo erro de senha atual incorreta. Nenhum token novo é
+        emitido; após o sucesso, o frontend encerra a sessão.
       security:
         - bearerAuth: []
       x-functional-requirements:
@@ -261,6 +263,7 @@ paths:
         - AC-PASS-02
         - AC-PASS-03
         - AC-PASS-04
+        - AC-PASS-05
         - SEC-AUTH-01
       requestBody:
         required: true
