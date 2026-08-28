@@ -66,7 +66,6 @@ describe('App', () => {
 
       expect(harness.routeNativeElement?.textContent).toContain('Boas-vindas, Ana Example!');
     },
-    10_000,
   );
 
   it(
@@ -97,7 +96,6 @@ describe('App', () => {
       expect(harness.routeNativeElement?.textContent).toContain('Dados pessoais');
       expect(harness.routeNativeElement?.textContent).toContain('Alterar senha');
     },
-    10_000,
   );
 });
 

@@ -7,7 +7,7 @@ RUN test "$(npm --version)" = "11.17.0" && npm ci
 
 FROM dependencies AS test
 
-COPY angular.json eslint.config.js tsconfig.json tsconfig.app.json tsconfig.spec.json ./
+COPY angular.json eslint.config.js vitest.config.ts tsconfig.json tsconfig.app.json tsconfig.spec.json ./
 COPY public ./public
 COPY src ./src
 
