@@ -2,6 +2,8 @@
 
 Aplicação full stack para cadastro, autenticação e manutenção do próprio perfil. A entrega usa uma única origem HTTP, mantém a identidade exclusivamente no `sub` do JWT e foi construída em milestones orientados pelos artefatos SDD.
 
+A interface Angular Material é responsiva e usa uma identidade visual própria, inspirada apenas nos princípios de composição e paleta do site público da Lekto, sem copiar marca ou ativos.
+
 O estado validado da entrega está em [`docs/sdd/07-validation-report.md`](docs/sdd/07-validation-report.md).
 
 ## Stack e versões
@@ -14,6 +16,7 @@ O estado validado da entrega está em [`docs/sdd/07-validation-report.md`](docs/
 | Node.js / npm | `24.19.0` / `11.17.0` |
 | Nginx | `1.30.4-alpine3.24-slim` |
 | Playwright | `1.62.0` |
+| Stryker.NET | `4.16.0` |
 | Ruby do validador OpenAPI | `3.4.10-slim-bookworm` |
 
 As versões completas estão justificadas em [`docs/sdd/02-technical-design.md`](docs/sdd/02-technical-design.md). Não há tag Docker `latest`.
@@ -72,6 +75,7 @@ Os comandos abaixo usam imagens/profiles fixados e não dependem de SDKs no host
 ```sh
 docker compose --profile contract-tests run --rm contract-tests
 docker compose --profile backend-tests run --rm --build backend-tests
+docker compose --profile mutation-tests run --rm --build mutation-tests
 docker compose --profile frontend-tests run --rm --build frontend-tests
 ./scripts/e2e-playwright.sh
 ```
@@ -81,6 +85,8 @@ Os dois scripts `./scripts/...` pressupõem macOS, Linux ou WSL com shell POSIX,
 `mktemp`). SDKs, browser e banco continuam sendo executados nos contêineres.
 
 O E2E cria projeto, rede e volume próprios, executa exatamente três jornadas independentes e remove seus recursos ao terminar. Screenshot e trace são retidos somente em falha.
+
+O profile `mutation-tests` executa Stryker.NET somente sobre a allowlist crítica do backend. A baseline limpa observada foi `97,41%` (188 killed, 5 survived, 106 ignored, 2 `CompileError` gerados por mutações C# inválidas, 0 timeout, 0 `NoCoverage` e 0 erro de execução); o ratchet versionado é `break/low/high = 97/97/97`. Um gate adicional do relatório reprova timeout, lacuna de cobertura, erro de runtime ou alteração na quantidade dos dois erros de compilação já classificados. HTML e JSON são gravados em `artifacts/mutation/reports/` por padrão e nunca devem ser versionados. Os cinco survivors equivalentes permanecem visíveis no relatório limpo; a estratégia e as justificativas estão em [`docs/sdd/04-test-strategy.md`](docs/sdd/04-test-strategy.md) e [`docs/sdd/07-validation-report.md`](docs/sdd/07-validation-report.md).
 
 O smoke completo usa a porta 8080; encerre antes a pilha principal sem remover seu volume:
 
@@ -134,6 +140,7 @@ O Compose funciona sem `.env`. [`.env.example`](.env.example) documenta override
 | `Jwt__Audience` | `UserProfile.Web` | não pode ser vazio quando sobrescrito |
 | `Jwt__LifetimeMinutes` | `15` | somente `15` é aceito |
 | `Jwt__SigningKey` | aleatória em memória por processo | Base64 de pelo menos 32 bytes quando informada; obrigatória fora de Development |
+| `MUTATION_ARTIFACTS_DIR` | `./artifacts/mutation` | diretório host para relatórios HTML/JSON do profile de mutação; não contém configuração da aplicação |
 
 Para sessões sobreviverem ao restart local, gere uma chave própria fora do repositório, por exemplo com `openssl rand -base64 32`, e forneça-a pelo ambiente. O valor real nunca deve entrar em logs, documentação ou commits.
 
@@ -141,6 +148,7 @@ Para sessões sobreviverem ao restart local, gere uma chave própria fora do rep
 
 ```text
 .
+├── .config/dotnet-tools.json                    dotnet-stryker fixado
 ├── src/backend/UserProfile.Api/                 API, EF Core e migrations
 ├── src/frontend/user-profile-web/               Angular e Nginx
 ├── tests/backend/UserProfile.Api.IntegrationTests/  integração HTTP/SQLite
@@ -148,6 +156,7 @@ Para sessões sobreviverem ao restart local, gere uma chave própria fora do rep
 ├── scripts/                                      contrato, smoke e cleanup seguro
 ├── docs/sdd/                                     requisitos, design e evidências
 ├── .github/workflows/ci.yml                      pipeline de CI
+├── .github/workflows/mutation.yml                mutação manual/semanal
 ├── compose.yaml                                  aplicação e profiles de teste
 └── UserProfile.sln                               solution .NET
 ```
@@ -171,13 +180,14 @@ Para sessões sobreviverem ao restart local, gere uma chave própria fora do rep
 - Não há refresh ou revogação: logout e troca de senha limpam a sessão cliente, enquanto um token capturado permanece válido até `exp`.
 - O `409` de cadastro torna email duplicado observável para cumprir o requisito; o login usa sempre o mesmo `401` genérico.
 - A chave efêmera permite `docker compose up` sem segredo versionado; uma chave externa é necessária para sessões estáveis entre restarts e para qualquer ambiente não Development.
+- Mutation testing cobre somente lógica crítica do backend e roda manualmente/semanalmente; o custo de multiplicar a suíte HTTP/SQLite não é imposto a cada PR. O ratchet deriva da baseline real, não de uma meta arbitrária, e não há mutation testing frontend.
 
 ## Limitações conhecidas
 
 - ambiente de demonstração em HTTP, com Swagger exposto e sem terminação TLS;
 - SQLite e migrations no startup suportam uma única instância;
 - sem confirmação/recuperação de email, roles, administração, refresh token ou deploy de produção;
-- CI hospedada ainda não foi observada porque o repositório não foi associado/publicado;
+- CI hospedada, inclusive o workflow semanal/manual de mutação, ainda não foi observada porque o repositório não foi associado/publicado;
 - E2E cobre Chromium e três jornadas deliberadamente pequenas, não uma matriz de browsers;
 - a demonstração não possui rate limiting ou lockout em cadastro/login; por isso o bind fica restrito ao loopback e exposição externa exige hardening adicional;
 - não há header CSP; reduzir o risco de XSS em produção exige política de conteúdo, TLS e revisão dos assets permitidos;
@@ -193,7 +203,7 @@ IA apoiou requisitos, design, implementação incremental, testes e revisões in
 2. Siga cadastro/login nos Controllers: normalização e índice único no banco, hash Identity e `401` genérico.
 3. Siga um endpoint de perfil: o `sub` vira o único ID consultado e DTOs impedem overposting/dados sensíveis.
 4. Mostre guard/interceptor/sessionStorage e explique expiração curta, logout cliente e ausência de refresh.
-5. Execute os profiles Docker e as três jornadas; relacione cada evidência à matriz SDD.
+5. Execute os profiles Docker, a mutação backend e as três jornadas; relacione cada evidência à matriz SDD.
 
 ## Troubleshooting
 
@@ -203,3 +213,4 @@ IA apoiou requisitos, design, implementação incremental, testes e revisões in
 - **Health não fica saudável:** execute `docker compose ps` e `docker compose logs --no-color api web`; erros de migration/configuração fazem startup falhar de propósito.
 - **Token deixa de funcionar após restart:** configure `Jwt__SigningKey` estável; usuários continuam no volume.
 - **Reset completo:** use `docker compose down --volumes --remove-orphans` e suba novamente.
+- **Mutation testing demora:** a baseline levou cerca de cinco minutos sem contenção e pode se aproximar do timeout de 90 minutos em host compartilhado; não aumente workers nem reduza a suíte para mascarar o ambiente.

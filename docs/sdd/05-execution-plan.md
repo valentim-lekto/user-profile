@@ -164,6 +164,67 @@ Gates observáveis:
 - todos os critérios possuem evidência e estado final correto;
 - build, testes, E2E e revisão do diff estão aprovados.
 
+### Atividade pós-M6 — mutation testing do backend
+
+**Estado:** concluída localmente em 2026-08-27; execução hospedada permanece pendente até publicação
+
+Entregas:
+
+- criar `BE-MUT-001` e `CI-MUT-001`, ligados a `NFR-TEST-01`/`TEST-FLOW-01`, sem novo requisito funcional ou ADR;
+- fixar `dotnet-stryker` `4.16.0` em tool manifest raiz e configurar somente a allowlist crítica do backend no projeto de integração;
+- criar target/profile Docker reproduzível, com HTML/JSON em diretório ignorado e sem depender de SDK local;
+- executar a baseline temporária, classificar survivors e adicionar apenas testes xUnit ligados a comportamento observável;
+- fixar o ratchet final a partir do score real e reexecutar com exit code zero;
+- criar workflow próprio manual/semanal, sem gatilho de push/PR, e registrar a execução hospedada como pendente até ser observada.
+
+Gates observáveis:
+
+- suíte xUnit normal permanece verde e nenhum teste é enfraquecido;
+- somente os arquivos-alvo possuem mutantes ativos/executados, sem `NoCoverage`, timeout ou erro inexplicado; fontes externas podem aparecer apenas como `Ignored` pelo mutate filter;
+- configuração final possui `break > 0`, atende ao ratchet e produz HTML/JSON sem dado sensível;
+- Compose, inventários, smoke, actionlint e `git diff --check` passam sem alterar comportamento da aplicação, OpenAPI ou frontend; refatorações internas behavior-preserving no JWT precisam permanecer cobertas;
+- cleanup do profile não toca no volume da aplicação.
+
+### Atividade pós-M6 — refinamento visual do frontend
+
+**Estado:** concluída localmente em 2026-08-28, incluindo a simplificação final do dashboard
+
+Entregas:
+
+- modernizar somente a apresentação do shell, login, cadastro, dashboard e perfil, sem alterar API, navegação, payloads ou regras de negócio;
+- usar Angular Material e CSS proporcional, com paleta inspirada na linguagem pública da Lekto sem copiar marca ou ativos;
+- manter o `id` imutável no `ProfileResponse`, mas retirar sua exposição visual por não fazer parte dos dados cadastrais exigidos pelo enunciado;
+- retirar do dashboard os três cartões meramente descritivos de dados pessoais, senha e sessão, preservando o hero, o resumo do perfil e as ações reais;
+- preservar labels, nomes acessíveis, hierarchy de headings, `aria-live`, foco, loading, bloqueio de duplo submit e os seletores das jornadas existentes;
+- ampliar as asserções responsivas das jornadas existentes, sem criar uma nova jornada E2E.
+
+Gates observáveis:
+
+- lint, testes e build do frontend passam no profile Docker existente;
+- `E2E-001`–`003` continuam verdes e comprovam ausência de overflow em 360 px também nas superfícies de autenticação;
+- teste focado e `E2E-001` comprovam que o `id` recebido continua fora do DOM, enquanto nome/email permanecem carregados e editáveis;
+- `FE-DASH-001` comprova que a saudação, o resumo, a navegação e o logout permanecem disponíveis sem os três cartões descritivos;
+- inspeção real desktop/mobile confirma composição, contraste, foco visível e console limpo;
+- backend, OpenAPI, banco, autenticação e Compose principal não recebem mudança funcional.
+
+### Atividade pós-M6 — correção responsiva da revisão
+
+**Estado:** concluída localmente em 2026-08-28
+
+Entregas:
+
+- priorizar o formulário de login/cadastro quando a viewport for simultaneamente estreita e baixa;
+- manter a ordem visual das ações móveis igual à ordem do DOM e do foco por teclado;
+- limitar somente a apresentação do nome defensivo de 200 caracteres no hero e no resumo do dashboard, preservando seu texto integral no DOM e no perfil;
+- ampliar `E2E-001` para comprovar os três comportamentos, as quatro telas em 320 px, o formulário completo em landscape e ambas as ações do dashboard, sem criar nova jornada ou alterar API, estado, navegação ou regra de negócio.
+
+Gates observáveis:
+
+- regressões novas falham contra o layout anterior e passam após a correção;
+- lint, suíte frontend, build e três jornadas E2E permanecem verdes;
+- navegador real confirma login/cadastro em landscape curto, sequência de foco coerente e dashboard utilizável em 320/360 px com nome no limite;
+- `git diff --check` passa e backend, OpenAPI, banco, Compose e contratos permanecem inalterados.
+
 ## Progresso
 
 - `2026-08-24` — `design concluído` — artefatos de design e planejamento criados; M1–M6 permanecem pendentes e nenhum código foi implementado.
@@ -184,6 +245,12 @@ Gates observáveis:
 - `2026-08-26` — `revisão independente de M5 concluída` — o commit `eaad3cd` foi auditado; 0 High, 8 Medium e 11 Low foram corrigidos, incluindo seis inconsistências triviais descobertas na re-revisão do próprio patch corretivo. Provas E2E de nomes acessíveis/persistência/reproteção, inventário exato, dependências, diagnósticos, cleanup, CI imutável e rastreabilidade passaram nos gates finais; detalhes em [`review-log.md`](review-log.md).
 - `2026-08-27` — `M6 concluído tecnicamente` — quatro auditorias independentes e a re-revisão final encerraram todos os Médios, inclusive o bind publicado fora do loopback e a afirmação incorreta sobre CSP. Build sem cache, Compose sem `.env`, URLs, restart/persistência, 101 integrações, 57 testes frontend, três E2E, contrato, smoke e actionlint passaram somente com Docker. README, relatório final, plano, matriz, índice, `.env.example` e uso de IA foram fechados; publicação e confirmação humana permanecem explicitamente externas.
 - `2026-08-27` — `revisão independente pós-M6 concluída` — o commit documental `ee2933d` e a entrega acumulada foram auditados contra `3f6fbc4`; 0 High, 2 Medium e 2 Low foram confirmados e corrigidos. A expiração do JWT agora reprotege dashboard/perfil já ativos, inclusive com parâmetros de URL; chamadas protegidas sem token válido não saem anonimamente; timers respeitam sessão/rota/lifecycle e a evidência corrente foi atualizada. Regressões vermelhas, 64 testes frontend, 101 integrações backend, contrato, 3 E2E, smoke e actionlint foram observados; detalhes em [`review-log.md`](review-log.md).
+- `2026-08-27` — `correção da revisão completa concluída` — o snapshot `a73d33b` foi revisado por correção/segurança, stale, simplicidade e KISS. A primeira execução Docker oficial do frontend falhou por sete timeouts e a repetição na mesma imagem passou 64/64; o runner agora carrega timeout global de 30 segundos sem retry. A re-revisão do patch removeu ainda dois overrides locais obsoletos de 10 segundos que anulavam parcialmente essa política. Três decoders idênticos de `ProblemDetails` foram consolidados em `core/http`, com três testes defensivos e sem alterar o contrato HTTP ou criar nova camada. O profile reconstruído e duas execuções simultâneas finais aprovaram lint, 67/67 testes em 10 arquivos e build; backend 101/101, OpenAPI e Compose config também passaram.
+- `2026-08-27` — `mutation testing pós-M6 iniciado` — `BE-MUT-001`/`CI-MUT-001`, allowlist crítica, execução Docker, política de baseline/ratchet e workflow manual/semanal foram especificados antes da implementação; score e evidência permanecem pendentes até execução real.
+- `2026-08-27` — `mutation testing pós-M6 concluído localmente` — suíte normal com 111 integrações, baseline limpa de 97,41%, ratchet 97/97/97, profile Docker, relatórios HTML/JSON, inventários, smoke e workflow manual/semanal foram implementados e validados; somente a execução hospedada continua pendente.
+- `2026-08-28` — `refinamento visual ajustado ao escopo original` — o `id` imutável permaneceu no `ProfileResponse`, conforme contrato M3, mas foi removido do DOM da tela de perfil por não ser dado cadastral exigido pelo enunciado. A regressão falhou primeiro contra a apresentação anterior e, após a remoção direta do bloco/estilos, lint, 67/67 testes, build e 3/3 E2E passaram.
+- `2026-08-28` — `dashboard simplificado ao escopo do desafio` — os três cartões sem ação de dados pessoais, senha e sessão foram retirados por repetirem funções já acessíveis no perfil/logout. A regressão falhou primeiro com 67/68 testes; depois da remoção direta do markup e dos estilos órfãos, lint, 68/68 testes, build, 3/3 E2E e inspeção real do dashboard passaram.
+- `2026-08-28` — `correção responsiva da revisão concluída` — três regressões sequenciais reproduziram formulário fora da viewport em `667×375`, ordem visual inversa ao Tab em `360×800` e nome defensivo sem limite vertical. Media query, ordem de coluna e clamps CSS diretos encerraram os achados; lint, 68/68 testes, build, 3/3 E2E e inspeção real em `320×568`, `360×800` e `667×375` passaram.
 
 ## Evidências de M1
 
@@ -284,6 +351,41 @@ O relatório detalhado, incluindo as correções do próprio script de auditoria
 | Gates acumulados | Profiles `backend-tests`/`contract-tests`, `e2e-playwright.sh`, `validate-m1-compose.sh` e `actionlint:1.7.12` | 101/101 integrações, OpenAPI 6 operações/53 referências, 3/3 E2E, smoke completo e workflow aprovados; nenhum segredo real usado. |
 | Re-revisão e documentação | Diff corretivo completo, `review-log.md`, plano, matriz, relatório, índice e uso de IA | 0 High, 0 Medium e 0 Low abertos; evidência original de M6 preservada como histórica e estado corrente atualizado sem promover CI hospedada, `AI-EXPLAIN-01` ou `DEL-REPO-01`. |
 
+## Evidências da correção posterior à revisão completa
+
+| Gate | Execução observada em 2026-08-27 | Resultado |
+|---|---|---|
+| Baseline do achado | Profile Docker oficial no snapshot `a73d33b`; repetição isolada na mesma imagem | Primeira execução: lint aprovado e 57/64 testes, com sete timeouts de 5/10 segundos; repetição: 64/64. A oscilação confirmou um falso negativo do gate sob contenção, não falha funcional determinística. |
+| Configuração e refatoração | `vitest.config.ts` carregado por `@angular/build:unit-test`; busca de overrides; parser comum em `core/http/problem-details.ts` | Timeout global de 30 segundos aplicado sem retry ou override local menor; três cópias idênticas removidas e os três services preservaram a mesma leitura defensiva. |
+| Frontend final | Profile `frontend-tests` reconstruído após a re-revisão; duas repetições simultâneas do mesmo profile | Três execuções verdes: lint, 67/67 testes em 10 arquivos e build de 318,10 kB bruto/87,84 kB estimado; as repetições sob contenção também passaram integralmente. |
+| Gates acumulados aplicáveis | Profiles `backend-tests`/`contract-tests` e `docker compose config --quiet` | 101/101 integrações, OpenAPI com 6 operações/53 referências e configuração Compose aprovados. E2E/smoke não foram repetidos porque API, rotas, templates e contrato de negócio não mudaram. |
+
+## Evidências da atividade pós-M6 de mutation testing
+
+| Gate | Execução observada | Resultado |
+|---|---|---|
+| Suíte backend normal | `docker compose --profile backend-tests run --rm --build backend-tests` | Restore/build Release aprovados e 111/111 integrações passaram, sem falha ou skip. |
+| Baseline Stryker | Profile `mutation-tests` com `thresholds.break = 0` temporário | 465 mutantes criados; baseline limpa de 97,41% em 00:04:41, com 188 killed, 5 survived, 106 ignored, 2 mutações C# inválidas em `CompileError` e zero `NoCoverage`, timeout ou erro de execução. |
+| Ratchet e relatórios | `stryker-config.json` final e `docker compose --profile mutation-tests run --rm --build mutation-tests` | `break/low/high = 97/97/97`; execução definitiva em 00:02:43 com 188 killed, 5 survived, 0 timeout/erro, HTML/JSON e gate do relatório aprovados; os cinco survivors equivalentes permanecem visíveis. |
+| Infraestrutura local | `docker compose --profile mutation-tests config --quiet`, smoke Compose, actionlint e revisão estática | Profile isolado, inventários, gate contra falso-verde por timeout e workflow manual/semanal aprovados localmente; cleanup não usa `--volumes`. Execução hospedada permanece Pending até publicação e observação. |
+
+## Evidências correntes do refinamento visual pós-M6
+
+| Gate | Execução observada em 2026-08-28 | Resultado |
+|---|---|---|
+| Regressão do dashboard | Profile `frontend-tests` depois de atualizar especificação e teste, antes do template | Lint aprovado; 67/68 testes passaram e a única falha comprovou que os três textos redundantes ainda estavam no DOM. |
+| Frontend final | `docker compose --profile frontend-tests run --rm --build frontend-tests` | Lint, 68/68 testes em 10 arquivos e build de 327,52 kB bruto/90,29 kB estimado aprovados. |
+| Jornadas e publicação local | `./scripts/e2e-playwright.sh`; recriação somente do serviço `web`; navegador real em `http://localhost:8080/dashboard` | 3/3 E2E em 5,0 s; stack principal saudável e volume/API preservados; em 1280 px o DOM manteve um `h1`, um `h2`, perfil/logout, nenhum dos três textos e nenhum overflow. `E2E-001` repetiu o gate de overflow em 360 px. |
+
+## Evidências da correção responsiva pós-revisão
+
+| Gate | Execução observada em 2026-08-28 | Resultado |
+|---|---|---|
+| Regressões antes de cada correção | Três execuções sucessivas de `./scripts/e2e-playwright.sh` | Vermelhos determinísticos, sempre com E2E-002/003 verdes: formulário de cadastro com viewport ratio `0`; link secundário em `y=677` abaixo do botão posterior em `y=620`; e nome sem clamp/altura limitada. |
+| Frontend final | `docker compose --profile frontend-tests run --rm --build frontend-tests` | Lint aprovado, 68/68 testes em 10 arquivos e build de 327,59 kB bruto/90,31 kB estimado. |
+| Jornadas finais | `./scripts/e2e-playwright.sh` | 3/3 jornadas aprovadas em 5,0 s; `E2E-001` comprovou as quatro telas sem overflow em 320 px, formulário completo rolável em landscape curto, ordem visual/Tab, ambas as ações na primeira viewport e contenção visível do nome de 200 caracteres sem nova jornada. |
+| Publicação, inspeção real e re-revisão dos oráculos | Recriação somente do serviço `web`; `/health`; navegador em `667×375`, `360×800` e `320×568`; E2E reforçado | API/volume preservados e health saudável. Login/cadastro completos ficaram alcançáveis em landscape; as quatro telas passaram sem overflow em 320 px; ações seguiram DOM/foco; nome integral de 200 caracteres ficou visível em 3/2 linhas, e `Ir para o perfil`/`Sair` terminaram dentro da primeira viewport móvel. |
+
 Ao iniciar um milestone, alterar somente seu estado para `em andamento`. Ao concluir, registrar data, comandos, evidências, desvios e hash do commit antes de iniciar o próximo.
 
 ## Comandos
@@ -320,10 +422,11 @@ scripts/validate-m1-compose.sh
 docker compose --profile backend-tests run --build --rm backend-tests
 docker compose --profile frontend-tests run --build --rm frontend-tests
 docker compose --profile contract-tests run --rm contract-tests
+docker compose --profile mutation-tests run --rm --build mutation-tests
 ./scripts/e2e-playwright.sh
 ```
 
-`scripts/validate-m1-compose.sh` é o smoke funcional acumulado M1+M2+M3+M4 e, em M5, também valida tags completas e configuração operacional dos profiles. Os quatro comandos Compose/script finais reproduzem os gates de backend, frontend, contrato e E2E sem SDKs no host.
+`scripts/validate-m1-compose.sh` é o smoke funcional acumulado M1+M2+M3+M4 e, em M5, também valida tags completas e configuração operacional dos profiles. Os cinco comandos Compose/script finais reproduzem os gates de backend, frontend, contrato, mutação e E2E sem SDKs no host.
 
 Os nomes de scripts npm devem ser confirmados no scaffold e então congelados. Mudança de comando exige atualização deste plano e do README antes do código dependente.
 
@@ -349,6 +452,7 @@ Os nomes de scripts npm devem ser confirmados no scaffold e então congelados. M
 - **Chave sem `.env`** — gerar somente em `Development`; exigir configuração externa nos demais ambientes.
 - **Tags envelhecidas** — reconfirmar as tags fixadas em M1; qualquer upgrade deve ser explícito e testado.
 - **E2E instável** — limitar a três jornadas, esperar estados observáveis e não usar sleeps arbitrários.
+- **Custo e ruído da mutação** — limitar à lógica crítica, executar manual/semanal e manter survivors/equivalências visíveis; não mudar regra de negócio por score.
 - **Escopo crescente** — rejeitar patterns, endpoints e funcionalidades não ligados à matriz.
 
 ## Descobertas
@@ -383,7 +487,12 @@ Os nomes de scripts npm devem ser confirmados no scaffold e então congelados. M
 - `2026-08-26` — A revisão independente de M5 fechou `REV-M1-015`–`017`: npm passou a impor a allowlist, assets inexistentes com extensão retornam `404` e o collector sem consumidor foi removido. Actions foram fixadas por SHA e a decisão de status do teardown ganhou prova negativa direta, sem framework de CI adicional.
 - `2026-08-27` — M6 não alterou código da aplicação nem contrato de negócio. Uma correção direta de configuração restringiu a publicação HTTP ao loopback e um assert no smoke tornou a decisão executável; documentação encerrou os demais achados. O usuário Nginx, `forbidOnly`, CSP e rate limiting permaneceram hardenings baixos documentados, sem abstrações novas.
 - `2026-08-27` — A revisão pós-M6 corrigiu `AC-DASH-02` no serviço de autenticação e no interceptor sem store, refresh, listener global ou nova dependência: um único timer por sessão compara o token capturado, respeita a rota ativa e é cancelado no lifecycle; a API permanece autoridade.
+- `2026-08-27` — A revisão completa posterior escolheu duas correções KISS: um único limite Vitest de 30 segundos no runner, sem retry, e um módulo compartilhado somente para o contrato/parser defensivo de `ProblemDetails`; timers, allowlists, services e mensagens específicas permanecem distintos.
+- `2026-08-27` — Mutation testing foi definido como gate pós-M6 do backend, não como novo milestone funcional: Stryker `4.16.0`, allowlist crítica, execução Docker manual/semanal e ratchet derivado da primeira baseline real, sem gate de PR ou mutation testing frontend.
+- `2026-08-28` — O refinamento visual modernizou somente o shell e as quatro telas Material. Paleta, tipografia do sistema, cartões e formas CSS foram inspirados na linguagem pública da Lekto sem copiar marca/ativos; labels, estados, rotas, payloads e regras permaneceram intactos. O `id` continua obrigatório no DTO de transporte, mas não é renderizado porque o desafio pede consulta visual somente de nome, email e senha.
+- `2026-08-28` — A simplificação final do dashboard removeu somente o bloco de três cartões informativos e seus estilos exclusivos. Hero, dados retornados, navegação, logout, loading/erro e contratos permaneceram intactos; nenhuma abstração ou funcionalidade substituta foi criada.
+- `2026-08-28` — A correção responsiva pós-revisão ocultou apenas o painel editorial em viewport simultaneamente estreita/baixa, alinhou o empilhamento móvel à ordem do DOM e limitou visualmente o nome no dashboard. O texto integral continua no DOM/API/perfil; não houve TypeScript, dependência, estado, rota ou contrato novo.
 
 ## Resultado final
 
-M1–M6 estão concluídos quanto ao escopo técnico e documental. A conclusão original de M6 repetiu o ambiente somente com Docker; a revisão independente posterior corrigiu a reproteção visual no `exp` sem alterar a API ou ampliar o escopo de negócio. A evidência corrente contém 101 integrações backend, 64 testes frontend, três jornadas Playwright, contrato, actionlint e smoke completo aprovados. A execução hospedada da CI, a confirmação de `AI-EXPLAIN-01` por uma pessoa e `DEL-REPO-01` permanecem ações externas e não foram marcadas como Verified.
+M1–M6 estão concluídos quanto ao escopo técnico e documental. A conclusão original de M6 repetiu o ambiente somente com Docker; a revisão independente posterior corrigiu a reproteção visual no `exp`, e a revisão completa seguinte estabilizou o gate Vitest e centralizou a leitura de `ProblemDetails`, sem alterar API ou ampliar o escopo de negócio. A evidência corrente contém 111 integrações backend, 68 testes frontend, três jornadas Playwright, contrato, actionlint e smoke completo aprovados. A atividade pós-M6 de mutation testing foi concluída localmente com baseline limpa de 97,41%, ratchet 97/97/97 e relatórios HTML/JSON. O refinamento visual e sua correção responsiva pós-revisão também foram concluídos com lint/test/build, as três jornadas e inspeção real desktop, portrait e landscape curta; o dashboard corrente preserva somente conteúdo e ações úteis. A execução hospedada da CI, a confirmação de `AI-EXPLAIN-01` por uma pessoa e `DEL-REPO-01` permanecem ações externas e não foram marcadas como Verified.

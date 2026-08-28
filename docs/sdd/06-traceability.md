@@ -1,6 +1,6 @@
 # 06 — Matriz de rastreabilidade
 
-**Status:** M6 concluído tecnicamente; revisão independente pós-M6 concluída · **Data:** 2026-08-27
+**Status:** M6, mutation testing e refinamento visual pós-M6 concluídos localmente; execuções hospedadas pendentes · **Data:** 2026-08-28
 
 ## Convenções
 
@@ -12,6 +12,10 @@
 - **M5 concluído/parcial:** cobertura acumulada, acabamento, três jornadas Playwright, perfis Compose e definição de CI possuem implementação e evidência local; a execução hospedada continua dependente de publicação.
 - **Verified (M6):** implementação ou artefato confrontado com evidência executada nesta auditoria final; esse estado não é usado para ação externa ou capacidade humana não observada.
 - **Verified (revisão pós-M6):** comportamento ou evidência corrente corrigido e reexecutado depois da auditoria original de M6; registros M1–M6 anteriores permanecem históricos.
+- **Verified (correção da revisão completa):** confiabilidade ou simplicidade corrigida e comprovada depois da revisão do snapshot `a73d33b`; evidências anteriores continuam históricas.
+- **Pós-M6 em andamento:** especificação e ligação existem, mas implementação, baseline ou reexecução final ainda não possuem evidência completa.
+- **Verified (mutation testing pós-M6):** configuração final, suíte normal, execução Stryker, relatórios, ratchet e infraestrutura foram confrontados com execução real; não se aplica à execução hospedada até ela ser observada.
+- **Verified (refinamento visual pós-M6):** apresentação, responsividade e semântica das quatro telas foram confrontadas com suíte frontend, jornadas existentes e inspeção real desktop/mobile, sem mudança funcional.
 - **Parcial:** parte documental já existe, mas o critério depende de implementação ou entrega futura.
 - **Pendente:** depende integralmente de milestone, ação humana ou evidência
   externa ainda não observada.
@@ -32,14 +36,14 @@
 | `FR-AUTH-01` | `AC-DASH-02` | JWT middleware, functional guard, timer de `exp`, interceptor e rotas `/dashboard`/`/profile` | M3–M4, revisão pós-M6 | `BE-AUTH-001`, `BE-PASS-004`, `FE-GUARD-001`, `FE-INT-002`, `FE-WIRE-001`, `E2E-001/002/003` | Verified (revisão pós-M6): além da proteção inicial/logout/senha já comprovada, o mesmo JWT é removido em `exp`, uma rota protegida já ativa conduz ao login, sessão posterior/rota pública são preservadas e request protegida sem token válido é cancelada antes da rede. |
 | `FR-AUTH-02` | `SEC-AUTH-01`, `AC-PROF-01` | Leitura de `sub`; `getCurrentProfile`, `updateCurrentProfile`, `changeCurrentPassword` | M3–M4 | `BE-AUTH-002`, `BE-PROF-002/006`, `BE-PASS-004`, `SPEC-OAS-003` | M4 concluído: GET e os dois PUTs identificam exclusivamente pelo `sub`; overposting, IDs em query/header e isolamento entre usuários foram rejeitados/comprovados. |
 | `FR-DASH-01` | `AC-DASH-01`, `AC-DASH-04` | `getCurrentProfile`, `ProfileService`, `/dashboard` | M3 | `BE-PROF-001`, `FE-DASH-001`, `FE-WIRE-001`, `E2E-001` | M3 concluído: dashboard protegido busca a API e mostra o nome; loading/erro e isolamento entre sessões foram exercitados na suíte, enquanto a UI real comprovou o fluxo feliz. |
-| `FR-DASH-02` | `AC-DASH-03` | Link `/dashboard` → `/profile` | M3 | `FE-DASH-001`, `E2E-001` | M5 comprovado: a jornada real navega do dashboard ao perfil, salva e retorna ao dashboard. |
-| `FR-PROF-01` | `AC-PROF-01` | `ProfileResponse` com `id/name/email`, `getCurrentProfile`, `/profile` | M3–M4 | `BE-PROF-001/002`, `FE-PROF-001` | M4 concluído: a tela carrega o perfil autenticado e o backend mantém o DTO mínimo, sem senha/hash. |
+| `FR-DASH-02` | `AC-DASH-03` | Hero do `/dashboard` com link direto para `/profile`, sem cartões descritivos sem ação | M3, ajuste pós-M6 | `FE-DASH-001`, `E2E-001` | Verified (ajuste visual pós-M6): a navegação e o fluxo real permanecem íntegros; teste focado e inspeção real comprovam ausência dos três cartões redundantes. |
+| `FR-PROF-01` | `AC-PROF-01` | `ProfileResponse` técnico com `id/name/email`; `getCurrentProfile`; `/profile` renderiza somente nome/email | M3–M4, ajuste pós-M6 | `BE-PROF-001/002`, `FE-PROF-001`, `E2E-001` | Verified (ajuste visual pós-M6): o backend preserva o DTO mínimo contratado, enquanto a tela carrega e edita nome/email sem renderizar o `id`; senha/hash continuam ausentes. |
 | `FR-PROF-02` | `AC-PROF-02`, `AC-PROF-03`, `AC-PROF-04` | `UpdateProfileRequest`, `updateCurrentProfile`, formulário de dados | M4 | `BE-PROF-003/004/005/006`, `FE-PROF-001/002` | M4 concluído: validações equivalentes, borda positiva de email 320, normalização, unicidade/race, isolamento, payload mínimo e operações inválidas sem mutação foram aprovados. |
 | `FR-PROF-03` | `AC-PROF-05` | `ProfileResponse`, signals de loading/sucesso/erro | M4 | `BE-PROF-003`, `FE-PROF-002`, `E2E-001` | M5 comprovado: submissão/feedback/bloqueio passaram e a jornada real confirmou o novo nome no dashboard e o email em nova consulta do perfil. |
 | `FR-PASS-01` | `AC-PASS-01` | `ChangePasswordRequest`, `changeCurrentPassword`, formulário separado | M4 | `FE-PASS-001`, `SPEC-OAS-004` | M4 concluído: formulário e endpoint separados, campos obrigatórios, wiring DOM e limite inclusivo 128 foram aprovados. |
 | `FR-PASS-02` | `AC-PASS-02`, `AC-PASS-03` | PasswordHasher e `400 ValidationProblemDetails` | M4 | `BE-PASS-001/002`, `FE-PASS-001/002` | M4 concluído: senha atual inválida, confirmação divergente e novas senhas inválidas preservam integralmente usuário/hash; troca válida invalida a senha antiga e aceita a nova. |
 | `FR-PASS-03` | `AC-PASS-04` | `200 MessageResponse`, limpeza de `sessionStorage` condicionada ao token iniciador | M4 | `BE-PASS-003`, `FE-PASS-002`, `E2E-003` | M5 comprovado: sucesso encerra a sessão; antes de qualquer novo login, a jornada reprova o dashboard, depois rejeita a senha antiga e aceita a nova; o teste focado preserva uma sessão posterior. |
-| `FR-UI-01` | `UI-STATE-01`, `AC-LOGIN-03`, `AC-DASH-04` | Signals e estados em cadastro, login, dashboard e perfil/senha | M2–M5 | `FE-REG-001/002`, `FE-LOGIN-001`, `FE-DASH-001`, `FE-PROF-001/002`, `FE-PASS-002`, `E2E-001/002/003` | M5 concluído: 57 testes, UI real e locators E2E por label/role comprovam feedback, loading, foco, nomes acessíveis, teclado e layout responsivo nas quatro telas. |
+| `FR-UI-01` | `UI-STATE-01`, `UI-RESP-01`, `AC-LOGIN-03`, `AC-DASH-04` | Signals e estados em cadastro, login, dashboard e perfil/senha; composição visual pós-M6 | M2–M5, pós-M6 | `FE-REG-001/002`, `FE-LOGIN-001`, `FE-DASH-001`, `FE-PROF-001/002`, `FE-PASS-002`, `FE-VISUAL-001`, `E2E-001/002/003` | Verified (correção responsiva pós-revisão): 68/68 testes, três jornadas e inspeção real confirmam estados, quatro telas sem overflow em 320 px, formulário completo em landscape curto, ordem visual/foco e nome defensivo contido com ambas as ações visíveis. |
 | `FR-ERR-01` | `API-ERROR-01` | Schemas/responses ProblemDetails; Nginx converte `413` e `502/504` → `503` | M1–M5 | `BE-ERR-001/002`, `BE-HEALTH-001`, `SPEC-OAS-005`, `OPS-COMPOSE-001`, `OPS-ORIGIN-001`, `CI-001` | M5 concluído na fatia: integração/contrato/smoke comprovam `400/401/404/405/409/413/415/500/503`; o workflow repete os gates sem criar quarta jornada E2E. |
 
 ## Requisitos não funcionais
@@ -47,17 +51,17 @@
 | Requisito | Critério de aceite | Design / endpoint / tela | Milestone | Teste planejado | Estado |
 |---|---|---|---|---|---|
 | `NFR-TECH-01` | `TECH-BACKEND-01` | .NET 10, Controllers, EF Core SQLite 10, JWT e lock NuGet; ADR-0001 | M1–M6 | `TECH-BACKEND-001`, build e suíte `BE-*` | Verified (M6): build sem cache e target Docker aprovaram restore/build; 101 integrações passaram sem falha/skip. |
-| `NFR-TECH-02` | `TECH-FRONTEND-01` | Angular standalone/strict, Material, Reactive Forms, signals, npm/lock/allowlist | M1–M6 | `TECH-FRONTEND-001`, build e suíte `FE-*` | Verified (revisão pós-M6): npm/lint, 64 testes sem skip e build de produção passaram no target Docker fixado. |
+| `NFR-TECH-02` | `TECH-FRONTEND-01` | Angular standalone/strict, Material, Reactive Forms, signals, parser comum de ProblemDetails, npm/lock/allowlist e timeout Vitest limitado | M1–M6, correção pós-revisão | `TECH-FRONTEND-001`, build e suíte `FE-*` | Verified corrente: runner carrega timeout global de 30 segundos sem retry ou override local menor; depois das repetições de estabilidade com 67 testes, o profile final aprovou lint, 68/68 testes em 10 arquivos e build. |
 | `NFR-DATA-01` | `OPS-DOCKER-01`, `OPS-DOCKER-03` | SQLite, migrations e volume; ADR-0002 | M1, M6 | `BE-DB-001`, `OPS-PERSIST-001`, `OPS-COMPOSE-001` | Verified (M6): volume foi resetado, migrations criaram banco vazio e nome/email persistiram após restart dos containers. |
 | `NFR-OPS-01` | `OPS-DOCKER-01` | `compose.yaml`, Nginx com `413/503 ProblemDetails`, API e volume; `/health` e `/swagger` | M1, M6 | `OPS-COMPOSE-001`, `OPS-ORIGIN-001` | Verified (M6): config sem `.env`, build sem cache, healthchecks, origem/Swagger, restart, smoke e cleanup passaram. |
 | `NFR-OPS-02` | `OPS-DOCKER-02` | Origem única, builds multi-stage, perfis de teste e inventário exato; ADR-0004 | M1, M5, M6 | `OPS-COMPOSE-001`, `OPS-TAGS-001`, `CI-001`, `DOC-RUN-001` | Verified (M6): somente `web` publica `127.0.0.1:8080`, tags completas, quatro profiles Docker-only, README reproduzível e workflow por SHAs foram revalidados. |
 | `NFR-CONFIG-01` | `SEC-SECRET-01`, `OPS-DOCKER-01` | Base e `.env.example` opcional em M1; chave validada em M3; auditoria em M5 | M1, M3, M5–M6 | `BE-CONFIG-001`, `OPS-SECRET-001`, revisão de configuração | Verified (M6): Compose iniciou sem `.env`; chave real/banco não estão versionados; fallback efêmero e restrição de lifetime estão documentados. |
 | `NFR-SEC-01` | `SEC-AUTH-01`, `SEC-SESSION-01`, `SEC-SECRET-01`, `SEC-LOG-01` | ADR-0003, DTOs, logging, allowlists, wiring de produção e `sessionStorage` | M2–M6 | `BE-AUTH-*`, `BE-CONFIG-001`, `BE-PASS-004`, `BE-DTO-001`, `FE-GUARD-001`, `FE-INT-001/002`, `FE-PASS-002`, `FE-WIRE-001`, `OPS-SECRET-001`, `CI-001` | Verified (revisão pós-M6): hash, JWT, `sub`, DTOs, logs/artefatos, ausência de segredo, expiração visual e races de sessão passaram; 0 Alto/Médio aberto. |
-| `NFR-TEST-01` | `TEST-FLOW-01` | Estratégia com integração principal, frontend, E2E, Compose e CI | M1–M6 | Gates de `04-test-strategy.md`, `E2E-*`, `CI-001` | Verified localmente (revisão pós-M6): 101 integrações, 64 frontend, 3 E2E, contrato, actionlint e smoke passaram; execução hospedada continua Pending até push. |
+| `NFR-TEST-01` | `TEST-FLOW-01` | Estratégia com integração principal, frontend, E2E, Compose, CI e mutation testing crítico do backend; timeout frontend global sem retry | M1–M6, correção pós-revisão e atividade pós-M6 | Gates de `04-test-strategy.md`, `E2E-*`, `CI-001`, `BE-MUT-001`, `CI-MUT-001` | Verified localmente: 111 integrações, baseline Stryker limpa de 97,41%, ratchet 97/97/97, reports e infraestrutura Docker/CI estática aprovados. Execuções hospedadas continuam Pending até publicação e observação. |
 | `NFR-DOC-01` | `DOC-RUN-01` | README raiz e índice/relatório SDD | M6 | `DOC-RUN-001` | Verified (M6): README contém execução, URLs, fluxo, testes Docker-only, operação, variáveis, estrutura, decisões, limitações, IA e troubleshooting. |
 | `NFR-SDD-01` | `DOC-SDD-01`, `DOC-TRACE-01` | `00`–`07`, OpenAPI, plano, testes e ADRs | M1–M6 | `SPEC-TRACE-001`, revisão do índice | Verified (revisão pós-M6): índice, plano, matriz, relatório/adendo, review log, OpenAPI, ADRs e testes foram confrontados; links locais e contrato passaram. |
 | `NFR-SDD-02` | `DOC-SDD-01` | ADR-0001 a ADR-0004 | Design e contínuo | Revisão de decisões relevantes | Atendido nesta etapa; revisão contínua. |
-| `NFR-TRACE-01` | `DOC-TRACE-01` | Este documento e extensões `x-*` do OpenAPI | M1–M6 | `SPEC-TRACE-001` | Verified (M6): 19 requisitos funcionais, 14 não funcionais, 18 premissas e 40 critérios permanecem mapeados com estados coerentes. |
+| `NFR-TRACE-01` | `DOC-TRACE-01` | Este documento e extensões `x-*` do OpenAPI | M1–M6, pós-M6 | `SPEC-TRACE-001` | Verified corrente: 19 requisitos funcionais, 14 não funcionais, 18 premissas e 41 critérios permanecem mapeados com estados coerentes. |
 | `NFR-AI-01` | `AI-SDD-01`, `AI-EXPLAIN-01` | `ai-usage.md`, registros resumidos e walkthrough humano | Todos | Revisão de diff/decisões e `DOC-EXPLAIN-001` | Parcial: `AI-SDD-01` e o roteiro técnico estão Verified; `AI-EXPLAIN-01` permanece Pending human confirmation. |
 | `NFR-DELIVERY-01` | `DEL-REPO-01` | Publicação explícita pelo responsável | Entrega | Verificação manual da URL pública | Pending: nenhum remote/push foi configurado por instrução; entrega está pronta para essa ação externa. |
 
@@ -70,7 +74,7 @@
 | `PREM-ARCH-03` | `DOC-TRACE-01` | Features `Auth`/`Profile`; sem patterns proibidos | M1–M6 | Revisão de diff por milestone | Verified (revisão pós-M6): fluxo direto preservado; bind e reproteção no `exp` foram corrigidos sem layer, dependência, store ou refresh novos. |
 | `PREM-DATA-01` | `OPS-DOCKER-01`, `OPS-DOCKER-03` | EF Core SQLite, migrations e volume; ADR-0002 | M1, M6 | `BE-DB-001`, `OPS-PERSIST-001` | Verified (M6): migration em banco vazio e persistência de perfil após restart foram observadas no volume padrão. |
 | `PREM-DATA-02` | `DOC-TRACE-01` | Decisão interna do ADR-0002: entidade/migration `User`, timestamps e índice `UX_Users_NormalizedEmail` | M1–M4 | `BE-DB-001`, `BE-REG-001`, `BE-PROF-003`, `BE-PASS-003` | M4 concluído na fatia: schema/índice e relógio controlado comprovam preservação de `CreatedAtUtc` e avanço de `UpdatedAtUtc` somente em atualizações válidas. |
-| `PREM-FE-01` | `UI-STATE-01` | Angular standalone/strict, Reactive Forms, Material | M1–M5 | Build, suíte `FE-*` e `E2E-*` | M5 concluído na fatia: quatro telas Material, formulários tipados, signals, locators por nomes acessíveis, responsividade, lint/build, 57 testes e três jornadas passaram. |
+| `PREM-FE-01` | `UI-STATE-01`, `UI-RESP-01` | Angular standalone/strict, Reactive Forms, Material e refinamento visual responsivo | M1–M5, pós-M6 | Build, suíte `FE-*`, `FE-VISUAL-001` e `E2E-*` | Verified (correção responsiva pós-revisão): Material/strict/formulários foram preservados; lint, 68/68 testes, build, 3/3 E2E — inclusive as quatro telas em 320 px — e inspeção portrait/landscape passaram. |
 | `PREM-LANG-01` | `DOC-SDD-01` | Código/IDs em inglês; documentação em português | Todos | Revisão de diff | Design concluído; verificação contínua. |
 | `PREM-EMAIL-01` | `AC-REG-05`, `AC-PROF-04` | Para emails ASCII aceitos: `Trim().ToUpperInvariant()` nos três fluxos | M2–M4 | `BE-REG-003/004`, `BE-LOGIN-003`, `BE-PROF-005` | M4 concluído: cadastro, login e edição reutilizam a mesma regra; colisões normalizadas amigáveis e concorrentes foram aprovadas. |
 | `PREM-INPUT-01` | `AC-REG-02`–`04`, `API-ERROR-01` | Refinamentos internos: nome/email `200/320` após `Trim`, email ASCII, senha/confirmação `128` sem aparar, JSON camelCase case-sensitive e corpo de 1 MiB com `413` | M2–M4 | `BE-REG-001/002/003`, `FE-REG-001`, `BE-LOGIN-002`, `BE-PROF-004`, `BE-PASS-001/002`, `SPEC-OAS-004/005`, `OPS-COMPOSE-001` | Decisão interna, não requisito original. Os usos de cadastro, login, edição e senha foram aprovados em backend, frontend, contrato e smoke até M4. |
@@ -83,6 +87,29 @@
 | `PREM-ERR-01` | `API-ERROR-01` | ProblemDetails na API e nas falhas de transporte do proxy, inclusive `413/415` | M1–M5 | `BE-ERR-*`, `BE-HEALTH-001`, `SPEC-OAS-005`, `OPS-COMPOSE-001`, `OPS-ORIGIN-001`, `CI-001` | M5 concluído na fatia: integração, contrato e proxy comprovam a matriz de erros; workflow versionado repete esses gates. |
 | `PREM-SEED-01` | `DOC-RUN-01` | Dados criados pelo cadastro e por factories de teste | M2, M5, M6 | `E2E-001`, `DOC-RUN-001` | Verified (M6): README não promete seed; fluxos manuais/E2E usaram cadastros sintéticos e emails únicos. |
 | `PREM-OPS-01` | `OPS-DOCKER-01` | Compose inicia sem criar ou copiar `.env` | M1–M6 | `OPS-COMPOSE-001`, `OPS-SECRET-001` | Verified (M6): `.env` ausente; config, build e `up --wait` passaram com defaults seguros de Development. |
+
+## Atividade de qualidade pós-M6 — mutation testing
+
+| Requisito | Critério de aceite | Design / endpoint / tela | Milestone | Teste planejado | Estado |
+|---|---|---|---|---|---|
+| `NFR-TEST-01` | `TEST-FLOW-01` | Stryker.NET `4.16.0`, allowlist da lógica crítica do backend, suíte xUnit HTTP/EF/SQLite real e ratchet derivado da baseline | Pós-M6 | `BE-MUT-001` | Verified localmente: suíte normal 111/111; baseline limpa 97,41% (188 killed, 5 survived, 106 ignored, 2 mutações inválidas em `CompileError`, 0 `NoCoverage`/timeout/erro de execução); ratchet final 97/97/97 e relatórios aprovados. |
+| `NFR-TEST-01` | `TEST-FLOW-01` | Target/profile Docker `mutation-tests`, gate do JSON, relatórios HTML/JSON e workflow manual/semanal sem gate de PR | Pós-M6 | `CI-MUT-001` | Verified localmente: profile/target, rejeição real de um falso-verde com timeout, execução limpa final, inventários, smoke, actionlint, cleanup sem volumes e upload configurado por 14 dias passaram. Execução hospedada continua Pending até publicação e observação. |
+
+## Atividade de qualidade pós-M6 — refinamento visual
+
+| Requisito | Critério de aceite | Design / endpoint / tela | Milestone | Teste planejado | Estado |
+|---|---|---|---|---|---|
+| `FR-UI-01`, `FR-DASH-02`, `PREM-FE-01` | `UI-STATE-01`, `UI-RESP-01`, `AC-DASH-03`, `AC-PROF-01` | Shell e telas `/login`, `/register`, `/dashboard` e `/profile`; Material, paleta inspirada sem ativos externos, dashboard sem cards descritivos, ausência do `id` técnico, landscape curto funcional, ordem DOM/foco e nome-limite contido | Pós-M6 | `FE-VISUAL-001`, `FE-DASH-001`, `FE-PROF-001`, `E2E-001/002/003`, lint/test/build e inspeção real | Verified (correção responsiva pós-revisão): composição própria preservada; as quatro telas passaram em `320×568` e a autenticação completa em `667×375`; inspeção adicional em 360 px confirmou foco coerente e o nome de 200 caracteres permaneceu visível, limitado e integral no DOM. |
+
+## Evidência executável do refinamento visual pós-M6
+
+| ID | Comando/artefato observado em 2026-08-28 | Estado |
+|---|---|---|
+| `TECH-FRONTEND-001`, `FE-PROF-001`, `FE-VISUAL-001`, `FR-UI-01` | `docker compose --profile frontend-tests run --rm --build frontend-tests` | Verified: a regressão nova falhou inicialmente porque o UUID ainda estava no DOM; após a correção, lint, 67/67 testes em 10 arquivos e build de 327,52 kB bruto/90,27 kB estimado passaram sem warning de budget. |
+| `FE-VISUAL-001`, `FE-PROF-001`, `E2E-001/002/003` | `./scripts/e2e-playwright.sh` | Verified: três jornadas oficiais aprovadas em 6,5 s; `E2E-001` confirmou o perfil carregado sem “Identificador da conta”, e autenticação, edição, logout, senha e locators acessíveis permaneceram íntegros; recursos isolados foram removidos. |
+| `FE-VISUAL-001`, `FE-PROF-001` | Navegador real e capturas temporárias Playwright em desktop/360 px | Verified: login, cadastro, dashboard e perfil inspecionados; na publicação final, o perfil autenticado apresentou dois formulários, um `h1`, dois `h2`, nenhum label/UUID de conta, nenhum overflow e nenhum warning/error de console em 1200 px e 360 px. |
+| `TECH-FRONTEND-001`, `FE-DASH-001`, `FE-VISUAL-001`, `AC-DASH-03` | Regressão e execução final do profile `frontend-tests`; `./scripts/e2e-playwright.sh`; navegador real | Verified: antes do template, 67/68 testes passaram e a única falha encontrou os textos redundantes; depois, lint, 68/68 testes, build de 327,52 kB bruto/90,29 kB estimado e 3/3 E2E em 5,0 s passaram. O dashboard publicado em 1280 px manteve saudação, perfil/logout, um `h1`, um `h2`, nenhum dos três textos e nenhum overflow; `E2E-001` repetiu o gate em 360 px. |
+| `UI-RESP-01`, `FE-VISUAL-001`, `E2E-001`, `TECH-FRONTEND-001` | Três regressões sequenciais; profile `frontend-tests`; `e2e-playwright.sh`; navegador real; re-revisão dos oráculos | Verified: os três defeitos falharam separadamente antes de cada correção; o estado final aprovou lint, 68/68 testes, build de 327,59 kB, 3/3 E2E em 5,0 s e inspeção `320/360/667` px. O E2E percorre login/cadastro/dashboard/perfil em 320 px, alcança último campo/submit em landscape, confirma link/logout na primeira viewport e exige nome realmente visível com hero/resumo em 3/2 linhas. |
 
 ## Evidência executável de M1
 
@@ -179,6 +206,21 @@ A execução anterior à revisão registrou 29/29 integrações backend e 12/12 
 | `E2E-001`–`003`, `OPS-COMPOSE-001`, `CI-001` | `e2e-playwright.sh`, `validate-m1-compose.sh` e `actionlint:1.7.12` | Verified localmente: 3/3 jornadas, smoke acumulado/cleanup e workflow aprovados. |
 | `DOC-SDD-01`, `DOC-TRACE-01` | Plano, matriz, relatório/adendo, índice, review log e uso de IA | Verified: snapshot, achados, disposições, comandos, resultados e riscos estão atuais; evidência original de M6 permanece explicitamente histórica. |
 
+## Evidência executável da correção da revisão completa
+
+| ID | Comando/artefato observado em 2026-08-27 | Estado |
+|---|---|---|
+| `TECH-FRONTEND-001`, `TEST-FLOW-01` | `vitest.config.ts`, ausência de override local menor, target Docker e três execuções finais do profile `frontend-tests` | Verified: o runner declarou carregar a configuração de 30 segundos; a imagem reconstruída e duas execuções simultâneas aprovaram lint, 67/67 testes em 10 arquivos e build, sem retry ou skip. |
+| `API-ERROR-01`, `FE-REG-002`, `FE-LOGIN-001`, `FE-PROF-002`, `FE-PASS-002` | `core/http/problem-details.spec.ts` e specs consumidoras de cadastro/auth/perfil | Verified: parser único preserva campos suportados, filtra mapas inválidos e não expõe corpo HTML; três novos testes e todas as regressões consumidoras passaram. |
+| `TECH-BACKEND-001`, `BE-*`, `SPEC-OAS-001`–`005` | Profiles `backend-tests` e `contract-tests`; `docker compose config --quiet` | Verified: 101/101 integrações, contrato com 6 operações/53 referências e configuração Compose aprovados; backend e contrato HTTP não mudaram. |
+
+## Evidência executável de mutation testing pós-M6
+
+| ID | Comando/artefato observado em 2026-08-27 | Estado |
+|---|---|---|
+| `BE-MUT-001`, `TEST-FLOW-01` | Profile `backend-tests`; baseline e execução final do profile `mutation-tests`; HTML/JSON | Verified localmente: 111/111 integrações; baseline/execução definitiva limpa de 97,41%, ratchet 97/97/97 e exit code zero; cinco survivors equivalentes visíveis, uma exclusão pontual justificada e nenhum ignore global. |
+| `CI-MUT-001`, `OPS-DOCKER-02` | Target/profile `mutation-tests`, gate do relatório, `validate-m1-compose.sh`, `mutation.yml` e `actionlint:1.7.12` | Verified localmente: execução sem SDK host, rejeição observada de relatório com timeout, relatório limpo aprovado, diretório ignorado, cron/manual sem push/PR, Actions por SHA, projeto Compose exclusivo e cleanup sem `--volumes`; execução hospedada Pending. |
+
 ## Cobertura após a revisão de M2
 
 - Todos os 19 requisitos funcionais estão ligados a operação/tela, milestone e teste planejado.
@@ -222,10 +264,12 @@ A execução anterior à revisão registrou 29/29 integrações backend e 12/12 
 - `DOC-RUN-001`, `DOC-SDD-01` e `DOC-TRACE-01` estão Verified; o roteiro `DOC-EXPLAIN-001` existe e foi revisado.
 - `AI-EXPLAIN-01`, a execução hospedada da CI e `DEL-REPO-01` permanecem Pending por dependerem, respectivamente, de confirmação humana e publicação; nenhum push foi realizado.
 
-## Cobertura corrente após a revisão pós-M6
+## Cobertura corrente após as correções pós-revisão
 
-- Todos os 19 requisitos funcionais, 14 não funcionais, 18 premissas e 40 critérios permanecem ligados a design, etapa, teste e estado.
+- Todos os 19 requisitos funcionais, 14 não funcionais, 18 premissas e 41 critérios permanecem ligados a design, etapa, teste e estado.
 - `AC-DASH-02` agora inclui e comprova expiração enquanto dashboard/perfil já está ativo, cancelamento local de request protegida sem token e preservação contra timers/respostas de sessões anteriores.
-- A suíte corrente aprovou 101 integrações backend, 64 testes frontend e 3 jornadas E2E; contrato, actionlint e smoke acumulado também passaram somente com Docker.
-- A revisão e a re-revisão terminaram com 0 High, 0 Medium e 0 Low abertos; [`review-log.md`](review-log.md) preserva evidência, correções e decisões.
+- A suíte corrente aprovou 111 integrações backend e 68 testes frontend; as três jornadas E2E permanecem verdes na execução de 2026-08-28, enquanto actionlint, smoke acumulado e Compose config permanecem aprovados na última execução aplicável.
+- O profile frontend reconstruído e duas execuções simultâneas passaram sem timeout após a remoção dos overrides locais; a revisão completa terminou com o P2 de confiabilidade, seu resíduo satélite e o achado de simplicidade corrigidos, sem achado aberto.
+- O gate pós-M6 acrescentou Stryker.NET `4.16.0`: baseline limpa de 97,41%, ratchet 97/97/97, HTML/JSON e cinco survivors equivalentes visíveis; a execução hospedada semanal/manual ainda não foi observada.
+- `UI-RESP-01` está Verified: o E2E existente cobre landscape curto, sequência visual/Tab e nome válido de 200 caracteres em altura limitada; o profile frontend e a inspeção real confirmaram o mesmo sem nova jornada ou lógica de aplicação.
 - `AI-EXPLAIN-01`, CI hospedada e `DEL-REPO-01` continuam Pending; nenhum push ou confirmação humana foi presumido.

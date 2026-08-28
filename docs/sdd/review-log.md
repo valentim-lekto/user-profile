@@ -1221,3 +1221,79 @@ Considerando o snapshot e a re-revisão do patch corretivo, foram confirmados **
 - Nenhum segredo, senha ou token real foi usado, impresso ou versionado; somente valores sintéticos dos testes passaram pelos fluxos previstos.
 - CI hospedada, `AI-EXPLAIN-01` e `DEL-REPO-01` permanecem Pending. Nenhum remote, push, rebase, amend ou squash foi usado.
 - O hash do commit local de revisão é informado no handoff, pois o commit não pode registrar o próprio hash em seu conteúdo.
+
+## 2026-08-27 — Revisão completa e correções posteriores
+
+- **Snapshot revisado:** `a73d33bdfcabb2a512ebad32b013a3b7db9b89e6`; worktree inicial limpa.
+- **Escopo:** repositório rastreado completo, com SDD/ADRs, backend, frontend, testes, Docker/Compose, CI e histórico recente.
+- **Método:** mapa de comportamento compartilhado e passes independentes de correção/segurança, stale e simplicidade, seguidos de síntese KISS. Nenhuma edição ocorreu durante a revisão.
+- **Resultado do primeiro passe:** 0 P0/P1; 1 P2 de correção; 1 achado de simplicidade; 0 achado de segurança ou stale no snapshot. A re-revisão do patch encontrou um resíduo Low/stale do próprio P2, também corrigido.
+
+### Achados e disposição
+
+#### Gate frontend instável — P2 / Correctness — corrigido
+
+- **Evidência:** `docker compose --profile frontend-tests run --rm --build frontend-tests` aprovou lint, mas falhou com sete timeouts e 57/64 testes; a repetição de `npm test` na mesma imagem passou 64/64. Os limites padrão de 5 segundos e locais de 10 segundos eram menores que os 9–17,5 segundos observados sob contenção.
+- **Impacto:** falso negativo no caminho Docker documentado e na CI, sem indicar regressão funcional determinística.
+- **Correção KISS:** um `vitest.config.ts`, referenciado por `angular.json` e incluído no target Docker, define `testTimeout: 30_000`. Não foram adicionados retry, espera fixa ou limitação de workers.
+- **Validação:** o profile reconstruído passou lint, 67/67 testes e build; duas execuções completas simultâneas repetiram o mesmo resultado.
+
+#### Overrides locais de 10 segundos — Low / Stale — corrigido na re-revisão
+
+- **Evidência:** dois testes de wiring em `app.spec.ts` ainda passavam `10_000` como terceiro argumento de `it`; esse limite tem precedência sobre `testTimeout` e anulava parcialmente a política global sob a mesma contenção que originou o P2.
+- **Correção mínima:** remover apenas os dois overrides obsoletos para que todos os testes herdem os 30 segundos globais.
+- **Validação:** a busca final encontrou somente `testTimeout: 30_000`; depois disso, o profile reconstruído e as duas execuções completas simultâneas passaram sem timeout.
+
+#### Decoder de `ProblemDetails` triplicado — Simplicity — corrigido
+
+- **Evidência:** `registration.service.ts`, `auth.service.ts` e `profile.service.ts` continham cópias funcionalmente idênticas do tipo e do pipeline `toProblemDetails`/`readString`/`readValidationErrors`/`isRecord`.
+- **Correção KISS:** `core/http/problem-details.ts` tornou-se a única fonte do contrato e parser; os três services e os componentes consumidores importam o mesmo tipo. O `isRecord` usado na decodificação JWT continua local e não foi acoplado ao parser HTTP.
+- **Invariantes preservados:** status HTTP como fallback; somente strings em `title`/`detail`; somente mapas de `string[]`; corpo HTML ou payload arbitrário não chega às mensagens; loading, sessão, navegação e contrato da API não mudaram.
+- **Validação:** três testes novos cobrem campos permitidos, filtragem defensiva, corpo não ProblemDetails e erro não HTTP; todas as specs consumidoras passaram.
+
+### Gates finais
+
+| Gate | Resultado |
+|---|---|
+| Frontend Docker reconstruído após a re-revisão | Lint, 67/67 testes em 10 arquivos e build de 318,10 kB bruto/87,84 kB estimado. |
+| Duas repetições frontend simultâneas | Ambas aprovaram lint, 67/67 testes e build, sem timeout. |
+| Backend Docker | 101/101 integrações, 0 falhas, 0 skips. |
+| Contrato e Compose | 6 operações/53 referências; `docker compose config --quiet` aprovado. |
+| Re-revisão independente final | Correção/segurança e stale: zero finding acionável; simplicidade: zero finding na forma direta escolhida. |
+
+E2E/smoke não foram repetidos porque não houve mudança em API, rota, template, proxy ou regra de negócio. CI hospedada, confirmação humana e publicação permanecem externas; nenhum push ou commit foi realizado nesta correção.
+
+## 2026-08-28 — Revisão focada em responsividade e correções
+
+- **Escopo:** shell, login, cadastro, dashboard, perfil, CSS responsivo, testes frontend/E2E e afirmações SDD relacionadas; revisão inicialmente somente leitura, seguida de implementação autorizada.
+- **Resultado:** 0 P0/P1, 2 P2 e 1 P3 confirmados; todos corrigidos sem funcionalidade de negócio nova.
+
+### `REV-RESP-001` — P2 — formulário fora da primeira viewport em landscape curto
+
+- **Evidência:** em `667×375`/`812×375`, o painel editorial precedia o formulário e o heading do cadastro tinha viewport ratio `0`; login/cadastro começavam abaixo da tela.
+- **Correção:** media query de baixa altura remove somente o painel não essencial do fluxo; heading e primeiro campo ficam visíveis e não há overflow.
+- **Prova:** primeiro vermelho E2E, execução final 3/3 e inspeção real `667×375`.
+
+### `REV-RESP-002` — P2 — ordem visual divergente da sequência de foco
+
+- **Evidência:** em `360×800`, Tab seguia link → botão, mas `column-reverse` desenhava o link em `y=677` e o botão em `y=620`.
+- **Correção:** `flex-direction: column`, preservando a ordem DOM/foco existente.
+- **Prova:** segundo vermelho E2E e sequência final link → botão com posições crescentes em login/cadastro.
+
+### `REV-RESP-003` — P3 — nome defensivo expandia o dashboard
+
+- **Evidência:** nome válido de 200 caracteres produzia título de 1053 px e empurrava ações para `y=1374` em 320 px.
+- **Correção:** clamp visual de três linhas na saudação e duas no resumo, com texto integral preservado no DOM e perfil.
+- **Prova:** terceiro vermelho E2E; estado final com título de 105 px, resumo de 44 px, `Ir para o perfil` e `Sair` dentro da primeira viewport e zero overflow em 320/360 px.
+
+### Gates finais
+
+| Gate | Resultado |
+|---|---|
+| Frontend Docker | Lint, 68/68 testes em 10 arquivos e build de 327,59 kB bruto/90,31 kB estimado. |
+| E2E Docker | 3/3 jornadas em 5,0 s; as quatro telas em 320 px, formulário completo em landscape, ordem Tab/visual, ambas as ações e nome-limite visível foram incorporados ao `E2E-001`, sem quarta jornada. |
+| Publicação local | Somente `web` recriado; API/volume preservados; `/health` saudável e inspeção real aprovada. |
+
+Re-revisões somente leitura encontraram lacunas nos oráculos, corrigidas antes do fechamento: landscape conferia apenas o topo do formulário e não a visibilidade/habilitação dos controles finais; o resumo truncado poderia teoricamente passar invisível ou recortado lateralmente por um ancestral. O E2E final alcança último campo/submit visíveis e habilitados, exige geometria/visibilidade e contenção horizontal do texto, percorre as quatro telas em 320 px e mantém `Ir para o perfil`/`Sair` na primeira viewport.
+
+Nenhum arquivo backend, OpenAPI, banco, payload, rota ou configuração Compose mudou. Contas de inspeção permaneceram sintéticas no volume local, sessões foram encerradas e credenciais descartadas; nenhum segredo, commit ou push foi produzido.

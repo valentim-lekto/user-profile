@@ -181,3 +181,52 @@ Não armazenar conversas completas nem transcrições integrais de prompts e res
 - **Re-revisão:** a lente stale encontrou e encerrou um timer sem cleanup de lifecycle e a evidência corrente ainda presa ao baseline de 57 testes; a lente de correção encontrou matrix params fora da classificação da rota. Registros históricos M3–M6 foram preservados, enquanto o estado atual passou a uma seção pós-M6 separada. A lente de simplicidade não encontrou redução segura adicional.
 - **Validação:** baseline com contrato 6 operações/53 referências, 101/101 integrações, lint/57 testes/build; primeira regressão vermelha com 3 falhas/21 sucessos; segunda com 2 falhas/8 sucessos; patch final com 27/27 specs de autenticação, lint/64/64 frontend e build; 3/3 E2E; smoke acumulado; actionlint; checks estáticos e re-revisão do diff.
 - **Resultado e limites:** 0 High, 2 Medium e 2 Low confirmados e corrigidos; 0 aberto/bloqueado. Timers dependem do ciclo de execução do browser após suspensão; `sessionStorage`, ausência de revogação/refresh, CI hospedada, `AI-EXPLAIN-01` e `DEL-REPO-01` mantêm os limites/estados já documentados. Nenhum segredo real e nenhum push foram usados.
+
+### 2026-08-27 — Revisão completa e implementação dos achados
+
+- **Objetivo:** revisar o snapshot `a73d33b` com múltiplas lentes e, após autorização separada do responsável, implementar somente os achados confirmados sem criar funcionalidade de negócio.
+- **Entradas:** `AGENTS.md`, SDD pertinente, repositório completo, histórico recente, execução Docker do gate frontend e instrução explícita de implementação.
+- **Apoio da IA:** mapa de comportamento; revisores independentes de correção/segurança, stale e simplicidade; síntese KISS; reprodução da instabilidade; proposta e implementação do patch mínimo; atualização de rastreabilidade e evidência.
+- **Achados:** nenhum defeito de segurança; um P2 de confiabilidade porque o profile frontend alternou entre sete timeouts e 64/64; uma duplicação material do parser defensivo de `ProblemDetails` em três services. A re-revisão encontrou ainda dois overrides locais obsoletos de 10 segundos, resíduo satélite do P2.
+- **Decisões influenciadas:** configurar somente `testTimeout: 30_000` em um runner Vitest explícito, sem retry ou controle de workers; remover os dois overrides menores para aplicar uma política única; criar somente um módulo de tipo/parser em `core/http`, sem service base, wrapper HTTP ou dependência; manter o helper de JWT separado.
+- **Artefatos:** configuração Vitest/Angular/Docker, módulo e testes de `ProblemDetails`, três services e dois componentes consumidores, design, estratégia, plano, matriz, índice, relatório e review log.
+- **Validação:** após remover os overrides locais, o profile frontend reconstruído e duas execuções simultâneas aprovaram lint, 67/67 testes em 10 arquivos e build; backend 101/101, OpenAPI 6 operações/53 referências e Compose config passaram. Re-revisores de correção/segurança e stale encerraram o diff final sem finding acionável; a lente de simplicidade já havia aprovado a forma direta. E2E/smoke não foram repetidos porque nenhum comportamento de negócio, rota, template, API ou proxy mudou.
+- **Limites:** CI hospedada, `AI-EXPLAIN-01` e `DEL-REPO-01` continuam externos. Nenhum segredo real, push ou commit foi produzido nesta correção.
+
+### 2026-08-27 — Mutation testing crítico do backend
+
+- **Objetivo:** implementar a atividade pós-M6 `BE-MUT-001`/`CI-MUT-001` com Stryker.NET, sem alterar contrato HTTP, banco, frontend ou regras de negócio.
+- **Entradas:** plano aprovado pelo responsável, `AGENTS.md`, design, estratégia, plano, matriz, relatório, código crítico do backend, suíte xUnit, Docker/Compose, scripts e workflows existentes.
+- **Apoio da IA:** atualização da especificação antes do código; configuração da allowlist e do tool manifest; execução iterativa da baseline; classificação de mutantes; criação de testes focados; revisão KISS; integração Docker/CI e conferência de documentação/rastreabilidade.
+- **Decisões influenciadas:** manter a suíte HTTP/EF/SQLite real como base; fixar dois workers e análise `perTest`; tratar o índice único como autoridade nas corridas; não modificar regra observável para elevar score; manter cinco survivors equivalentes visíveis; usar somente uma exclusão pontual, junto ao código e com justificativa.
+- **Artefatos:** manifest `dotnet-stryker` `4.16.0`, `stryker-config.json`, target/profile Docker, workflow manual/semanal, testes de configuração/bordas de Controllers, refatorações internas behavior-preserving em `JwtOptions`/`JwtBearerConfiguration`, inventários do smoke, README e documentos SDD.
+- **Validação:** suíte normal 111/111; baseline limpa de 97,41% com 188 killed, 5 survived, 106 ignored, 2 mutações inválidas em `CompileError` e zero `NoCoverage`, timeout ou erro de execução; ratchet final 97/97/97 com exit code zero; HTML/JSON, Compose, smoke, actionlint, scans e diff verificados localmente.
+- **Limites:** os arquivos de request permaneceram explicitamente na allowlist, mas o nível `standard` do Stryker `4.16.0` não gerou mutante executável neles. A execução hospedada semanal/manual depende de publicação e não foi marcada como observada. Nenhum relatório foi versionado; nenhum segredo, push ou commit foi produzido nesta atividade.
+
+### 2026-08-28 — Refinamento visual do frontend
+
+- **Objetivo:** modernizar somente a apresentação do shell, login, cadastro, dashboard e perfil, sem criar funcionalidade de negócio ou alterar API, autenticação, banco ou navegação.
+- **Entradas:** `AGENTS.md`, SDD pertinente, templates/SCSS/specs atuais, site público da Lekto e inspeção real da aplicação local.
+- **Apoio da IA:** análise visual da referência e da baseline, auditorias somente leitura de linguagem visual e riscos de regressão, atualização da especificação antes do código, implementação CSS/Material e inspeção desktop/mobile iterativa.
+- **Decisões influenciadas:** usar roxo estrutural com acentos amarelo/coral, tipografia sans-serif do sistema, painel editorial na autenticação, hero/resumo no dashboard e hierarquia clara no perfil; manter o `id` no DTO/API, mas retirá-lo da apresentação por não ser dado cadastral exigido pelo enunciado; nenhum logo, texto, fonte, foto ou ativo da Lekto foi copiado.
+- **Simplicidade (KISS):** tokens e estilos comuns ficaram globais; os componentes preservaram fluxo, services e TypeScript existentes. Não houve design system novo, dependência, biblioteca de ícones, imagem externa ou animação complexa.
+- **Validação:** a regressão focada falhou primeiro ao encontrar o UUID no DOM; depois da remoção, o profile Docker aprovou lint, 67/67 testes e build, e 3/3 jornadas oficiais passaram em 6,5 s, incluindo a ausência do identificador na tela. A publicação final do perfil foi inspecionada em 1200 px e 360 px sem label/UUID, overflow ou console error/warning; a credencial sintética permaneceu apenas no navegador e foi removida da sessão ao terminar.
+- **Limites:** a validação visual foi deliberadamente baseada em inspeção real e invariantes responsivos/acessíveis, sem snapshot pixel a pixel. Nenhum commit ou push foi produzido.
+
+### 2026-08-28 — Simplificação do dashboard
+
+- **Objetivo:** retirar os três cartões informativos de dados pessoais, senha e sessão por não serem requisitos do desafio nem oferecerem ações, sem alterar os fluxos já implementados.
+- **Entradas:** `AGENTS.md`, requisitos, design, estratégia, plano, matriz, relatório, template/SCSS/spec do dashboard e a decisão explícita do responsável.
+- **Apoio da IA:** comparação dos textos com `FR-DASH-01/02` e `AC-DASH-01/03/04`, atualização da especificação antes do código, criação da regressão, remoção direta do markup/estilos e validação Docker/navegador.
+- **Decisão influenciada pelo KISS:** preservar hero, nome/email, navegação para perfil, logout e estados de loading/erro; remover somente o bloco redundante e seus seletores CSS, sem substituí-lo por outro componente ou abstração.
+- **Validação:** o primeiro profile aprovou lint e 67/68 testes, com a única falha esperada nos textos ainda presentes; o estado final aprovou lint, 68/68 testes, build, 3/3 E2E em 5,0 s e inspeção real do dashboard publicado sem os cartões ou overflow. API, OpenAPI, backend e banco não mudaram.
+- **Limites:** a conta sintética de inspeção ficou apenas no volume local da demonstração; logout encerrou a sessão e nenhum segredo, token, commit ou push foi produzido.
+
+### 2026-08-28 — Revisão e correção responsiva
+
+- **Objetivo:** revisar e corrigir somente responsividade de login, cadastro e dashboard, sem alterar funcionalidade de negócio.
+- **Entradas:** `AGENTS.md`, SDD pertinente, templates/SCSS, specs, E2E existente e aplicação publicada em viewports entre 320 e 1440 px.
+- **Apoio da IA:** auditorias independentes somente leitura de CSS e testes; reprodução real de landscape, sequência visual/Tab e nome defensivo; atualização da especificação antes da regressão e implementação.
+- **Decisão influenciada pelo KISS:** ocultar apenas o painel editorial em viewport simultaneamente estreita/baixa, trocar `column-reverse` por `column` e aplicar clamps CSS de 3/2 linhas. Não houve componente, TypeScript, estado, dependência, rota ou abstração nova.
+- **Validação:** três vermelhos sequenciais isolaram os responsáveis. Re-revisões independentes eliminaram falsos-verdes potenciais: o E2E agora percorre as quatro telas em 320 px, alcança o fim visível/habilitado dos formulários em landscape, confirma ambas as ações do dashboard e exige o nome realmente renderizado sem recorte lateral mascarado. Estado final com lint, 68/68 testes, build de 327,59 kB, 3/3 E2E em 5,0 s, health e inspeção real `320×568`/`360×800`/`667×375` aprovados.
+- **Limites:** clamps são somente visuais; o nome integral permanece no DOM, API e perfil. Contas sintéticas permaneceram apenas no volume local, com logout e descarte das credenciais. Nenhum segredo, commit ou push foi produzido.

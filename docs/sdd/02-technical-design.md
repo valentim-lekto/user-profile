@@ -1,6 +1,6 @@
 # 02 — Design técnico
 
-**Status:** aprovado para implementação · **Data:** 2026-08-24 · **Fontes normativas:** [`00-challenge.md`](00-challenge.md), [`01-requirements.md`](01-requirements.md) e [`03-api-contract.yaml`](03-api-contract.yaml)
+**Status:** aprovado e implementado em M1–M6; extensões locais de mutation testing, refinamento visual e correção responsiva pós-M6 implementadas · **Data:** 2026-08-28 · **Fontes normativas:** [`00-challenge.md`](00-challenge.md), [`01-requirements.md`](01-requirements.md) e [`03-api-contract.yaml`](03-api-contract.yaml)
 
 ## Objetivo
 
@@ -54,7 +54,8 @@ Verificação realizada em 2026-08-24. Foram escolhidas versões estáveis e sup
 | npm | `11.17.0` | Versão da imagem Node fixada com suporte à política `allowScripts`. | Versão conferida no Dockerfile, `packageManager` exato e `.npmrc` com `strict-allow-scripts=true`. |
 | Nginx | `1.30.4` estável | Linha estável da imagem oficial. | `nginx:1.30.4-alpine3.24-slim`. |
 | Runtime da API | ASP.NET `10.0.11` | Mesma atualização de segurança da aplicação. | `mcr.microsoft.com/dotnet/aspnet:10.0.11-noble`. |
-| GitHub Actions | checkout `6.0.2`; upload-artifact `7.0.1` | Releases oficiais usadas pelo workflow único. | SHAs completos `de0fac2e4500dabe0009e67214ff5f5447ce83dd` e `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a`. |
+| Stryker.NET | `dotnet-stryker` `4.16.0` | Versão estável verificada para mutation testing do backend após M6. | Tool manifest raiz, versão exata e restore dentro do target Docker de mutação. |
+| GitHub Actions | checkout `6.0.2`; upload-artifact `7.0.1` | Releases oficiais usadas pelos workflows. | SHAs completos `de0fac2e4500dabe0009e67214ff5f5447ce83dd` e `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a`. |
 
 Fontes oficiais consultadas:
 
@@ -67,6 +68,7 @@ Fontes oficiais consultadas:
 - [documentação oficial da imagem Docker do Playwright](https://playwright.dev/docs/docker);
 - [política oficial de install scripts do npm](https://docs.npmjs.com/cli/v11/commands/npm-rebuild/#strict-allow-scripts);
 - [manifesto oficial da imagem Ruby](https://github.com/docker-library/official-images/blob/master/library/ruby);
+- [pacote oficial do dotnet-stryker](https://www.nuget.org/packages/dotnet-stryker) e [configuração oficial do Stryker.NET](https://stryker-mutator.io/docs/stryker-net/configuration/);
 - [releases oficiais de actions/checkout](https://github.com/actions/checkout/releases) e [actions/upload-artifact](https://github.com/actions/upload-artifact/releases);
 - [releases suportadas do Node.js](https://nodejs.org/en/about/previous-releases), [manifesto oficial da imagem Node](https://github.com/docker-library/official-images/blob/master/library/node) e [manifesto oficial da imagem Nginx](https://github.com/docker-library/official-images/blob/master/library/nginx).
 
@@ -80,6 +82,8 @@ Estrutura incremental adotada. M1 materializou a solution, `Data`, a operação 
 
 ```text
 UserProfile.sln
+.config/
+  dotnet-tools.json                  # dotnet-stryker 4.16.0 fixado
 src/
   backend/
     UserProfile.Api/                  # único executável de backend
@@ -96,8 +100,11 @@ src/
         features/                     # register, login, dashboard e profile
 tests/
   backend/
-    UserProfile.Api.IntegrationTests/ # único projeto de integração do backend
+    UserProfile.Api.IntegrationTests/ # único projeto de integração e configuração Stryker
   e2e/                                # três jornadas Playwright de M5
+.github/workflows/
+  ci.yml                              # gate de push/PR
+  mutation.yml                        # gate manual/semanal pós-M6
 ```
 
 Os testes focados de frontend permanecem no workspace Angular. As poucas jornadas
@@ -118,12 +125,15 @@ de aplicação.
 - Componentes e rotas são standalone e compilados em strict mode.
 - Reactive Forms implementam as mesmas validações visíveis definidas no contrato.
 - Services encapsulam HTTP e estado simples por signals (`loading`, `data`, `error`); não haverá store global nem NgRx.
+- O contrato comum `ProblemDetails` e sua leitura defensiva ficam em um único módulo de `core/http`, reutilizado pelos services de cadastro, autenticação e perfil. Esse limite compartilhado aceita somente `status` numérico, `title`/`detail` textuais e mapas de `string[]`; não introduz service base, wrapper HTTP ou hierarquia.
 - O estado de leitura do perfil pertence à ativação corrente da rota protegida. Ao sair e entrar novamente, o dashboard recebe uma nova instância desse estado; uma resposta iniciada pela sessão anterior não pode bloquear nem preencher a sessão seguinte.
 - Um functional interceptor anexa o Bearer somente às URLs relativas protegidas `GET /api/profile`, `PUT /api/profile` e `PUT /api/profile/password` quando existe token válido. Sem token válido, uma dessas chamadas é cancelada no cliente e conduz ao login, em vez de sair anonimamente. Login, cadastro, health, URLs absolutas e qualquer outro destino nunca recebem o token.
 - Um `401` recebido por uma chamada protegida só remove a sessão se o token corrente ainda for o mesmo Bearer anexado àquela chamada; uma resposta tardia de sessão anterior não encerra uma autenticação mais recente.
 - Um functional route guard bloqueia rotas protegidas quando a sessão está ausente ou expirada.
 - Ao carregar ou substituir um JWT válido, o serviço de autenticação agenda seu `exp`. Se o mesmo token ainda for a sessão corrente nesse instante, ele é removido e qualquer dashboard ou perfil ativo é substituído pelo login, mesmo quando a URL contém matrix params, query ou fragment; o timer de uma sessão anterior não afeta uma sessão posterior nem interrompe uma rota pública, e é cancelado quando o serviço é destruído.
 - A API continua sendo a autoridade: presença ou conteúdo decodificado do token no browser não concede autorização.
+- O refinamento visual pós-M6 preserva os componentes Material, a estrutura de headings, os nomes acessíveis e todos os estados já testados. A linguagem visual usa roxo como cor estrutural, amarelo e coral somente como acentos, superfícies claras, cantos amplos, tipografia sans-serif do sistema e formas orgânicas discretas. O site público da Lekto foi usado apenas como referência de composição e paleta: nenhum logo, texto, fonte, imagem ou outro ativo da empresa é copiado, e a aplicação não declara afiliação.
+- Login e cadastro compartilham uma composição responsiva com painel editorial e cartão de formulário; dashboard usa um hero de boas-vindas, resumo dos dados de apresentação retornados por `GET /api/profile` e ações diretas para perfil/logout, sem cartões descritivos redundantes de dados pessoais, senha ou sessão; perfil mantém os dois formulários separados em cartões. O `id` do `ProfileResponse` permanece no contrato de transporte, mas não é renderizado: a interface apresenta somente nome e email. Em largura estreita, o conteúdo passa para uma coluna sem overflow horizontal; em viewport também baixa, o painel editorial não antecede o formulário funcional. Ações empilhadas preservam a ordem do DOM/foco, e o nome no limite de 200 caracteres permanece integral no DOM e no perfil, mas recebe limite visual de linhas no dashboard para manter as ações principais na primeira viewport. Foco, contraste, labels, `aria-live`, loading e bloqueio de submissão permanecem observáveis.
 
 ## Modelo de dados
 
@@ -141,7 +151,8 @@ Entidade única `User`:
 
 Não haverá seed obrigatório. Hash, email normalizado e timestamps são internos
 e não fazem parte dos DTOs públicos. O ID imutável aparece somente em
-`ProfileResponse`, junto de nome e email. Os timestamps são uma decisão interna do
+`ProfileResponse`, junto de nome e email, como dado técnico de transporte e não
+como conteúdo visual da tela. Os timestamps são uma decisão interna do
 design registrada originalmente em `b184432` e formalizada no ADR-0002, não um
 requisito do enunciado; seu ciclo de vida será implementado e testado nas fatias
 M2 e M4 sem ampliar o contrato HTTP.
@@ -259,7 +270,7 @@ Essa regra concilia execução sem preparação manual com a proibição de vers
 | `/register` | Pública | Formulário reativo; `201` navega para `/login` com aviso de sucesso e sem criar sessão. |
 | `/login` | Pública | Formulário reativo; `200` grava o JWT em `sessionStorage` e navega para `/dashboard`. |
 | `/dashboard` | Guard | Consulta `/api/profile` a cada ativação, mostra boas-vindas com `name` e link para `/profile`; portanto reflete uma edição persistida quando consultado novamente. |
-| `/profile` | Guard | Consulta e altera nome/email; oferece formulário separado para senha, sem misturar campos de senha no payload cadastral. |
+| `/profile` | Guard | Consulta e altera nome/email; não renderiza o `id` técnico recebido; oferece formulário separado para senha, sem misturar campos de senha no payload cadastral. |
 
 Cada operação assíncrona expõe estado de carregamento, impede submissão duplicada e apresenta sucesso ou erro. Nos dois formulários de edição, o `FormGroup` correspondente permanece desabilitado durante a requisição para que uma resposta não sobrescreva uma entrada posterior nem associe a ela um erro produzido para valores anteriores. O estado de carregamento do perfil é recriado a cada ativação do dashboard, isolando respostas pendentes de uma sessão encerrada. O interceptor cancela e conduz ao login uma chamada protegida iniciada sem token válido. Quando existe Bearer, reage a `401` somente se a sessão corrente ainda contém exatamente aquele token; nesse caso limpa a sessão e conduz ao login. Pelo mesmo isolamento, o sucesso da troca de senha remove o token e navega ao login somente se a sessão corrente ainda contém o token capturado no início daquela operação; uma resposta tardia não afeta uma autenticação posterior. O `401` esperado do próprio login não levava Bearer, portanto permanece disponível para a mensagem genérica da tela e não dispara limpeza/navegação global.
 
@@ -270,13 +281,32 @@ O token fica somente em `sessionStorage`. O estado de autenticação é um signa
 - `compose.yaml` terá serviços `web` e `api` e um volume nomeado para `/data`; SQLite não cria um terceiro contêiner.
 - `web` é uma imagem multi-stage: Node compila o Angular e Nginx serve o resultado.
 - `api` é uma imagem multi-stage: SDK publica e runtime ASP.NET executa como usuário não-root; `/data` é preparado com permissão de escrita para esse usuário antes de receber o volume.
-- Perfis opt-in do Compose executam restore/build/test do backend, `npm ci`/lint/test/build do frontend, contrato OpenAPI e as três jornadas Playwright sem exigir SDKs no host. O `npm ci` reprova install scripts fora da allowlist versionada. Esses serviços não publicam portas nem alteram a pilha padrão.
+- Perfis opt-in do Compose executam restore/build/test do backend, mutation testing crítico do backend, `npm ci`/lint/test/build do frontend, contrato OpenAPI e as três jornadas Playwright sem exigir SDKs no host. O `npm ci` reprova install scripts fora da allowlist versionada. Esses serviços não publicam portas nem alteram a pilha padrão.
+- O runner Vitest do frontend usa timeout global e limitado de 30 segundos por teste, sem retry e sem overrides locais mais curtos. A margem cobre a latência observada dos testes Angular Material/Router em container frio ou sob contenção, preservando o timeout de 45 minutos do job como limite externo da suíte.
 - Cada execução da suíte E2E recebe projeto Compose, volume e diretório de artefatos próprios; cada jornada recebe contexto e dados próprios. Emails são únicos; senhas sintéticas são geradas e mantidas dentro do contexto do navegador, e o runner Playwright recebe somente chaves não sensíveis. Relatórios JUnit/HTML são gravados sempre que o runner Playwright chega a iniciar; screenshot de inputs mascarados e trace minimizado, sem snapshots, sources ou attachments, são retidos somente em falha. Falhas anteriores ao runner preservam os diagnósticos do Compose disponíveis. O `finally` limpa os inputs em melhor esforço, sem ser tratado como a única defesa de artefatos. Os traps de E2E e smoke registram o nome do projeto, persistem `ps`, imagens/serviços e logs processados por um filtro compartilhado/testado antes do teardown quando há falha, e nunca publicam a cópia bruta. Falha de teardown reprova uma execução antes bem-sucedida, preserva a falha primária quando já existe e deixa saída filtrada; a CI tenta novamente somente projetos sob seu prefixo único e faz upload depois do cleanup.
 - `web` publica `127.0.0.1:8080:8080`, restringindo a demonstração HTTP ao
   loopback IPv4 do host; `api` expõe `8080` apenas para a rede interna.
 - Nginx escuta em `8080`, encaminha `/api/`, `/swagger/` e `/health` para `http://api:8080`, usa timeout explícito de conexão de 2 segundos e de resposta de 30 segundos, converte falha de conexão/timeout do upstream em `503 application/problem+json`, converte corpo acima de 1 MiB em `413 application/problem+json`, devolve `404` para assets com extensão que não existem e usa fallback para `index.html` somente nas rotas da SPA. A janela de resposta acomoda o primeiro hash de senha em runners Docker sob contenção sem criar retry; indisponibilidade de conexão continua falhando rapidamente.
 - Existe um único health check do Compose no serviço `web`: `wget -q -O /dev/null http://127.0.0.1:8080/health`, usando o BusyBox presente na imagem Alpine. `web` depende de `api` com `condition: service_started`; como a probe atravessa Nginx, API e a consulta SQLite, `docker compose up --wait` só conclui quando a pilha inteira está saudável, sem instalar cliente HTTP na imagem da API.
-- O inventário exato das imagens Compose, incluindo todos os perfis, é: `ruby:3.4.10-slim-bookworm`, `user-profile-api:0.1.0`, `user-profile-backend-tests:0.1.0`, `user-profile-e2e-tests:0.1.0`, `user-profile-frontend-tests:0.1.0` e `user-profile-web:0.1.0`. Todas as linhas `FROM` e esse conjunto renderizado são comparados às versões completas deste documento; `latest`, `lts`, `stable` ou apenas major/minor são proibidos. Todas as linhas `uses:` de terceiros na CI usam SHA completo e pertencem ao inventário aprovado; o checkout não persiste credenciais Git.
+- O inventário exato das imagens Compose, incluindo todos os perfis, é: `ruby:3.4.10-slim-bookworm`, `user-profile-api:0.1.0`, `user-profile-backend-tests:0.1.0`, `user-profile-e2e-tests:0.1.0`, `user-profile-frontend-tests:0.1.0`, `user-profile-mutation-tests:0.1.0` e `user-profile-web:0.1.0`. O Dockerfile backend contém, nesta ordem, os stages `build`, `test`, `mutation-test` (derivado de `test`) e `final`; o frontend contém `dependencies`, `test`, `build` e o stage final Nginx; o E2E contém somente o stage Playwright. Todas as linhas `FROM` e esse conjunto renderizado são comparados às versões completas deste documento; `latest`, `lts`, `stable` ou apenas major/minor são proibidos. Todas as linhas `uses:` de terceiros nos workflows usam SHA completo e pertencem ao inventário aprovado; checkout não persiste credenciais Git.
+
+### Mutation testing do backend após M6
+
+`BE-MUT-001` mede a capacidade da suíte xUnit de detectar alterações artificiais na lógica crítica, sem mudar API, banco, frontend ou regras de negócio. O Stryker executa em `Release`, `net10.0`, nível `standard`, análise `perTest`, dois workers, timeout adicional de 5 segundos e interrompe se a suíte inicial estiver vermelha. Os reporters são `progress`, `html` e `json`; não há dashboard ou armazenamento externo.
+
+O alvo é uma allowlist explícita: Controllers e requests de autenticação/perfil (`AuthController`, `LoginRequest`, `RegisterRequest`, `ProfileController`, `ChangePasswordRequest`, `UpdateProfileRequest`), configuração/emissão JWT (`JwtBearerConfiguration`, `JwtTokenIssuer`, `JwtOptions`) e lógica de persistência/saúde (`DatabaseHealthCheck`, `UserConfiguration`). Migrations, DTOs passivos, filtros Swagger, `User`, `UserProfileDbContext`, factories e wiring de `Program.cs` ficam fora do alvo por não conterem a lógica crítica escolhida. Não existe ignore global de mutações ou métodos; uma exclusão futura só pode ser pontual, junto ao mutante comprovadamente equivalente e com justificativa versionada.
+
+O target `mutation-test` restaura o tool manifest e executa o único projeto xUnit existente. Depois do Stryker, um gate local exige o JSON, reprova `Timeout`, `NoCoverage` ou `RuntimeError` e aceita somente os dois `CompileError` da baseline que geram C# inválido; assim, timeouts não podem passar apenas por serem contabilizados como mutantes detectados no score. O profile `mutation-tests` não inicia API, frontend, SQLite compartilhado nem publica portas; grava relatórios em `${MUTATION_ARTIFACTS_DIR:-./artifacts/mutation}`, diretório ignorado pelo Git. O comando público é:
+
+```sh
+docker compose --profile mutation-tests run --rm --build mutation-tests
+```
+
+A primeira baseline usa `thresholds.break = 0` somente de forma temporária. Depois de classificar survivors, o score final `S` fixa `break = floor(S)`, `low = max(60, break)` e `high = max(80, low)`; `break = 0` não pode permanecer na entrega. Mutantes observáveis ligados a requisitos recebem testes focados; regras de negócio não são distorcidas para elevar score. Survivors não equivalentes fora de requisito podem permanecer visíveis e compor a baseline, enquanto `NoCoverage`, timeout ou erro de execução no alvo crítico exigem explicação ou correção.
+
+A baseline limpa observada foi `S = 97,41%`: 188 mutantes mortos, 5 sobreviventes, 106 ignorados, 2 com erro de compilação gerado pelo mutador e nenhum `NoCoverage`, timeout ou erro de execução. Portanto, a configuração final fixa `break = low = high = 97`. Os cinco survivors foram classificados como equivalentes e permanecem visíveis no JSON/HTML; a única exclusão pontual documenta a atribuição inicial de um parâmetro `out` cujo valor é ignorado no retorno falso e sempre sobrescrito no retorno verdadeiro. Os arquivos de request permanecem na allowlist, embora o nível `standard` não tenha produzido mutante executável neles nesta versão.
+
+`CI-MUT-001` é um workflow próprio, somente `workflow_dispatch` e cron semanal na segunda-feira às `06:00 UTC`, em `ubuntu-24.04`, com timeout de 90 minutos, projeto Compose exclusivo, cleanup obrigatório e upload dos relatórios HTML/JSON por 14 dias quando produzidos. Ele não executa em `push` ou `pull_request` e, portanto, não bloqueia PRs. Sua execução hospedada permanece pendente até publicação e observação real.
 
 No desenvolvimento local, o proxy do Angular CLI encaminha `/api`, `/swagger` e `/health` para a API, mantendo URLs relativas. Não haverá configuração CORS permissiva para compensar URLs absolutas.
 
