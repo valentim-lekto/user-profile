@@ -5,9 +5,11 @@ using UserProfile.Api.Features.Profile;
 
 namespace UserProfile.Api.Features.Auth;
 
+// Swashbuckle instantiates the filter registered by SchemaFilter<TFilter>().
+// ReSharper disable once ClassNeverInstantiated.Global
 public sealed class RegisterRequestSchemaFilter : ISchemaFilter
 {
-    public const string RawEmailPattern =
+    private const string RawEmailPattern =
         @"^\s*[\x21-\x3F\x41-\x7E]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\s*$";
 
     public void Apply(IOpenApiSchema schema, SchemaFilterContext context)

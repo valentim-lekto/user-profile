@@ -8,7 +8,7 @@ namespace UserProfile.Api.Security;
 
 public sealed class JwtTokenIssuer(JwtOptions options, TimeProvider timeProvider)
 {
-    private readonly SigningCredentials signingCredentials = new(
+    private readonly SigningCredentials _signingCredentials = new(
         new SymmetricSecurityKey(options.SigningKey.ToArray()),
         SecurityAlgorithms.HmacSha256);
 
@@ -29,8 +29,8 @@ public sealed class JwtTokenIssuer(JwtOptions options, TimeProvider timeProvider
             audience: options.Audience,
             claims: claims,
             notBefore: null,
-            expires: issuedAt.Add(options.Lifetime).UtcDateTime,
-            signingCredentials: signingCredentials);
+            expires: issuedAt.Add(JwtOptions.Lifetime).UtcDateTime,
+            signingCredentials: _signingCredentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
     }

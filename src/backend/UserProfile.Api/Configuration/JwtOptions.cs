@@ -4,11 +4,11 @@ namespace UserProfile.Api.Configuration;
 
 public sealed class JwtOptions
 {
-    public const string SectionName = "Jwt";
-    public const string DefaultIssuer = "UserProfile.Api";
-    public const string DefaultAudience = "UserProfile.Web";
-    public const int RequiredLifetimeMinutes = 15;
-    public const int MinimumSigningKeyBytes = 32;
+    private const string SectionName = "Jwt";
+    private const string DefaultIssuer = "UserProfile.Api";
+    private const string DefaultAudience = "UserProfile.Web";
+    private const int RequiredLifetimeMinutes = 15;
+    private const int MinimumSigningKeyBytes = 32;
 
     private JwtOptions(
         string issuer,
@@ -24,7 +24,7 @@ public sealed class JwtOptions
 
     public string Audience { get; }
 
-    public TimeSpan Lifetime => TimeSpan.FromMinutes(RequiredLifetimeMinutes);
+    public static TimeSpan Lifetime => TimeSpan.FromMinutes(RequiredLifetimeMinutes);
 
     public ReadOnlyMemory<byte> SigningKey { get; }
 
@@ -63,12 +63,7 @@ public sealed class JwtOptions
     {
         if (string.IsNullOrEmpty(configuredSigningKey))
         {
-            if (!environment.IsDevelopment())
-            {
-                throw new InvalidOperationException("JWT signing key configuration is required.");
-            }
-
-            return RandomNumberGenerator.GetBytes(MinimumSigningKeyBytes);
+            return !environment.IsDevelopment() ? throw new InvalidOperationException("JWT signing key configuration is required.") : RandomNumberGenerator.GetBytes(MinimumSigningKeyBytes);
         }
 
         var signingKey = DecodeSigningKey(configuredSigningKey);

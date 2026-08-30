@@ -1,5 +1,8 @@
 namespace UserProfile.Api.Data;
 
+// SQLite stores these values as TEXT and ignores declared length facets. Request DTOs
+// enforce the bounded inputs, while PasswordHasher owns the hash representation.
+// ReSharper disable EntityFramework.ModelValidation.UnlimitedStringLength
 public sealed class User
 {
     public Guid Id { get; set; }
@@ -16,3 +19,4 @@ public sealed class User
 
     public DateTime UpdatedAtUtc { get; set; }
 }
+// ReSharper restore EntityFramework.ModelValidation.UnlimitedStringLength

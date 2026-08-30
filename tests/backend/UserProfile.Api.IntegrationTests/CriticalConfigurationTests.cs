@@ -22,6 +22,8 @@ namespace UserProfile.Api.IntegrationTests;
 
 public sealed class CriticalConfigurationTests
 {
+    private const int MinimumSigningKeyBytes = 32;
+
     private static readonly DateTimeOffset FixedUtcNow =
         new(2026, 8, 24, 12, 0, 0, TimeSpan.Zero);
 
@@ -61,28 +63,28 @@ public sealed class CriticalConfigurationTests
     [Fact]
     public void JwtOptionsLoadEnforcesDefaultsAndExternalConfiguration()
     {
-        var signingKey = RandomNumberGenerator.GetBytes(JwtOptions.MinimumSigningKeyBytes);
+        var signingKey = RandomNumberGenerator.GetBytes(MinimumSigningKeyBytes);
         var configured = LoadJwtOptions(
             Environments.Production,
             new Dictionary<string, string?>
             {
                 ["Jwt:Issuer"] = "Configured.Issuer",
                 ["Jwt:Audience"] = "Configured.Audience",
-                ["Jwt:LifetimeMinutes"] = JwtOptions.RequiredLifetimeMinutes.ToString(),
+                ["Jwt:LifetimeMinutes"] = "15",
                 ["Jwt:SigningKey"] = Convert.ToBase64String(signingKey)
             });
 
         Assert.Equal("Configured.Issuer", configured.Issuer);
         Assert.Equal("Configured.Audience", configured.Audience);
-        Assert.Equal(TimeSpan.FromMinutes(15), configured.Lifetime);
+        Assert.Equal(TimeSpan.FromMinutes(15), JwtOptions.Lifetime);
         Assert.True(configured.SigningKey.Span.SequenceEqual(signingKey));
 
         var defaults = LoadJwtOptions(
             Environments.Development,
             Array.Empty<KeyValuePair<string, string?>>());
-        Assert.Equal(JwtOptions.DefaultIssuer, defaults.Issuer);
-        Assert.Equal(JwtOptions.DefaultAudience, defaults.Audience);
-        Assert.Equal(JwtOptions.MinimumSigningKeyBytes, defaults.SigningKey.Length);
+        Assert.Equal("UserProfile.Api", defaults.Issuer);
+        Assert.Equal("UserProfile.Web", defaults.Audience);
+        Assert.Equal(MinimumSigningKeyBytes, defaults.SigningKey.Length);
 
         Assert.Equal(
             "JWT issuer configuration is required.",
@@ -116,7 +118,7 @@ public sealed class CriticalConfigurationTests
                 new Dictionary<string, string?>
                 {
                     ["Jwt:SigningKey"] = Convert.ToBase64String(
-                        RandomNumberGenerator.GetBytes(JwtOptions.MinimumSigningKeyBytes - 1))
+                        RandomNumberGenerator.GetBytes(MinimumSigningKeyBytes - 1))
                 })).Message);
     }
 
@@ -278,7 +280,7 @@ public sealed class CriticalConfigurationTests
     }
 
     [Fact]
-    public async Task DatabaseHealthCheckReportsCanConnectFailure()
+    public async Task DatabaseHealthCheckReportsUnavailableWhenConnectionCannotOpen()
     {
         var missingPath = Path.Combine(
             Path.GetTempPath(),
@@ -311,7 +313,7 @@ public sealed class CriticalConfigurationTests
     private static (JwtBearerOptions Options, JwtOptions JwtOptions, TimeProvider TimeProvider)
         CreateBearerOptions()
     {
-        var signingKey = RandomNumberGenerator.GetBytes(JwtOptions.MinimumSigningKeyBytes);
+        var signingKey = RandomNumberGenerator.GetBytes(MinimumSigningKeyBytes);
         var jwtOptions = LoadJwtOptions(
             Environments.Production,
             new Dictionary<string, string?>

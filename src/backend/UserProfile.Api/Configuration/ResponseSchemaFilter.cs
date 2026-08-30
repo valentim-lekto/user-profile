@@ -5,6 +5,8 @@ using UserProfile.Api.Features.Profile;
 
 namespace UserProfile.Api.Configuration;
 
+// Swashbuckle instantiates the filter registered by SchemaFilter<TFilter>().
+// ReSharper disable once ClassNeverInstantiated.Global
 public sealed class ResponseSchemaFilter : ISchemaFilter
 {
     public void Apply(IOpenApiSchema schema, SchemaFilterContext context)

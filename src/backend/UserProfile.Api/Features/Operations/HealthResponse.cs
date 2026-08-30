@@ -8,4 +8,6 @@ public enum HealthState
     Healthy
 }
 
+// Accessed through ASP.NET Core JSON serialization and OpenAPI reflection.
+// ReSharper disable once NotAccessedPositionalProperty.Global
 public sealed record HealthResponse(HealthState Status);

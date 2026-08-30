@@ -4,6 +4,8 @@ using Swashbuckle.AspNetCore.SwaggerGen;
 
 namespace UserProfile.Api.Security;
 
+// Swashbuckle instantiates the filter registered by OperationFilter<TFilter>().
+// ReSharper disable once ClassNeverInstantiated.Global
 public sealed class BearerSecurityOperationFilter : IOperationFilter
 {
     public void Apply(OpenApiOperation operation, OperationFilterContext context)
@@ -21,7 +23,7 @@ public sealed class BearerSecurityOperationFilter : IOperationFilter
         operation.Security ??= [];
         operation.Security.Add(new OpenApiSecurityRequirement
         {
-            [new OpenApiSecuritySchemeReference("bearerAuth", context.Document, null)] = []
+            [new OpenApiSecuritySchemeReference("bearerAuth", context.Document)] = []
         });
     }
 
