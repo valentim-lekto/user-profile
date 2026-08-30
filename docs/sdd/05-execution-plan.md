@@ -245,6 +245,64 @@ Gates observáveis:
 - nenhuma senha, hash, token, chave ou banco entra no diff, logs ou relatórios;
 - `git diff --check` passa e frontend/funcionalidades de negócio permanecem fora do escopo.
 
+### Atividade pós-M6 — recuperação de startup e eficiência de queries
+
+**Estado:** concluída localmente em 2026-08-28
+
+Entregas:
+
+- recuperar, sob a premissa de instância única, somente a tabela técnica `__EFMigrationsLock` que pode permanecer órfã após interrupção, limitando preparação e aplicação das migrations e preservando histórico/dados;
+- abrir uma única conexão SQLite por execução do health check;
+- evitar a consulta de conflito de email quando `NormalizedEmail` não mudou, mantendo o índice único como garantia autoritativa;
+- trocar o `LIKE` do teste de migration pela comparação do ID exato versionado;
+- manter API, schema, frontend e funcionalidades de negócio inalterados.
+
+Gates observáveis:
+
+- regressões reais comprovam recuperação do lock órfão, falha de schema inválido, uma abertura de conexão no health e ausência da consulta redundante de conflito;
+- suíte backend Docker, contrato, configuração Compose e smoke acumulado passam;
+- mutation testing é reexecutado e sua baseline é atualizada somente a partir do relatório real;
+- `git diff --check` passa e nenhum segredo, banco ou relatório gerado é versionado.
+
+### Atividade pós-M6 — fechamento da revisão completa de queries/startup
+
+**Estado:** concluída localmente em 2026-08-28
+
+Entregas:
+
+- mover a rotina de migrations para `IHostedLifecycleService.StartingAsync`, depois do registro dos sinais do host e antes do listener HTTP;
+- comprovar `SIGTERM` em processo real durante startup bloqueado, além das provas já existentes de deadline e lock órfão;
+- manter o lifecycle fora da allowlist Stryker aprovada, mas documentar sua responsabilidade crítica e a cobertura por integração/processo;
+- reutilizar `ApiFactory.WithInterceptor` e os endpoints HTTP nos testes de abertura única do health e ausência de precheck redundante;
+- manter o teste direto com dois `DbContext` para a corrida da própria conta, pois essa condição exige estado rastreado obsoleto deliberado.
+
+Gates observáveis:
+
+- regressão de lifecycle falha no código anterior e passa depois da movimentação;
+- testes focados e suíte backend Docker passam sem enfraquecimento;
+- mutation testing, contrato, configuração e smoke acumulado permanecem aprovados;
+- documentação registra somente resultados realmente observados; `git diff --check` e scan de artefatos/segredos passam.
+
+### Atividade pós-M6 — fortalecimento dos oráculos de startup e queries
+
+**Estado:** concluída localmente em 2026-08-30
+
+Entregas:
+
+- tornar a ausência de listener durante migrations observável independentemente do filtro global de logs;
+- provar que o cancelamento do host alcança o token consumido pela operação, não somente um callback no token bruto;
+- exigir saída zero do subprocesso e normalizar somente o cancelamento solicitado pelo host antes da prontidão;
+- contar consultas LINQ síncronas e assíncronas no gate que proíbe o precheck redundante;
+- manter API HTTP, schema, frontend e regras de negócio inalterados.
+
+Gates observáveis:
+
+- mover temporariamente a migration de `StartingAsync` para `StartedAsync` reprova o teste de prontidão;
+- substituir temporariamente o CTS ligado por um CTS independente reprova o teste de cancelamento;
+- remover a normalização na fronteira do processo reproduz exit code `134`, enquanto o caminho corrigido exige zero;
+- reintroduzir temporariamente o precheck síncrono com `Any()` reprova o teste de contagem;
+- os três mutantes descartáveis são removidos antes do build e da suíte backend completa.
+
 ## Progresso
 
 - `2026-08-24` — `design concluído` — artefatos de design e planejamento criados; M1–M6 permanecem pendentes e nenhum código foi implementado.
@@ -272,6 +330,9 @@ Gates observáveis:
 - `2026-08-28` — `dashboard simplificado ao escopo do desafio` — os três cartões sem ação de dados pessoais, senha e sessão foram retirados por repetirem funções já acessíveis no perfil/logout. A regressão falhou primeiro com 67/68 testes; depois da remoção direta do markup e dos estilos órfãos, lint, 68/68 testes, build, 3/3 E2E e inspeção real do dashboard passaram.
 - `2026-08-28` — `correção responsiva da revisão concluída` — três regressões sequenciais reproduziram formulário fora da viewport em `667×375`, ordem visual inversa ao Tab em `360×800` e nome defensivo sem limite vertical. Media query, ordem de coluna e clamps CSS diretos encerraram os achados; lint, 68/68 testes, build, 3/3 E2E e inspeção real em `320×568`, `360×800` e `667×375` passaram.
 - `2026-08-28` — `robustez de persistência pós-revisão DB concluída` — regressões reproduziram health falso-positivo e duas trocas concorrentes aceitas; CAS por hash, conjunto exato de migrations, timeout SQLite de cinco segundos e contrato do `409` concorrente foram implementados. Build/113 integrações, OpenAPI, config/smoke Compose e Stryker 97,47% passaram; frontend e schema permaneceram inalterados.
+- `2026-08-28` — `recuperação de startup e eficiência de queries concluídas` — três regressões reproduziram lock técnico órfão sem recuperação, duas aberturas por health e precheck redundante para email canonicamente igual. A re-revisão acrescentou provas para as duas fases do deadline e a corrida do próprio usuário. O patch direto recupera somente `__EFMigrationsLock` na instância única, aplica deadline total de 15 segundos, reutiliza uma conexão, evita o precheck quando a chave canônica não muda, exclui corretamente a própria conta quando muda e usa ID exato no oráculo de migration. Build/119 integrações, contrato e config/smoke Compose passaram; API, schema e frontend permaneceram inalterados.
+- `2026-08-28` — `fechamento da revisão completa de queries/startup concluído` — migrations passaram para `IHostedLifecycleService.StartingAsync`, depois do registro dos sinais do host e antes do listener. Uma integração em subprocesso envia `SIGTERM` durante um lock real, observa o cancelamento cooperativo e comprova saída antes do deadline interno sem prontidão ou resíduo técnico. Os testes de health/perfil reutilizam `ApiFactory.WithInterceptor` e HTTP real; o cenário deliberadamente concorrente continua direto. Build/120 integrações, contrato, configuração/smoke, probes e Stryker 97,47% passaram.
+- `2026-08-30` — `oráculos de startup e queries fortalecidos` — o subprocesso tornou o log de lifetime observável, um teste direto comprovou o token entregue a `MigrateAsync` e o observer passou a contar queries síncronas/assíncronas. Durante a organização dos commits, exigir exit code zero revelou o abort `134` que o oráculo anterior aceitava; a fronteira de execução passou a normalizar somente `SIGTERM` anterior à prontidão. O teste focado, build e 121/121 integrações, contrato, Compose, smoke e três probes `200` passaram; a baseline Stryker anterior permanece aplicável porque lifecycle e `Program.cs` estão fora da allowlist.
 
 ## Evidências de M1
 
@@ -400,6 +461,30 @@ O relatório detalhado, incluindo as correções do próprio script de auditoria
 | Mutação final | Baseline temporária e profile `mutation-tests` final | Score 97,47%, ratchet 97/97/97, 193 killed/5 survived/108 ignored/3 `CompileError`, sem timeout, `NoCoverage` ou erro de runtime; HTML/JSON e gate aprovados. |
 | Aplicação principal | Rebuild/restart preservando volume; requests a `/`, `/health` e `/swagger/index.html` | Containers `api`/`web` saudáveis e três URLs em `200`; recursos de outros projetos não foram alterados. |
 
+## Evidências da recuperação de startup e eficiência de queries
+
+Esta tabela registra a baseline histórica daquela correção. O fechamento posterior, com lifecycle e `SIGTERM`, está na tabela seguinte.
+
+| Gate | Execução observada em 2026-08-28 | Resultado |
+|---|---|---|
+| Regressões antes da correção | Três integrações focadas no target Docker | 3/3 falharam como esperado: duas aberturas no health, uma consulta de conflito para email canonicamente inalterado e startup retido pelo lock órfão. |
+| Regressões e backend final | Testes focados seguidos de `docker compose --profile backend-tests run --rm --build backend-tests` | Recuperação do lock, deadline na preparação e em `MigrateAsync`, schema conflitante, abertura única, ausência do precheck redundante e corrida do próprio usuário passaram; build Release e 119/119 integrações aprovados. |
+| Contrato e operação | Profile `contract-tests`, `docker compose --profile mutation-tests config --quiet` e `./scripts/validate-m1-compose.sh` | OpenAPI permaneceu com 6 operações/53 referências; configuração e smoke completo passaram. A primeira tentativa isolada encontrou a porta `8080` ocupada pela própria stack de demonstração; ela foi pausada sem remover o volume, o smoke passou e a stack foi restaurada. |
+| Mutation testing final | `docker compose --profile mutation-tests run --rm --build mutation-tests` | 484 mutantes descobertos e 198 executados; score 97,47%, ratchet 97/97/97, 193 killed, 5 survived equivalentes, 119 ignored, 3 `CompileError` classificados e zero timeout/`NoCoverage`/erro de runtime em `00:08:23`. HTML/JSON e gate aprovados. |
+| Aplicação principal | Rebuild/restart preservando volume; requests a `/`, `/health` e `/swagger/index.html` | Containers `api`/`web` saudáveis e três URLs em `200`; nenhum recurso de outro projeto foi alterado. |
+
+## Evidências do fechamento da revisão completa de queries/startup
+
+| Gate | Execução observada em 2026-08-28 | Resultado |
+|---|---|---|
+| Lifecycle e sinal real | Testes focados `BE-DB-002/003`, incluindo subprocesso bloqueado e `SIGTERM` real | 7/7 cenários focados passaram. O processo observou o token do host, não abriu listener, saiu em menos de 10 segundos e preservou usuário/histórico sem lock técnico residual. |
+| Backend final | `docker compose --profile backend-tests run --rm backend-tests` | Build Release e 120/120 integrações aprovados, 0 falha e 0 skip, em 31 segundos. |
+| Contrato e operação | Profile `contract-tests`, Compose config e `./scripts/validate-m1-compose.sh` | OpenAPI permaneceu com 6 operações/53 referências; configuração e smoke acumulado passaram sem alterar o volume principal. |
+| Mutation testing final | `docker compose --profile mutation-tests run --rm --build mutation-tests` | 491 mutantes descobertos e 198 executados; score 97,47%, ratchet 97/97/97, 193 killed, 5 survived equivalentes, 106 ignored, 3 `CompileError` classificados e zero timeout/`NoCoverage`/erro de runtime em `00:04:30`; HTML/JSON, gate e exit code zero. |
+| Aplicação principal | Rebuild/restart preservando volume; probes em `/`, `/health` e `/swagger/index.html` | Serviços ativos e três recursos em `200` no localhost:8080; nenhum recurso de outro projeto foi alterado. |
+
+Execuções intermediárias de mutação foram rejeitadas, e não promovidas a baseline: uma continha 12 timeouts; outra revelou que a autoexclusão por `Id` precisava de uma regressão concorrente; e o primeiro passe após essa regressão ainda teve um timeout isolado. Uma tentativa de exclusão pontual também foi descartada por ocultar dois mutantes. A solução final preservou a condição necessária, matou seu mutante com comportamento observável e manteve somente a exclusão histórica já justificada em `JwtBearerConfiguration`.
+
 ## Evidências correntes do refinamento visual pós-M6
 
 | Gate | Execução observada em 2026-08-28 | Resultado |
@@ -526,4 +611,4 @@ Os nomes de scripts npm devem ser confirmados no scaffold e então congelados. M
 
 ## Resultado final
 
-M1–M6 estão concluídos quanto ao escopo técnico e documental. As revisões posteriores corrigiram sessão, estabilidade, apresentação e robustez SQLite sem ampliar funcionalidade. A evidência corrente contém 113 integrações backend, 68 testes frontend, três jornadas Playwright, contrato e smoke completo aprovados. Mutation testing foi recalibrado localmente para 97,47%, com ratchet 97/97/97 e relatórios HTML/JSON; concorrência de senha, health exato e margem de timeout do Compose estão comprovados. A execução hospedada da CI, a confirmação de `AI-EXPLAIN-01` por uma pessoa e `DEL-REPO-01` permanecem ações externas e não foram marcadas como Verified.
+M1–M6 estão concluídos quanto ao escopo técnico e documental. As revisões posteriores corrigiram sessão, estabilidade, apresentação, robustez SQLite, recuperação de startup e eficiência de queries sem ampliar funcionalidade. A evidência corrente contém 121 integrações backend, 68 testes frontend, três jornadas Playwright, contrato e smoke completo aprovados. Mutation testing foi recalibrado localmente para 97,50%, com ratchet 97/97/97 e relatórios HTML/JSON; concorrência de senha, lifecycle cooperativo sob `SIGTERM`, recuperação/deadline de ambas as fases de migration, health com uma conexão/IDs exatos, precheck condicional com exclusão correta da própria conta e margem de timeout do Compose estão comprovados. Os oráculos detectam listener prematuro, CTS não ligado e precheck síncrono redundante. A execução hospedada da CI, a confirmação de `AI-EXPLAIN-01` por uma pessoa e `DEL-REPO-01` permanecem ações externas e não foram marcadas como Verified.

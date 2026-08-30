@@ -146,6 +146,7 @@ IDs publicados não devem ser renumerados nem reutilizados para outro comportame
 | `OPS-DOCKER-01` | Em checkout limpo, `docker compose up` disponibiliza frontend, backend e persistência SQLite em volume, sem exigir criação manual de `.env`. O health exige o conjunto exato de migrations esperado, e o timeout de espera por lock do SQLite permanece menor que o timeout do proxy, deixando margem para a aplicação concluir ou falhar e devolver sua resposta. |
 | `OPS-DOCKER-02` | A aplicação pode ser acessada e validada sem instalar SDKs, runtimes ou banco de dados fora do Docker e Docker Compose. |
 | `OPS-DOCKER-03` | Os dados SQLite sobrevivem à recriação dos contêineres da aplicação enquanto o volume Docker for preservado. |
+| `OPS-DOCKER-04` | Sob a premissa explícita de uma única instância, o startup recupera um lock técnico órfão de migrations do EF Core antes de aplicar as migrations, sem remover dados da aplicação. A preparação e aplicação do schema ocorrem antes de a API aceitar requisições, possuem prazo limitado e observam o encerramento cooperativo do host, inclusive `SIGTERM`; falha real de migration continua interrompendo o startup. |
 | `DOC-RUN-01` | O README permite iniciar e validar a solução e informa comandos, URLs, portas e dados de teste ou o procedimento de cadastro para criá-los. |
 | `DOC-SDD-01` | Os artefatos SDD exigidos estão versionados e ADRs existem para decisões relevantes. |
 | `DOC-TRACE-01` | Cada mudança comportamental possui vínculo verificável entre requisito, critério de aceite, implementação e teste. |

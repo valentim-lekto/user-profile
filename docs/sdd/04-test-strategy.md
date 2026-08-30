@@ -1,6 +1,6 @@
 # 04 — Estratégia de testes
 
-**Status:** aprovada e executada em M1–M6; regressões de robustez SQLite pós-revisão aprovadas localmente · **Data:** 2026-08-28 · **Contrato:** [`03-api-contract.yaml`](03-api-contract.yaml)
+**Status:** aprovada e executada em M1–M6; robustez SQLite e oráculos de startup/queries aprovados localmente · **Data:** 2026-08-30 · **Contrato:** [`03-api-contract.yaml`](03-api-contract.yaml)
 
 ## Objetivo
 
@@ -60,7 +60,7 @@ Validar os comportamentos e riscos principais com a menor suíte capaz de fornec
 | `BE-PROF-002` | Dois usuários consultam apenas o próprio perfil; query/header arbitrários não influenciam o `sub` usado pelo GET. | `SEC-AUTH-01`, `AC-PROF-01` |
 | `BE-PROF-003` | PUT válido atualiza e persiste nome/email do usuário atual, preserva `CreatedAtUtc` e avança `UpdatedAtUtc`. | `AC-PROF-02`, `AC-PROF-05`, `PREM-DATA-02` |
 | `BE-PROF-004` | PUT aplica validações equivalentes ao cadastro, aceita email ASCII válido exatamente em 320 caracteres e rejeita as classes inválidas; cada falha preserva nome, email, email normalizado e timestamps. | `AC-PROF-03`, `PREM-INPUT-01` |
-| `BE-PROF-005` | Email de outro usuário retorna `409` sem alteração parcial; manter o próprio email não conflita. | `AC-PROF-04` |
+| `BE-PROF-005` | Email de outro usuário retorna `409` sem alteração parcial; manter o próprio email não conflita nem executa consulta redundante; uma mudança concorrente da mesma conta para o email solicitado não é confundida com outro usuário. A contagem da query usa o pipeline HTTP real e `ApiFactory.WithInterceptor`, observa comandos LINQ síncronos e assíncronos e não reconstrói controller/claims manualmente. | `AC-PROF-04` |
 | `BE-PROF-006` | Dois usuários alteram somente o próprio perfil; `userId` extra no JSON retorna `400`, e query/header arbitrários não influenciam o `sub` usado pelo PUT. | `SEC-AUTH-01`, `AC-PROF-01`, `AC-PROF-02` |
 | `BE-PASS-001` | Senha atual válida exatamente em 128 caracteres é aceita; senha atual incorreta, ausente ou acima de 128 caracteres retorna `400` e preserva nome, email, email normalizado, hash e timestamps. | `AC-PASS-02`, `PREM-INPUT-01` |
 | `BE-PASS-002` | Nova senha ausente/curta/longa ou confirmação ausente/curta/longa/divergente retorna `400`; toda a entidade é preservada, a senha antiga continua autenticando e a nova não autentica. | `AC-PASS-03`, `PREM-INPUT-01` |
@@ -70,8 +70,10 @@ Validar os comportamentos e riscos principais com a menor suíte capaz de fornec
 | `BE-DTO-001` | Nenhuma resposta expõe senha, hash ou email normalizado; somente `ProfileResponse` expõe o ID imutável previsto no contrato. | `AC-PROF-01`, `SEC-SECRET-01` |
 | `BE-ERR-001` | Erros previstos e gerados pelo pipeline, incluindo JSON malformado, media type não suportado `415`, rota `/api` inexistente e método não permitido, usam `ProblemDetails`/`ValidationProblemDetails` e `application/problem+json`; o `413` anterior à API é coberto por `OPS-COMPOSE-001`. | `API-ERROR-01` |
 | `BE-ERR-002` | Após startup saudável, cadastro contra SQLite bloqueado percorre o handler real e retorna `500` sem stack trace, SQL ou segredo na resposta. | `SEC-SECRET-01`, `API-ERROR-01` |
-| `BE-DB-001` | Startup aplica migrations a banco vazio; o schema real contém exatamente os sete campos definidos no ADR-0002 com tipo/nulabilidade/chave esperados, cria o índice único e não deixa mudança pendente entre modelo e snapshot. | `OPS-DOCKER-01`, `PREM-DATA-02`, ADR-0002 |
-| `BE-HEALTH-001` | `/health` retorna `200` após startup somente quando o conjunto exato de IDs de migration aplicado coincide com o esperado; histórico vazio ou de mesma cardinalidade com IDs divergentes é `Unhealthy`. Com timeout padrão de 30 segundos na conexão da fixture, bloqueio exclusivo posterior retorna `503 application/problem+json` em menos de 5 segundos. Falha de migration é testada como falha de startup. | `OPS-DOCKER-01`, `API-ERROR-01` |
+| `BE-DB-001` | Startup aplica migrations a banco vazio; a asserção usa o ID exato versionado, e o schema real contém exatamente os sete campos definidos no ADR-0002 com tipo/nulabilidade/chave esperados, cria o índice único e não deixa mudança pendente entre modelo e snapshot. | `OPS-DOCKER-01`, `PREM-DATA-02`, ADR-0002 |
+| `BE-DB-002` | Um banco já migrado com linha órfã em `__EFMigrationsLock` volta a iniciar dentro do limite, preserva usuário/histórico e deixa o health saudável; schema conflitante continua falhando; retenções artificiais na preparação e na abertura usada por `MigrateAsync` recebem cancelamento no deadline operacional. | `OPS-DOCKER-04`, ADR-0002 |
+| `BE-DB-003` | A cobertura combina dois oráculos: (a) um processo real bloqueado no lifecycle de migrations recebe `SIGTERM` antes da prontidão, comprova por log não filtrado que o listener HTTP não abriu, encerra com código zero antes do deadline interno e não deixa linha no lock técnico; (b) um teste direto do lifecycle bloqueia a abertura de `MigrateAsync`, cancela o token do chamador e comprova que esse cancelamento alcançou o token efetivamente entregue à operação. O teste direto só libera a operação após essa observação, sem confundir o token bruto do host com o token ligado usado pela migration. | `OPS-DOCKER-04`, ADR-0002 |
+| `BE-HEALTH-001` | `/health` abre uma única conexão SQLite e retorna `200` após startup somente quando o conjunto exato de IDs de migration aplicado coincide com o esperado; histórico vazio ou de mesma cardinalidade com IDs divergentes é `Unhealthy`. A contagem da conexão usa o endpoint HTTP e `ApiFactory.WithInterceptor`. Com timeout padrão de 30 segundos na conexão da fixture, bloqueio exclusivo posterior retorna `503 application/problem+json` em menos de 5 segundos. Falha de migration é testada como falha de startup. | `OPS-DOCKER-01`, `API-ERROR-01` |
 | `BE-OAS-001` | O OpenAPI gerado em runtime contém exatamente as seis operações implementadas em M4, com segurança, status, extensões pós-`Trim`, JWT Bearer e DTOs sem campos sensíveis; nos dois PUTs de M4, também vincula body obrigatório, media types e schemas de request/resposta coerentes com o contrato normativo. | `DOC-SDD-01`, `DOC-TRACE-01`, `SPEC-OAS-002`, `SPEC-OAS-003`, `SPEC-OAS-004`, `SPEC-OAS-005` |
 | `BE-MUT-001` | Stryker.NET executa mutantes somente na allowlist crítica de autenticação, perfil, JWT, health e configuração EF; a suíte inicial permanece verde, não há `NoCoverage`/timeout/erro inexplicado no alvo e os relatórios HTML/JSON exibem todos os survivors. | `NFR-TEST-01`, `TEST-FLOW-01` |
 
@@ -153,7 +155,7 @@ divergência quebra o build.
 | M4 | `BE-PROF-003/004/005/006`, `BE-PASS-*`, `FE-PROF-*`, `FE-PASS-*`, parcela M4 de `OPS-COMPOSE-001`/`OPS-SECRET-001` e assertions aplicáveis de `BE-ERR-001`/`BE-DTO-001`. |
 | M5 | `E2E-*`, `CI-001`, suíte acumulada completa, perfis Compose para qualidade/E2E sem SDKs no host, `OPS-TAGS-001`, auditorias de log/segredo e build de produção. |
 | M6 | Reexecução de `TECH-*`, `OPS-*`, `DOC-RUN-001`, `DOC-EXPLAIN-001`, `SPEC-TRACE-001`, revisão manual e execução completa em checkout limpo. |
-| Pós-M6 | `BE-MUT-001`, `CI-MUT-001`, suíte backend normal, profile Docker de mutação, inventários/smoke, actionlint e registro da baseline/ratchet. |
+| Pós-M6 | `BE-MUT-001`, `CI-MUT-001`, `BE-DB-002/003`, evolução de `BE-HEALTH-001`/`BE-PROF-005`, suíte backend normal, profiles Docker de teste/mutação, contrato, configuração/smoke, actionlint quando aplicável e registro das baselines/evidências. |
 
 ## Política de cobertura
 
@@ -165,7 +167,7 @@ O primeiro passe de `BE-MUT-001` usa `thresholds.break = 0` apenas para medir a 
 
 Após não restarem `NoCoverage`, timeout ou erro de execução sem explicação no alvo crítico, o score final `S` fixa `break = floor(S)`, `low = max(60, break)` e `high = max(80, low)`. A configuração final precisa executar com exit code zero e `break > 0`. Quantidades killed/survived/ignored/no-coverage, score, duração e justificativas são registradas em `07-validation-report.md`; survivor não equivalente fora de requisito permanece visível e participa da baseline.
 
-Baseline corrente recalibrada em 2026-08-28: `S = 97,47%`, com 193 killed, 5 survived, 108 ignored, 3 `CompileError` produzidos por mutações não compiláveis, 0 `NoCoverage`, 0 timeout e 0 erro de execução, em `00:03:21`; a execução definitiva levou `00:03:00`. O ratchet final continua `break/low/high = 97/97/97`. Os cinco survivors equivalentes permanecem no relatório, e uma única exclusão pontual justificável continua contabilizada como ignored; não há ignore global.
+Baseline corrente recalibrada em 2026-08-30: `S = 97,50%`, com 492 mutantes descobertos, 200 executados, 195 killed, 5 survived, 105 ignored, 3 `CompileError` produzidos por mutações não compiláveis, 0 `NoCoverage`, 0 timeout e 0 erro de execução, em `00:08:36`. O ratchet final continua `break/low/high = 97/97/97`. Nenhum ignore foi adicionado; os cinco survivors equivalentes permanecem no relatório, e uma única exclusão pontual justificável continua contabilizada como ignored; não há ignore global.
 
 Como o score considera timeout como detectado, o runner Docker não confia apenas no exit code do Stryker: ele valida o JSON final e reprova `Timeout`, `NoCoverage`, `RuntimeError`, relatório ausente e quantidade de `CompileError` diferente dos três mutantes não compiláveis já classificados. Esse gate impede falso-verde sem aumentar timeout, reduzir suíte ou ocultar mutante.
 

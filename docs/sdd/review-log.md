@@ -1339,4 +1339,126 @@ Nenhum arquivo backend, OpenAPI, banco, payload, rota ou configuração Compose 
 | Mutation testing | 193 killed, 5 survived equivalentes, 108 ignored, 3 `CompileError` classificados, 0 timeout/`NoCoverage`/erro; score 97,47%, ratchet 97/97/97 e exit 0. |
 | Aplicação publicada | `api`/`web` healthy; `/`, `/health` e `/swagger/index.html` em `200` no localhost:8080, com volume preservado. |
 
-A lente KISS manteve a solução proporcional: nenhum concurrency token global, repository, transação manual, migration ou abstração adicional. A integridade existente permaneceu adequada para o escopo — PK Guid, colunas obrigatórias/limites e índice único normalizado — e a limitação de concorrência ampla do SQLite continua documentada para a instância única de demonstração. Nenhum recurso de outro projeto foi alterado; nenhum segredo, banco, relatório, commit ou push foi produzido.
+A lente KISS manteve a solução proporcional: nenhum concurrency token global, repository, transação manual, migration ou abstração adicional. A integridade existente permaneceu adequada para o escopo — PK Guid, colunas obrigatórias/limites e índice único normalizado — e a limitação de concorrência ampla do SQLite continua documentada para a instância única de demonstração. Nenhum recurso de outro projeto foi alterado; relatórios permaneceram sob `artifacts/` sem versionamento, nenhum segredo ou banco foi versionado e nenhum commit ou push foi produzido.
+
+## 2026-08-28 — Revisão focada em queries e implementação
+
+- **Escopo:** queries EF/SQLite, health, preparação de migrations e fidelidade dos testes; revisão inicialmente somente leitura, seguida de implementação autorizada.
+- **Apoio:** revisores separados inspecionaram desenho de recuperação, regressões de startup e oráculos/consultas; o patch foi re-revisado antes dos gates finais.
+- **Resultado:** a revisão inicial confirmou 1 P2 e 3 P3; a re-revisão acrescentou 2 P2 e 2 P3 técnicos, além de um alinhamento documental. Todos foram corrigidos sem endpoint, schema, migration, dependência ou funcionalidade nova.
+
+### `REV-QUERY-001` — P2 — lock órfão podia bloquear o startup
+
+- **Evidência:** após inserir a linha do mecanismo `__EFMigrationsLock`, uma segunda factory sobre o mesmo SQLite não concluía dentro da guarda externa.
+- **Correção:** na premissa de instância única, o startup remove somente a tabela técnica antes de `MigrateAsync`, com command timeout de 5 segundos e deadline total de 15 segundos ligado a `ApplicationStopping`.
+- **Prova:** `BE-DB-002` recupera o lock, preserva usuário e histórico e conclui antes da guarda; o cenário de schema conflitante continua falhando.
+
+### `REV-QUERY-002` — P3 — health abria duas conexões
+
+- **Evidência:** interceptor EF observou `CanConnectAsync` seguido de `OpenConnectionAsync` na mesma probe.
+- **Correção:** remover a pré-conexão e reutilizar a única conexão aberta para consultar migrations.
+- **Prova:** SQLite real registra exatamente uma abertura e mantém os estados saudável/indisponível corretos.
+
+### `REV-QUERY-003` — P3 — precheck redundante no perfil
+
+- **Evidência:** atualizar caixa/espaços sem mudar `NormalizedEmail` ainda emitia uma query `EXISTS`.
+- **Correção:** executar `AnyAsync` somente quando a chave canônica muda; remover o predicado redundante do próprio `Id`, pois a condição externa já exclui o registro atual.
+- **Prova:** `BE-PROF-005` observa zero `EXISTS` no caso inalterado; atualização para email novo, conflito e corrida continuam verdes.
+
+### `REV-QUERY-004` — P3 — oráculo de migration admitia falso-verde
+
+- **Evidência:** `LIKE '%_InitialCreate'` tratava `_` como wildcard e não exigia o ID completo.
+- **Correção:** ordenar e comparar a coleção ao ID versionado exato.
+- **Prova:** `BE-DB-001` exige `20260824182132_InitialCreate` e o health rejeita histórico divergente.
+
+### `REV-QUERY-005` — P2 — a própria conta podia virar falso conflito
+
+- **Evidência:** se um context mantivesse email A rastreado enquanto outra request da mesma conta persistisse B, o precheck por B sem `Id != userId` encontrava a própria linha e retornava `409`.
+- **Correção:** restaurar a exclusão pelo `Id` imutável do `sub`, mantendo o short-circuit quando `NormalizedEmail` não muda.
+- **Prova:** dois contexts SQLite reproduzem o estado stale/concorrente e obtêm `200`; o teste mata os mutantes lógico/de igualdade sem ignore.
+
+### `REV-QUERY-006` — P2 — deadline total sem prova executável
+
+- **Evidência:** a regressão do lock órfão passava mesmo sem `CancelAfter(15s)` porque exercitava somente o caminho rápido.
+- **Correção:** duas variantes do interceptor retêm separadamente a abertura da preparação e a abertura usada por `MigrateAsync` até o token real ser cancelado; a guarda externa permanece acima do deadline.
+- **Prova:** ambas encerram por `TimeoutException`; remover o deadline ou o token de `MigrateAsync` faz a variante correspondente ultrapassar 20 segundos.
+
+### `REV-QUERY-007` — P3 — observer específico demais
+
+- **Evidência:** contar somente SQL com `EXISTS` não detectaria um segundo round-trip equivalente implementado com `Count` ou `First`.
+- **Correção:** contar todo `CommandSource.LinqQuery` depois do arranjo e exigir exatamente a carga obrigatória do usuário.
+- **Prova:** o caso canonicamente inalterado passa com uma query; qualquer precheck LINQ adicional reprova.
+
+O alinhamento documental da re-revisão removeu o smoke como evidência direta de `OPS-DOCKER-04`, incluiu os novos gates pós-M6 e separou corretamente o deadline de startup do timeout de leitura do proxy.
+
+### Gates finais
+
+| Gate | Resultado |
+|---|---|
+| Regressões focadas | 3/3 falhas esperadas antes do código; todos os cenários focados verdes após o patch. |
+| Backend Docker | Build Release; 119/119 integrações, 0 falha/skip. |
+| OpenAPI e Compose | Seis operações/53 referências, config e smoke completo aprovados. |
+| Mutation testing | 193 killed, 5 survived equivalentes, 119 ignored, 3 `CompileError`, 0 timeout/`NoCoverage`/erro; score 97,47%, ratchet 97/97/97 e exit 0. |
+| Aplicação publicada | `api`/`web` saudáveis; `/`, `/health` e `/swagger/index.html` em `200`, com volume preservado. |
+
+A lente KISS evitou abstração de startup, política de retry e ignore novo no Stryker. Duas baselines intermediárias e uma exclusão ampla demais foram descartadas; somente o relatório limpo final foi promovido. A recuperação de `__EFMigrationsLock` permanece explicitamente limitada à instância única de demonstração. Nenhum recurso externo foi alterado; relatórios permaneceram sob `artifacts/` sem versionamento, nenhum segredo ou banco foi versionado e nenhum commit ou push foi produzido.
+
+## 2026-08-28 — Implementação dos achados da revisão completa
+
+### Snapshot e escopo
+
+- escopo limitado aos três P3 confirmados: lifecycle sob sinal, justificativa do alvo de mutação e duplicação nos testes de query;
+- nenhuma API, schema, migration, frontend, dependência ou funcionalidade de negócio foi adicionada;
+- SDD e ADR foram ajustados antes da mudança de lifecycle.
+
+### Disposição dos achados
+
+| ID | Disposição |
+|---|---|
+| `REV-COMPLETE-LIFECYCLE-001` | Corrigido: migrations executam em `IHostedLifecycleService.StartingAsync`, depois do registro do `IHostLifetime` e antes do listener. `BE-DB-003` envia `SIGTERM` real ao subprocesso bloqueado e comprova observação do token, ausência de prontidão, saída abaixo de 10 segundos e preservação. |
+| `REV-COMPLETE-STALE-001` | Corrigido: design/estratégia não classificam mais `Program.cs` como wiring trivial; lifecycle crítico fora da allowlist tem cobertura e limite explicitados. Relatório final confirmou zero mutantes ativos nesses arquivos sem novo ignore. |
+| `REV-COMPLETE-KISS-001` | Corrigido: health e perfil reutilizam `ApiFactory.WithInterceptor` e HTTP real. O harness direto da corrida foi preservado porque precisa de dois contexts e estado rastreado obsoleto de propósito. |
+
+### Revalidação
+
+| Gate | Resultado |
+|---|---|
+| Focados | 7/7 verdes; `SIGTERM` isolado em 1 segundo. |
+| Backend Docker | Build Release; 120/120 integrações, 0 falha/skip, 31 segundos. |
+| Contrato/Compose/smoke | Seis operações/53 referências, config e smoke completo aprovados. |
+| Mutation testing | 491 descobertos/198 executados; 193 killed, 5 survivors equivalentes, 106 ignored, 3 `CompileError`, zero timeout/`NoCoverage`/erro; 97,47%, ratchet 97/97/97, exit 0 em `00:04:30`. |
+| Runtime restaurado | `/`, `/health` e `/swagger/index.html` em `200` no localhost:8080, volume principal preservado. |
+
+O primeiro oráculo do teste de sinal aguardava uma mensagem genérica tardia e falhou; ele foi substituído pela observação direta e segura do callback do token do host, sem aumentar limites nem mascarar a chamada nativa SQLite. A lente KISS levou a um único serviço de lifecycle e ao reaproveitamento da factory existente. Três rechecagens independentes e somente leitura não encontraram achado de código ou teste; três imprecisões Low documentais sobre artefatos, fronteira do relatório Stryker e rastreabilidade do ADR foram corrigidas. Nenhum commit ou push foi produzido nesta implementação.
+
+## 2026-08-30 — Fortalecimento dos oráculos da revisão completa
+
+- **Escopo:** implementar os três achados de teste confirmados contra o snapshot `290c4fd58323fa1a4e3981c098163b5ade89c086`, sem alterar produção.
+- **Achados:** dois P2 — prontidão mascarada pelo filtro de logs e cancelamento observado somente no token bruto — e um P3 — observer restrito ao callback assíncrono.
+- **SDD:** `BE-DB-003` e `BE-PROF-005`, plano e matriz foram atualizados antes dos testes.
+
+### Disposição
+
+| Achado | Implementação | Vermelho comprovado |
+|---|---|---|
+| Listener prematuro não observável | Override `Microsoft.Hosting.Lifetime=Information` somente no subprocesso. | O mutante `StartedAsync` registrou `Now listening on` e falhou no `Assert.DoesNotContain`. |
+| CTS independente não detectado | Novo teste captura o token da segunda abertura, cancela o chamador e exige propagação/`OperationCanceledException`. | O mutante com `new CancellationTokenSource()` falhou imediatamente com token não cancelado. |
+| Query síncrona não contada | `ReaderExecuting` e `ReaderExecutingAsync` compartilham `ObserveLinqQuery`. | O observer antigo aceitou o precheck síncrono; o novo observou duas queries e reprovou. |
+
+### Gates finais
+
+| Gate | Resultado |
+|---|---|
+| Focados restaurados | Readiness, propagação de cancelamento e query única aprovados. |
+| Backend Docker | Build Release com 0 warnings/erros; 121/121 integrações, 0 falha/skip, em 32 segundos. |
+| Mutation testing | 492 descobertos/200 executados; 195 killed, 5 survivors equivalentes, 105 ignored, 3 `CompileError`, zero timeout/`NoCoverage`/erro; 97,50%, ratchet 97/97/97, exit 0 em `00:08:36`. |
+
+A lente KISS evitou porta fixa, probe TCP, instrumentação de produção ou nova abstração. A complexidade do subprocesso real, do SQLite e do interceptor foi mantida porque protege lifecycle, cancelamento e round-trips observáveis. Os mutantes ficaram em diretórios temporários removidos após cada prova; nenhum commit ou push foi produzido.
+
+## 2026-08-30 — Organização dos commits e fechamento do shutdown
+
+- **Achado:** o teste de processo comprovava sinal, ausência de listener e preservação, mas não exigia término normal. Ao adicionar o oráculo, a execução real falhou com exit `134` após uma `OperationCanceledException` não tratada.
+- **Correção:** manter a exceção no lifecycle para abortar o startup antes do Kestrel e reconhecê-la somente na fronteira de execução quando o host está parando e nunca chegou a `ApplicationStarted`.
+- **Limites:** deadline, falha SQLite, cancelamento sem shutdown e falha após prontidão não satisfazem o filtro e continuam propagando.
+- **Validação:** teste focado verde em 1 segundo; build Release e 121/121 integrações em 31 segundos; OpenAPI 6 operações/53 referências; Compose config e smoke completos; pilha principal restaurada e três URLs em `200` com o volume preservado.
+- **Escopo:** nenhum rate limiter foi iniciado; nenhum schema, endpoint, payload, frontend ou regra de negócio mudou.

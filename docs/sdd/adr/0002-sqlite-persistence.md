@@ -1,6 +1,6 @@
 # ADR-0002 — Persistência SQLite
 
-**Status:** aceita · **Data:** 2026-08-24
+**Status:** aceita · **Data:** 2026-08-24 · **Última revisão:** 2026-08-30
 
 ## Contexto
 
@@ -15,7 +15,13 @@ A entrega precisa persistir dados, iniciar apenas com Docker Compose e não exig
   inicializados no cadastro, `CreatedAtUtc` é preservado e `UpdatedAtUtc` muda em
   alterações persistidas. Esta é uma decisão interna de design, não requisito do
   enunciado nem campo do contrato HTTP.
-- Versionar migrations e aplicá-las no startup antes de a API ficar pronta.
+- Versionar migrations e aplicá-las em `IHostedLifecycleService.StartingAsync`,
+  depois que o host registra sinais de encerramento e antes de a API aceitar
+  requisições.
+- Sob a premissa de uma única instância, remover no startup somente a tabela
+  técnica `__EFMigrationsLock` antes de aplicar migrations, recuperando o
+  artefato órfão deixado por interrupção. A preparação e a migration têm limites de tempo;
+  dados e `__EFMigrationsHistory` não são apagados.
 - Usar um arquivo SQLite isolado por fixture nos testes de integração; EF InMemory não substitui esses testes.
 
 ## Consequências
@@ -30,6 +36,14 @@ A entrega precisa persistir dados, iniciar apenas com Docker Compose e não exig
 
 - Escritas concorrentes e operação multi-instância são limitadas.
 - Migrations no startup podem disputar entre instâncias; por isso a decisão vale apenas para a demonstração de instância única.
+- A recuperação automática do lock não é segura para múltiplas instâncias, pois
+  uma delas poderia remover o lock legítimo da outra; produção exige etapa de
+  migration separada.
+- O token do lifecycle permite que `SIGTERM` cancele cooperativamente o startup;
+  esse cancelamento solicitado pelo host propaga até a fronteira de execução e é
+  reconhecido ali para concluir o encerramento normalmente, enquanto falhas reais
+  e o deadline continuam sendo propagados.
+  Operações nativas bloqueadas permanecem limitadas pelo timeout do SQLite.
 - Excluir o volume remove os dados e deve ser uma ação explícita.
 
 ## Alternativas rejeitadas
@@ -40,4 +54,4 @@ A entrega precisa persistir dados, iniciar apenas com Docker Compose e não exig
 
 ## Rastreabilidade
 
-`PREM-DATA-01`, `PREM-DATA-02`, `NFR-DATA-01`, `OPS-DOCKER-01`, `OPS-DOCKER-03`.
+`PREM-DATA-01`, `PREM-DATA-02`, `NFR-DATA-01`, `NFR-OPS-01`, `OPS-DOCKER-01`, `OPS-DOCKER-03`, `OPS-DOCKER-04`, `BE-DB-002` e `BE-DB-003`.

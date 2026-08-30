@@ -241,3 +241,39 @@ Não armazenar conversas completas nem transcrições integrais de prompts e res
 - **Validação:** regressões vermelhas 1/3 e verdes 3/3; build Release e 113/113 integrações; OpenAPI com seis operações/53 referências; Compose config com `Default Timeout=5`; smoke completo; SPA/health/Swagger em `200`; mutation testing recalibrado em 97,47% (193 killed, 5 survivors equivalentes, 108 ignored, 3 `CompileError` classificados, zero timeout/`NoCoverage`/erro) e gate final 97/97/97.
 - **Segurança:** senha/hash permanecem fora de logs/respostas; identidade continua exclusivamente no `sub`; comandos SQL são gerados e parametrizados pelo EF Core; nenhum segredo, JWT, banco ou relatório foi versionado.
 - **Limites:** SQLite continua destinado à instância única de demonstração; a correção torna esta operação concorrente atômica, mas não promete throughput multiwriter de produção. A execução hospedada de mutation testing continua Pending. A baseline de 111 testes/97,41% registrada em 2026-08-27 é histórica e foi substituída pela evidência corrente acima. Nenhum commit ou push foi produzido.
+
+### 2026-08-28 — Revisão de queries e recuperação de startup
+
+- **Objetivo:** corrigir somente os findings confirmados da revisão de consultas e inicialização SQLite, sem alterar API, schema, frontend ou funcionalidade de negócio.
+- **Entradas:** `AGENTS.md`, SDD pertinente, ADR de SQLite, Controllers, health/startup, migrations, integrações, Compose, baseline Stryker e histórico recente.
+- **Apoio da IA:** revisores independentes e somente leitura examinaram recuperação de migration, fidelidade dos oráculos e queries; o agente principal reproduziu três regressões, atualizou especificação/rastreabilidade, aplicou o patch mínimo e reexecutou os gates Docker.
+- **Achados:** um P2 — lock técnico órfão podia bloquear startup — e três P3 — conexão SQLite duplicada no health, precheck de email redundante quando a chave canônica não muda e `LIKE` ambíguo no teste de migration.
+- **Decisão influenciada pelo KISS:** manter a recuperação inline no único startup, limitada à tabela técnica e à premissa de instância única; usar command timeout de 5 segundos e deadline total de 15 segundos, sem retry/service novo; reutilizar uma conexão; condicionar o `AnyAsync` à mudança canônica e preservar a autoexclusão pelo `Id` imutável do `sub`, comprovada pela regressão concorrente.
+- **Validação:** 3/3 regressões vermelhas antes do código; re-revisão com provas adicionais para ambas as fases do deadline e corrida da própria conta; testes focados verdes; build e 119/119 integrações; OpenAPI 6 operações/53 referências; Compose config e smoke completos; SPA/health/Swagger em `200`; Stryker final 97,47% (193 killed, 5 survivors equivalentes, 119 ignored, 3 `CompileError`, zero timeout/`NoCoverage`/erro), ratchet 97/97/97 e relatórios aprovados.
+- **Transparência:** execuções com 12 timeouts, com uma lacuna concorrente e com um timeout isolado, além de uma exclusão pontual ampla demais, foram rejeitadas e não promovidas. Relatórios ficaram em diretório ignorado; nenhum segredo, JWT, banco, commit ou push foi produzido nesta atividade.
+
+### 2026-08-28 — Implementação dos achados da revisão completa
+
+- **Objetivo:** implementar somente os três P3 confirmados pela revisão completa: lifecycle cooperativo de migrations, coerência da fronteira Stryker e simplificação dos testes de query.
+- **Apoio da IA:** agentes separados implementaram rascunhos de lifecycle/health/perfil; o agente principal integrou os patches, corrigiu o oráculo de processo, executou os gates e reconciliou SDD/ADR/evidências.
+- **Decisão influenciada pelo KISS:** criar um único `IHostedLifecycleService`, sem coordinator, retry ou abstração de banco; reutilizar `ApiFactory.WithInterceptor` nos dois testes HTTP; conservar o teste direto de dois contexts apenas onde a corrida exige estado obsoleto deliberado.
+- **Validação:** 7/7 testes focados; build Release e 120/120 integrações; OpenAPI 6 operações/53 referências; config/smoke Compose; três URLs em `200`; Stryker 97,47% com 193 killed, 5 survivors equivalentes, 106 ignored, 3 `CompileError` e zero timeout/`NoCoverage`/erro, em `00:04:30` e exit 0.
+- **Transparência e limites:** o primeiro oráculo de `SIGTERM` falhou por depender de uma mensagem genérica tardia e foi substituído pela observação direta do token do host, sem afrouxar limites. Cancelamento cooperativo não preempta toda chamada nativa SQLite, por isso o command timeout continua necessário. Os relatórios foram gerados somente sob `artifacts/` e não versionados; nenhum segredo ou banco foi versionado, e nenhum commit ou push foi produzido.
+
+### 2026-08-30 — Fortalecimento dos oráculos da revisão completa
+
+- **Objetivo:** corrigir dois falsos-verdes P2 no lifecycle de migrations e um P3 na contagem de queries, sem alterar comportamento de produção.
+- **Entradas:** `AGENTS.md`, critérios `OPS-DOCKER-04`/`AC-PROF-04`, design, estratégia, plano, matriz, testes de startup/perfil e os três mutantes diagnósticos da revisão.
+- **Apoio da IA:** revisores somente leitura propuseram correções independentes para readiness, propagação de cancelamento e callbacks EF; o agente principal atualizou o SDD, implementou uma etapa por vez e executou as provas vermelhas/verdes.
+- **Decisão influenciada pelo KISS:** habilitar um log já existente apenas no subprocesso; capturar diretamente o token da operação reutilizando o interceptor; compartilhar um helper entre callbacks síncrono/assíncrono. Não foram criados probe TCP, porta fixa, hook de produção, abstração ou dependência.
+- **Validação:** os caminhos corretos passaram e cada mutante descartável reprovou pelo motivo esperado; build Release e 121/121 integrações passaram. Stryker terminou em 97,50% com 195 killed, 5 survivors equivalentes, 105 ignored, 3 `CompileError`, zero timeout/`NoCoverage`/erro e ratchet 97/97/97.
+- **Transparência e limites:** a primeira tentativa da mutação de query preservou o short-circuit e, corretamente, não reintroduziu round-trip; a prova foi ajustada para reintroduzir de fato o precheck síncrono e então demonstrou o vermelho. Os relatórios ficaram sob `artifacts/`; diretórios mutantes foram removidos e nenhum segredo, banco, commit ou push foi produzido.
+
+### 2026-08-30 — Organização dos commits e shutdown cooperativo
+
+- **Objetivo:** separar o trabalho acumulado em commits coerentes antes do rate limiter e impedir que uma baseline quebrada fosse versionada.
+- **Apoio da IA:** revisores somente leitura classificaram código, testes e documentação; o agente principal adicionou o oráculo de exit code, reproduziu o abort e aplicou a correção mínima na fronteira de execução.
+- **Achado:** o teste anterior aceitava callback de `SIGTERM` seguido de crash; a nova asserção falhou com exit `134`.
+- **Decisão:** deixar o cancelamento propagar pelo lifecycle para impedir a inicialização do servidor e capturá-lo somente quando o host está parando antes de `ApplicationStarted`; nenhuma customização de signal handler ou host foi criada.
+- **Validação:** teste focado em 1 segundo; build Release e 121/121 integrações em 31 segundos; OpenAPI, Compose config e smoke aprovados; aplicação restaurada com `/`, `/health` e Swagger em `200`. A baseline Stryker não foi repetida porque os dois arquivos alterados permanecem fora da allowlist documentada.
+- **Escopo:** nenhum rate limiter, segredo, banco, relatório gerado ou recurso externo foi incluído.
