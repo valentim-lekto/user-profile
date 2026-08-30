@@ -478,3 +478,37 @@ A correção preserva a exceção dentro de `StartingAsync`, garantindo que o Ho
 | Mutation testing | Não reexecutado nesta correção: `Program.cs` e o lifecycle permanecem explicitamente fora da allowlist; a baseline limpa aplicável continua 97,50%, sem `NoCoverage`, timeout ou erro de execução. |
 
 **Resultado corrente:** shutdown antes da prontidão agora termina cooperativamente com exit zero. API HTTP, schema, frontend e regras de negócio permanecem inalterados.
+
+## Adendo — rate limiting local de autenticação
+
+Em 2026-08-30, `NFR-SEC-02`, `SEC-RATE-01`, `SEC-RATE-02` e `API-ERROR-02` foram especificados antes do comportamento. A mudança protege somente `POST /api/auth/login` e `POST /api/auth/register` no Nginx, sem middleware backend, serviço Compose, migration, lockout, estado distribuído ou nova funcionalidade de negócio.
+
+### Revisões e correções
+
+As revisões somente leitura não encontraram falha alta. A primeira rodada encontrou quatro P2: sessão/countdown insuficientemente observados no frontend, corpo 429 verificado apenas por fragmentos, `Cache-Control` ausente do OpenAPI e estados SDD conflitantes; também encontrou um P3 de teste por contar cópias textuais de `X-Forwarded-For`. A re-revisão detectou um P2 adicional: mover somente XFF para `server` não funcionava porque outras diretivas `proxy_set_header` nas locations anulavam a herança do conjunto. As rodadas finais encontraram quatro P2 de confiabilidade adicionais: iniciar o parser antes dos probes temporais podia permitir reposição legítima; cadastro ainda não tinha rajada própria; um único login após recriar `web` não distinguia reset de reposição natural; e igualdade exata do JSON rejeitava extensões seguras permitidas por `ProblemDetails`. Todos foram corrigidos: os specs usam sessão-sentinela e relógio falso avançado por um minuto; o smoke executa primeiro os probes temporais, prova 10+1 separadamente nos dois endpoints e novamente após reset, e depois valida os cinco campos normativos mais a ausência de dados sensíveis no corpo salvo; contrato/runtime exigem os dois headers; os estados foram reconciliados; e Host/XFF/Proto são herdados juntos sem override nas locations.
+
+Um apontamento adicional propôs aceitar qualquer distribuição equivalente de `proxy_set_header`. Ele foi classificado como flexibilidade futura, não defeito: o gate congela deliberadamente a forma simples aprovada — os três headers juntos em `server` e nenhum override nas locations — porque foi justamente uma distribuição parcial que causou a falha real de herança. Uma futura refatoração equivalente deve atualizar o oráculo junto com sua prova runtime.
+
+A primeira execução frontend após a revisão falhou porque o spy genérico também observou timers internos de 0 ms do Angular; a tentativa seguinte com `fakeAsync` foi incompatível com o runner Vitest sem `ProxyZone`. O oráculo final usa o relógio falso do próprio Vitest, avança 60.001 ms e exige que todo o texto renderizado, formulário e sessão permaneçam iguais. Não houve retry, aumento de timeout nem enfraquecimento do comportamento exigido.
+
+### Comandos e resultados observados
+
+| Comando ou gate | Resultado resumido |
+|---|---|
+| `ruby scripts/validate-openapi.rb` e profile Docker `contract-tests` | `SPEC-OAS-001..006`, seis operações e 56 referências locais aprovadas. |
+| Profile Docker `backend-tests` | Build Release com 0 warnings/erros; 121/121 integrações, sem falha ou skip. O Swagger runtime expõe `429`, `Retry-After` e `Cache-Control` somente nas duas operações de autenticação. |
+| Profile Docker `frontend-tests` | Lint aprovado; 70/70 testes em 10 arquivos; build de 327,59 kB bruto/90,19 kB estimado. |
+| `docker compose --profile backend-tests --profile frontend-tests --profile e2e --profile mutation-tests config --quiet` | Configuração completa aprovada sem `.env`. |
+| `./scripts/validate-m1-compose.sh` | Rajadas de 11 logins, 11 cadastros e 11 logins após reset: cada uma produziu 10 respostas `400` da API e um `429` Nginx; JSON/headers, query/XFF/caixa/barra, demais rotas, `413`, persistência e logs seguros foram aprovados. O projeto isolado e seu volume foram removidos. |
+| `./scripts/e2e-playwright.sh` | 3/3 jornadas aprovadas em 28,4 s, sem quarta jornada ou seed compartilhado. |
+| `docker run ... rhysd/actionlint:1.7.12` | Workflows existentes aprovados sem saída de erro. |
+| Profile Docker `mutation-tests` | Exit 0 em `00:18:48`: 513 mutantes descobertos, 200 executados, 195 killed, 5 survived equivalentes, 109 ignored, 3 `CompileError` classificados, 0 timeout, 0 `NoCoverage` e 0 erro; score 97,50% e ratchet 97/97/97. |
+| Stack principal restaurada | `api` e `web` ativos/saudáveis no volume preservado; SPA, `/health` e Swagger responderam `200` em `http://localhost:8080`. |
+
+### Resultado e limitações
+
+O bucket usa o endereço TCP real observado pelo Nginx e o endpoint canônico; query, caixa, barra final e `X-Forwarded-For` forjado não renovam a cota. `rate=10r/m`, `burst=9 nodelay` aceita dez tentativas imediatas e o próximo excesso recebe `429 application/problem+json`, `Retry-After: 60` e `Cache-Control: no-store`. O cadastro possui bucket independente, `413` continua anterior/independente e outras rotas/métodos não consomem cota.
+
+O estado é deliberadamente local e efêmero: reiniciar `web` limpa a cota. Não há lockout por conta, coordenação entre réplicas ou proteção distribuída. Essa limitação e o trade-off de `sessionStorage`/ausência de refresh permanecem explícitos no README e ADRs. Relatórios gerados ficaram sob `artifacts/`, ignorado pelo Git; nenhum segredo, banco ou relatório foi versionado.
+
+**Resultado corrente:** `NFR-SEC-02` e seus três critérios estão Verified localmente. CI hospedada, publicação e confirmação humana continuam Pending; nenhum push foi realizado.

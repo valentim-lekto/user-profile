@@ -23,16 +23,18 @@ Navegador
    | http://localhost:8080
    v
 Nginx / Angular estático
-   |-- / e rotas SPA --------> arquivos Angular
-   |-- /api/*, /swagger/*
-   |   e /health ------------> UserProfile.Api:8080
+   |-- / e rotas SPA ----------------> arquivos Angular
+   |-- POST /api/auth/login|register
+   |   -> limiter local por IP+URI ---\
+   |-- demais /api/*, /swagger/*      |
+   |   e /health ---------------------> UserProfile.Api:8080
                                     |
                                     v
                               /data/user-profile.db
                               volume Docker nomeado
 ```
 
-Somente o Nginx publica porta no host. A API fica acessível apenas na rede do Compose. O Nginx encaminha `/api/*`, `/swagger/*` e `/health`, preserva método, corpo e status e usa fallback para `index.html` somente nas rotas da SPA.
+Somente o Nginx publica porta no host. A API fica acessível apenas na rede do Compose. O Nginx encaminha `/api/*`, `/swagger/*` e `/health`, preserva método, corpo e status e usa fallback para `index.html` somente nas rotas da SPA. Antes do proxy, somente os `POST` públicos de login e cadastro atravessam um limiter local com buckets independentes por endereço TCP e endpoint.
 
 ## Versões verificadas e fixação
 
@@ -197,8 +199,8 @@ O contrato normativo está em [`03-api-contract.yaml`](03-api-contract.yaml). A 
 
 | Operação | Autenticação | Sucesso | Erros esperados |
 |---|---|---|---|
-| `POST /api/auth/register` | Pública | `201` com mensagem, sem token | `400`, `409`, `413`, `415`, `500`, `503` |
-| `POST /api/auth/login` | Pública | `200` com JWT curto | `400` para payload inválido; `401` genérico para credenciais não reconhecidas; `413`, `415`, `500`, `503` |
+| `POST /api/auth/register` | Pública | `201` com mensagem, sem token | `400`, `409`, `413`, `415`, `429`, `500`, `503` |
+| `POST /api/auth/login` | Pública | `200` com JWT curto | `400` para payload inválido; `401` genérico para credenciais não reconhecidas; `413`, `415`, `429`, `500`, `503` |
 | `GET /api/profile` | Bearer | `200` com ID imutável, nome e email | `401`, `404`, `500`, `503` |
 | `PUT /api/profile` | Bearer | `200` com nome e email atualizados | `400`, `401`, `404`, `409`, `413`, `415`, `500`, `503` |
 | `PUT /api/profile/password` | Bearer | `200` com mensagem, sem novo token | `400`, `401`, `404`, `413`, `415`, `500`, `503` |
@@ -232,6 +234,7 @@ Não existe endpoint de dashboard: a tela usa `GET /api/profile`. Não existe en
 - Exceções não tratadas são convertidas em `500 ProblemDetails` sem detalhes internos.
 - Erros gerados pelo pipeline sob `/api`, como JSON malformado, media type não suportado (`415`), rota inexistente ou método não permitido, também usam `application/problem+json`.
 - O Nginx limita o corpo da requisição a 1 MiB e converte sua rejeição `413` em `application/problem+json`; ela é uma barreira de transporte anterior à validação dos campos, não um substituto para os limites `200/320/128` da API.
+- O Nginx limita rajadas somente de `POST /api/auth/login` e `POST /api/auth/register`. Cada endpoint possui bucket independente por IP observado, com zona de 1 MiB, `rate=10r/m`, `burst=9` e `nodelay`. Depois de dez tentativas imediatas, `429 application/problem+json` precede respostas ordinárias da API (`400`, `401`, `409` ou `415`) e inclui `Retry-After: 60` e `Cache-Control: no-store`. A barreira de corpo `413` continua independente.
 - Se o Nginx não conseguir conectar à API ou atingir o timeout do upstream, converte apenas seus `502`/`504` de transporte em `503 ProblemDetails`; respostas já produzidas pela API são preservadas.
 
 O `409` público de cadastro necessariamente revela que o email normalizado já existe. Esse risco de enumeração é aceito nesta demonstração porque `AC-REG-05` e `AC-REG-06` exigem rejeição e feedback de erro observável; login continua usando corpo genérico e nenhum dado adicional do usuário é exposto.
@@ -271,12 +274,12 @@ Essa regra concilia execução sem preparação manual com a proibição de vers
 
 | Rota | Proteção | Fonte de dados e comportamento |
 |---|---|---|
-| `/register` | Pública | Formulário reativo; `201` navega para `/login` com aviso de sucesso e sem criar sessão. |
-| `/login` | Pública | Formulário reativo; `200` grava o JWT em `sessionStorage` e navega para `/dashboard`. |
+| `/register` | Pública | Formulário reativo; `201` navega para `/login` com aviso de sucesso e sem criar sessão; `429` preserva os valores e mostra o aviso de espera sem navegar. |
+| `/login` | Pública | Formulário reativo; `200` grava o JWT em `sessionStorage` e navega para `/dashboard`; `429` preserva os valores e mostra o aviso de espera sem criar sessão. |
 | `/dashboard` | Guard | Consulta `/api/profile` a cada ativação, mostra boas-vindas com `name` e link para `/profile`; portanto reflete uma edição persistida quando consultado novamente. |
 | `/profile` | Guard | Consulta e altera nome/email; não renderiza o `id` técnico recebido; oferece formulário separado para senha, sem misturar campos de senha no payload cadastral. |
 
-Cada operação assíncrona expõe estado de carregamento, impede submissão duplicada e apresenta sucesso ou erro. Nos dois formulários de edição, o `FormGroup` correspondente permanece desabilitado durante a requisição para que uma resposta não sobrescreva uma entrada posterior nem associe a ela um erro produzido para valores anteriores. O estado de carregamento do perfil é recriado a cada ativação do dashboard, isolando respostas pendentes de uma sessão encerrada. O interceptor cancela e conduz ao login uma chamada protegida iniciada sem token válido. Quando existe Bearer, reage a `401` somente se a sessão corrente ainda contém exatamente aquele token; nesse caso limpa a sessão e conduz ao login. Pelo mesmo isolamento, o sucesso da troca de senha remove o token e navega ao login somente se a sessão corrente ainda contém o token capturado no início daquela operação; uma resposta tardia não afeta uma autenticação posterior. O `401` esperado do próprio login não levava Bearer, portanto permanece disponível para a mensagem genérica da tela e não dispara limpeza/navegação global.
+Cada operação assíncrona expõe estado de carregamento, impede submissão duplicada e apresenta sucesso ou erro. Em login/cadastro, `429` encerra o loading, reabilita a ação, mantém todos os valores e usa o alerta acessível já existente com a mensagem fixa “Muitas tentativas. Aguarde um minuto e tente novamente.”; não há navegação, sessão ou countdown. Nos dois formulários de edição, o `FormGroup` correspondente permanece desabilitado durante a requisição para que uma resposta não sobrescreva uma entrada posterior nem associe a ela um erro produzido para valores anteriores. O estado de carregamento do perfil é recriado a cada ativação do dashboard, isolando respostas pendentes de uma sessão encerrada. O interceptor cancela e conduz ao login uma chamada protegida iniciada sem token válido. Quando existe Bearer, reage a `401` somente se a sessão corrente ainda contém exatamente aquele token; nesse caso limpa a sessão e conduz ao login. Pelo mesmo isolamento, o sucesso da troca de senha remove o token e navega ao login somente se a sessão corrente ainda contém o token capturado no início daquela operação; uma resposta tardia não afeta uma autenticação posterior. O `401` esperado do próprio login não levava Bearer, portanto permanece disponível para a mensagem genérica da tela e não dispara limpeza/navegação global.
 
 O token fica somente em `sessionStorage`. O estado de autenticação é um signal derivado da presença e do `exp` do token. Um timer é rearmado ao carregar ou substituir a sessão e, ao alcançar `exp` no primeiro ciclo de execução disponível, confirma que o token ainda é o corrente antes de limpá-lo e reproteger uma rota ativa. Decodificar o payload no cliente serve apenas à experiência de navegação; a API continua validando o JWT em toda chamada recebida.
 
@@ -290,7 +293,7 @@ O token fica somente em `sessionStorage`. O estado de autenticação é um signa
 - Cada execução da suíte E2E recebe projeto Compose, volume e diretório de artefatos próprios; cada jornada recebe contexto e dados próprios. Emails são únicos; senhas sintéticas são geradas e mantidas dentro do contexto do navegador, e o runner Playwright recebe somente chaves não sensíveis. Relatórios JUnit/HTML são gravados sempre que o runner Playwright chega a iniciar; screenshot de inputs mascarados e trace minimizado, sem snapshots, sources ou attachments, são retidos somente em falha. Falhas anteriores ao runner preservam os diagnósticos do Compose disponíveis. O `finally` limpa os inputs em melhor esforço, sem ser tratado como a única defesa de artefatos. Os traps de E2E e smoke registram o nome do projeto, persistem `ps`, imagens/serviços e logs processados por um filtro compartilhado/testado antes do teardown quando há falha, e nunca publicam a cópia bruta. Falha de teardown reprova uma execução antes bem-sucedida, preserva a falha primária quando já existe e deixa saída filtrada; a CI tenta novamente somente projetos sob seu prefixo único e faz upload depois do cleanup.
 - `web` publica `127.0.0.1:8080:8080`, restringindo a demonstração HTTP ao
   loopback IPv4 do host; `api` expõe `8080` apenas para a rede interna.
-- Nginx escuta em `8080`, encaminha `/api/`, `/swagger/` e `/health` para `http://api:8080`, usa timeout explícito de conexão de 2 segundos e de resposta de 30 segundos, converte falha de conexão/timeout do upstream em `503 application/problem+json`, converte corpo acima de 1 MiB em `413 application/problem+json`, devolve `404` para assets com extensão que não existem e usa fallback para `index.html` somente nas rotas da SPA. A API do Compose limita a espera SQLite das operações e da preparação do lock técnico a 5 segundos; depois que a API começa a atender, essa margem reduz o risco de a contenção consumir toda a janela de 30 segundos do proxy. Separadamente, preparação e aplicação das migrations têm deadline total de 15 segundos durante o startup. A janela de resposta ainda acomoda o primeiro hash de senha em runners Docker sob contenção sem criar retry; indisponibilidade de conexão continua falhando rapidamente.
+- Nginx escuta em `8080`, encaminha `/api/`, `/swagger/` e `/health` para `http://api:8080`, usa timeout explícito de conexão de 2 segundos e de resposta de 30 segundos, converte falha de conexão/timeout do upstream em `503 application/problem+json`, converte corpo acima de 1 MiB em `413 application/problem+json`, devolve `404` para assets com extensão que não existem e usa fallback para `index.html` somente nas rotas da SPA. Uma localização anterior ao proxy genérico aplica `limit_req` aos `POST` de login/cadastro. A zona `auth_rate_limit` tem 1 MiB; um `map` recebe `$request_method:$uri` e produz chave vazia fora desses `POSTs` ou `$binary_remote_addr` combinado ao endpoint canônico. Assim, query, caixa e barra final não multiplicam buckets aceitos pelo roteamento. `X-Forwarded-For` é sobrescrito com `$remote_addr` em todo proxy, por isso valor forjado pelo cliente não é tratado como cadeia confiável. A API do Compose limita a espera SQLite das operações e da preparação do lock técnico a 5 segundos; depois que a API começa a atender, essa margem reduz o risco de a contenção consumir toda a janela de 30 segundos do proxy. Separadamente, preparação e aplicação das migrations têm deadline total de 15 segundos durante o startup. A janela de resposta ainda acomoda o primeiro hash de senha em runners Docker sob contenção sem criar retry; indisponibilidade de conexão continua falhando rapidamente.
 - Existe um único health check do Compose no serviço `web`: `wget -q -O /dev/null http://127.0.0.1:8080/health`, usando o BusyBox presente na imagem Alpine. `web` depende de `api` com `condition: service_started`; como a probe atravessa Nginx, API e a consulta SQLite, `docker compose up --wait` só conclui quando a pilha inteira está saudável, sem instalar cliente HTTP na imagem da API.
 - O inventário exato das imagens Compose, incluindo todos os perfis, é: `ruby:3.4.10-slim-bookworm`, `user-profile-api:0.1.0`, `user-profile-backend-tests:0.1.0`, `user-profile-e2e-tests:0.1.0`, `user-profile-frontend-tests:0.1.0`, `user-profile-mutation-tests:0.1.0` e `user-profile-web:0.1.0`. O Dockerfile backend contém, nesta ordem, os stages `build`, `test`, `mutation-test` (derivado de `test`) e `final`; o frontend contém `dependencies`, `test`, `build` e o stage final Nginx; o E2E contém somente o stage Playwright. Todas as linhas `FROM` e esse conjunto renderizado são comparados às versões completas deste documento; `latest`, `lts`, `stable` ou apenas major/minor são proibidos. Todas as linhas `uses:` de terceiros nos workflows usam SHA completo e pertencem ao inventário aprovado; checkout não persiste credenciais Git.
 
@@ -308,7 +311,7 @@ docker compose --profile mutation-tests run --rm --build mutation-tests
 
 A primeira baseline usa `thresholds.break = 0` somente de forma temporária. Depois de classificar survivors, o score final `S` fixa `break = floor(S)`, `low = max(60, break)` e `high = max(80, low)`; `break = 0` não pode permanecer na entrega. Mutantes observáveis ligados a requisitos recebem testes focados; regras de negócio não são distorcidas para elevar score. Survivors não equivalentes fora de requisito podem permanecer visíveis e compor a baseline, enquanto `NoCoverage`, timeout ou erro de execução no alvo crítico exigem explicação ou correção.
 
-A baseline limpa corrente, recalibrada em 2026-08-30 após fortalecer os oráculos de startup e queries, foi `S = 97,50%`: 492 mutantes foram descobertos, 200 executados, 195 mortos, 5 sobreviventes, 105 ignorados, 3 com erro de compilação gerado pelo mutador e nenhum `NoCoverage`, timeout ou erro de execução, em `00:08:36`. Portanto, a configuração final continua com `break = low = high = 97`. A variação em relação à fotografia anterior foi observada sem novo ignore: um mutante descoberto e dois executados/mortos a mais, com um ignored a menos. Os cinco survivors equivalentes anteriores permanecem visíveis no JSON/HTML; a única exclusão pontual documenta a atribuição inicial de um parâmetro `out` cujo valor é ignorado no retorno falso e sempre sobrescrito no retorno verdadeiro. Os arquivos de request permanecem na allowlist, embora o nível `standard` não tenha produzido mutante executável neles nesta versão.
+A baseline limpa corrente, reexecutada em 2026-08-30 com o rate limiting, foi `S = 97,50%`: 513 mutantes foram descobertos, 200 executados, 195 mortos, 5 sobreviventes, 109 ignorados, 3 com erro de compilação gerado pelo mutador e nenhum `NoCoverage`, timeout ou erro de execução, em `00:18:48`. Portanto, a configuração final continua com `break = low = high = 97`. O filtro Swagger novo fica fora da allowlist e altera somente metadados descobertos/ignorados; os 200 mutantes ativos e a classificação observável permaneceram estáveis, sem novo ignore. Os cinco survivors equivalentes anteriores permanecem visíveis no JSON/HTML; a única exclusão pontual documenta a atribuição inicial de um parâmetro `out` cujo valor é ignorado no retorno falso e sempre sobrescrito no retorno verdadeiro. Os arquivos de request permanecem na allowlist, embora o nível `standard` não tenha produzido mutante executável neles nesta versão.
 
 `CI-MUT-001` é um workflow próprio, somente `workflow_dispatch` e cron semanal na segunda-feira às `06:00 UTC`, em `ubuntu-24.04`, com timeout de 90 minutos, projeto Compose exclusivo, cleanup obrigatório e upload dos relatórios HTML/JSON por 14 dias quando produzidos. Ele não executa em `push` ou `pull_request` e, portanto, não bloqueia PRs. Sua execução hospedada permanece pendente até publicação e observação real.
 
@@ -326,7 +329,7 @@ Configurações previstas:
 | `Jwt__LifetimeMinutes` | Não | `15`; mudança exige revisão deste design. |
 | `Jwt__SigningKey` | Sim | Base64 de ao menos 32 bytes aleatórios; fallback aleatório somente quando ausente em `Development`. |
 
-Logs estruturados podem registrar método, rota sem query string, status, duração e um identificador de correlação gerado para a requisição, mas nunca argumentos da URL, corpo de requests de autenticação, cabeçalho de autorização, token, senha, hash ou chave. O access log do Nginx usa `$uri`, nunca `$request`/`$request_uri`/`$args`, e os diagnostics de acesso padrão do ASP.NET Core que incluem `QueryString` ficam abaixo do nível habilitado. Respostas `ProblemDetails` não incluem stack trace, SQL nem caminhos internos.
+Logs estruturados podem registrar método, rota sem query string, status, duração e um identificador de correlação gerado para a requisição, mas nunca argumentos da URL, corpo de requests de autenticação, cabeçalho de autorização, token, senha, hash ou chave. O access log do Nginx usa `$uri`, nunca `$request`/`$request_uri`/`$args`, e os diagnostics de acesso padrão do ASP.NET Core que incluem `QueryString` ficam abaixo do nível habilitado. O limiter usa somente IP binário e URI internamente; seu `429` não devolve nem registra email, query ou credencial. Respostas `ProblemDetails` não incluem stack trace, SQL nem caminhos internos.
 
 ## Decisões registradas
 
@@ -334,7 +337,8 @@ Logs estruturados podem registrar método, rota sem query string, status, duraç
 - [`ADR-0002`](adr/0002-sqlite-persistence.md) — SQLite, volume e migrations no startup.
 - [`ADR-0003`](adr/0003-jwt-authentication.md) — JWT curto, `sub`, sessão e chave.
 - [`ADR-0004`](adr/0004-nginx-same-origin.md) — Nginx e origem única.
+- [`ADR-0005`](adr/0005-nginx-auth-rate-limiting.md) — rate limiting local dos endpoints públicos de autenticação.
 
 ## Limites deliberados
 
-Não serão adicionados versionamento de API, refresh/revogação de token, Identity completo, roles, mensageria, cache distribuído, store global, abstração de repositório, múltiplas APIs ou contêiner de banco. A complexidade mantida — autenticação, índice único, proxy, migrations e testes ponta a ponta — existe porque critérios explícitos a exigem.
+Não serão adicionados versionamento de API, refresh/revogação de token, Identity completo, roles, mensageria, cache distribuído, store global, abstração de repositório, múltiplas APIs ou contêiner de banco. O rate limiter não é lockout, não coordena réplicas e perde o estado ao reiniciar o Nginx; mover a demonstração para trás de outro proxy exige nova decisão de real IP. A complexidade mantida — autenticação, índice único, proxy, limiter local, migrations e testes ponta a ponta — existe porque critérios explícitos a exigem.

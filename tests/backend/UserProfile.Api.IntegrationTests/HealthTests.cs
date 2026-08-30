@@ -231,24 +231,36 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
             ["Auth"],
             registerOperation.GetProperty("tags").EnumerateArray().Select(tag => tag.GetString()));
         Assert.Equal(
-            ["201", "400", "409", "413", "415", "500", "503"],
+            ["201", "400", "409", "413", "415", "429", "500", "503"],
             registerOperation
                 .GetProperty("responses")
                 .EnumerateObject()
                 .Select(operationResponse => operationResponse.Name)
                 .Order());
+        AssertResponseSchema(
+            registerOperation,
+            "429",
+            "application/problem+json",
+            "ProblemDetails");
+        AssertRateLimitHeader(registerOperation);
 
         var loginOperation = paths.GetProperty("/api/auth/login").GetProperty("post");
         Assert.Equal("loginUser", loginOperation.GetProperty("operationId").GetString());
         Assert.Empty(loginOperation.GetProperty("security").EnumerateArray());
         Assert.Equal(
-            ["200", "400", "401", "413", "415", "500", "503"],
+            ["200", "400", "401", "413", "415", "429", "500", "503"],
             loginOperation
                 .GetProperty("responses")
                 .EnumerateObject()
                 .Select(operationResponse => operationResponse.Name)
                 .Order());
         AssertBearerChallengeHeader(loginOperation);
+        AssertResponseSchema(
+            loginOperation,
+            "429",
+            "application/problem+json",
+            "ProblemDetails");
+        AssertRateLimitHeader(loginOperation);
 
         var profilePath = paths.GetProperty("/api/profile");
         var profileOperation = profilePath.GetProperty("get");
@@ -549,6 +561,27 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var schema = header.GetProperty("schema");
         Assert.Equal("string", schema.GetProperty("type").GetString());
         Assert.Equal("^Bearer(?: .*)?$", schema.GetProperty("pattern").GetString());
+    }
+
+    private static void AssertRateLimitHeader(JsonElement operation)
+    {
+        var headers = operation
+            .GetProperty("responses")
+            .GetProperty("429")
+            .GetProperty("headers");
+
+        var retryAfter = headers.GetProperty("Retry-After");
+        Assert.True(retryAfter.GetProperty("required").GetBoolean());
+        var retryAfterSchema = retryAfter.GetProperty("schema");
+        Assert.Equal("integer", retryAfterSchema.GetProperty("type").GetString());
+        Assert.Equal("int32", retryAfterSchema.GetProperty("format").GetString());
+        Assert.Equal(1, retryAfterSchema.GetProperty("minimum").GetInt32());
+
+        var cacheControl = headers.GetProperty("Cache-Control");
+        Assert.True(cacheControl.GetProperty("required").GetBoolean());
+        var cacheControlSchema = cacheControl.GetProperty("schema");
+        Assert.Equal("string", cacheControlSchema.GetProperty("type").GetString());
+        Assert.Equal("^no-store$", cacheControlSchema.GetProperty("pattern").GetString());
     }
 
     private static void AssertRequestSchema(JsonElement operation, string schemaName)

@@ -21,15 +21,15 @@ Este diretório reúne os artefatos versionados do processo Spec-Driven Developm
 | Artefato | Finalidade | Estado |
 |---|---|---|
 | [`00-challenge.md`](00-challenge.md) | Preservar o enunciado, com requisitos originais e decisões aprovadas claramente separados. | Concluído nesta etapa. |
-| [`01-requirements.md`](01-requirements.md) | Definir escopo, atores, casos de uso, requisitos, critérios, premissas, exclusões e Definition of Done. | Funcionalidades M1–M4, gate M5, `UI-RESP-01` e concorrência `AC-PASS-05` implementados e validados, sem nova funcionalidade de negócio. |
-| [`02-technical-design.md`](02-technical-design.md) | Definir arquitetura, modelo de dados, segurança, frontend, operação e versões fixadas. | M1–M6 e atividades pós-M6, inclusive robustez de concorrência e oráculos de startup/queries SQLite, validados localmente. |
-| [`03-api-contract.yaml`](03-api-contract.yaml) | Definir requests, responses, schemas, autenticação e erros da API. | Seis operações normativas e 53 referências locais aprovadas; Swagger runtime também validado. |
-| [`04-test-strategy.md`](04-test-strategy.md) | Definir integração, frontend, E2E, Docker e gates. | 121 integrações backend, 68 testes frontend, três jornadas E2E e baseline Stryker corrente de 97,50% aprovados localmente. |
-| [`05-execution-plan.md`](05-execution-plan.md) | Organizar a implementação incremental em M1–M6 e atividades de qualidade posteriores. | M1–M6, mutation testing, refinamentos visuais, robustez SQLite e fortalecimento dos oráculos concluídos localmente; publicação, CI hospedada e confirmação humana permanecem externas. |
-| [`06-traceability.md`](06-traceability.md) | Relacionar requisito, critério, design, milestone, teste e estado. | Mutation testing, UI, robustez DB e oráculos de startup/queries estão Verified localmente; execução hospedada continua Pending. |
-| [`07-validation-report.md`](07-validation-report.md) | Registrar a auditoria final independente. | Concluído com adendos pós-M6 de revisão, mutação, validação visual, robustez DB e fortalecimento dos oráculos. |
+| [`01-requirements.md`](01-requirements.md) | Definir escopo, atores, casos de uso, requisitos, critérios, premissas, exclusões e Definition of Done. | Funcionalidades M1–M4, gate M5 e critérios pós-M6, inclusive rate limiting, implementados e validados localmente. |
+| [`02-technical-design.md`](02-technical-design.md) | Definir arquitetura, modelo de dados, segurança, frontend, operação e versões fixadas. | M1–M6 e atividades pós-M6 validadas; o hardening local dos endpoints públicos está registrado no ADR-0005. |
+| [`03-api-contract.yaml`](03-api-contract.yaml) | Definir requests, responses, schemas, autenticação e erros da API. | Seis operações e 56 referências locais; `429 RateLimitProblem` existe somente em cadastro/login e foi validado no contrato e Swagger runtime. |
+| [`04-test-strategy.md`](04-test-strategy.md) | Definir integração, frontend, E2E, Docker e gates. | 121 integrações, 70 testes frontend, 3 E2E, Stryker e `SPEC-OAS-006`/`OPS-RATE-001/002` aprovados localmente. |
+| [`05-execution-plan.md`](05-execution-plan.md) | Organizar a implementação incremental em M1–M6 e atividades de qualidade posteriores. | M1–M6 e atividades posteriores, inclusive rate limiting de autenticação, concluídos localmente. |
+| [`06-traceability.md`](06-traceability.md) | Relacionar requisito, critério, design, milestone, teste e estado. | 19 requisitos funcionais, 15 não funcionais, 18 premissas e 46 critérios ligados a design, implementação e evidência. |
+| [`07-validation-report.md`](07-validation-report.md) | Registrar a auditoria final independente. | Concluído com adendos pós-M6, inclusive a validação real do rate limiting local. |
 | [`review-log.md`](review-log.md) | Registrar revisão independente, achados, decisões, comandos e riscos. | Revisões de design e M1–M6, inclusive revisões pós-M6 completa, responsiva, de banco, queries e seus oráculos, preservadas. |
-| [`ai-usage.md`](ai-usage.md) | Definir e registrar de forma resumida o uso responsável de IA. | Uso de IA, revisões/correções, mutation testing e refinamentos resumidos; explicação humana não foi presumida pela IA. |
+| [`ai-usage.md`](ai-usage.md) | Definir e registrar de forma resumida o uso responsável de IA. | Uso de IA, revisões/correções, mutation testing, refinamentos e rate limiting resumidos; explicação humana não foi presumida pela IA. |
 
 ## Governança
 
@@ -44,6 +44,7 @@ Este diretório reúne os artefatos versionados do processo Spec-Driven Developm
 - [`ADR-0002`](adr/0002-sqlite-persistence.md) — SQLite, volume e migrations.
 - [`ADR-0003`](adr/0003-jwt-authentication.md) — senha, JWT e sessão.
 - [`ADR-0004`](adr/0004-nginx-same-origin.md) — Nginx e origem única.
+- [`ADR-0005`](adr/0005-nginx-auth-rate-limiting.md) — rate limiting local de cadastro e login no Nginx.
 
 Novas decisões relevantes devem criar ou substituir ADR; registrar apenas uma premissa em tabela não substitui essa análise.
 
@@ -51,8 +52,8 @@ Novas decisões relevantes devem criar ou substituir ADR; registrar apenas uma p
 
 | Item | Estado |
 |---|---|
-| Código, dependências, Dockerfiles e Compose | M1–M6 e correções pós-revisão implementados; concorrência de senha, recuperação do lock técnico, health/migrations e queries de perfil foram endurecidos sem migration ou nova funcionalidade. |
-| Testes automatizados e evidências observadas | 121 integrações backend, 68 testes frontend, três jornadas E2E, baseline Stryker limpa de 97,50%, OpenAPI, restart/persistência e smoke aprovados somente com Docker. |
+| Código, dependências, Dockerfiles e Compose | M1–M6 e correções pós-revisão implementados; rate limiting local protege cadastro/login sem serviço, migration ou funcionalidade de negócio nova. |
+| Testes automatizados e evidências observadas | 121 integrações backend, 70 testes frontend, três jornadas E2E, Stryker 97,50%, OpenAPI com 56 referências, restart/persistência e smoke concorrente aprovados com Docker. |
 | README de execução e validação na raiz | Concluído e confrontado com os comandos observados em M6. |
-| Atualização de estados da matriz e do plano | Concluída para M6 e atividades pós-M6, inclusive correção DB; CI hospedada, publicação e confirmação da explicação humana permanecem Pending. |
+| Atualização de estados da matriz e do plano | Concluída para M6 e atividades pós-M6, inclusive rate limiting; CI hospedada, publicação e confirmação da explicação humana permanecem Pending. |
 | ADRs adicionais | Criar somente se surgir nova decisão relevante. |

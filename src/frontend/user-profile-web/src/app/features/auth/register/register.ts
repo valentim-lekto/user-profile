@@ -180,6 +180,11 @@ export class Register {
       return;
     }
 
+    if (problem?.status === 429) {
+      this.apiError.set('Muitas tentativas. Aguarde um minuto e tente novamente.');
+      return;
+    }
+
     if (problem?.status === 503) {
       this.apiError.set('O serviço está indisponível no momento. Tente novamente em breve.');
       return;

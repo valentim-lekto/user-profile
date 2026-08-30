@@ -28,7 +28,7 @@ As versões completas estão justificadas em [`docs/sdd/02-technical-design.md`]
 - senhas tratadas com `PasswordHasher<User>` e nunca devolvidas pelos DTOs;
 - JWT Bearer de 15 minutos, sem refresh token, validando issuer, audience, assinatura, algoritmo e expiração;
 - Angular standalone/strict, Reactive Forms, Material, services e signals;
-- Nginx serve a SPA e encaminha `/api`, `/swagger` e `/health` para a API interna;
+- Nginx serve a SPA, encaminha `/api`, `/swagger` e `/health` para a API interna e limita rajadas de `POST` em cadastro/login antes do proxy;
 - somente o Nginx publica porta no host, restrita ao loopback IPv4 em
   `http://localhost:8080`.
 
@@ -86,7 +86,7 @@ Os dois scripts `./scripts/...` pressupõem macOS, Linux ou WSL com shell POSIX,
 
 O E2E cria projeto, rede e volume próprios, executa exatamente três jornadas independentes e remove seus recursos ao terminar. Screenshot e trace são retidos somente em falha.
 
-O profile `mutation-tests` executa Stryker.NET somente sobre a allowlist crítica do backend. A baseline limpa corrente foi recalibrada após o fortalecimento dos oráculos para `97,50%`: 492 mutantes descobertos, 200 executados, 195 killed, 5 survived, 105 ignored, 3 `CompileError` gerados por mutações não compiláveis, 0 timeout, 0 `NoCoverage` e 0 erro de execução. O ratchet versionado continua `break/low/high = 97/97/97`. Um gate adicional do relatório reprova timeout, lacuna de cobertura, erro de runtime ou alteração na quantidade dos três erros de compilação já classificados. HTML e JSON são gravados em `artifacts/mutation/reports/` por padrão e nunca devem ser versionados. Os cinco survivors equivalentes permanecem visíveis no relatório limpo; a estratégia e as justificativas estão em [`docs/sdd/04-test-strategy.md`](docs/sdd/04-test-strategy.md) e [`docs/sdd/07-validation-report.md`](docs/sdd/07-validation-report.md).
+O profile `mutation-tests` executa Stryker.NET somente sobre a allowlist crítica do backend. A baseline limpa corrente é `97,50%`: 513 mutantes descobertos, 200 executados, 195 killed, 5 survived, 109 ignored, 3 `CompileError` gerados por mutações não compiláveis, 0 timeout, 0 `NoCoverage` e 0 erro de execução. O ratchet versionado continua `break/low/high = 97/97/97`. Um gate adicional do relatório reprova timeout, lacuna de cobertura, erro de runtime ou alteração na quantidade dos três erros de compilação já classificados. HTML e JSON são gravados em `artifacts/mutation/reports/` por padrão e nunca devem ser versionados. Os cinco survivors equivalentes permanecem visíveis no relatório limpo; a estratégia e as justificativas estão em [`docs/sdd/04-test-strategy.md`](docs/sdd/04-test-strategy.md) e [`docs/sdd/07-validation-report.md`](docs/sdd/07-validation-report.md).
 
 O smoke completo usa a porta 8080; encerre antes a pilha principal sem remover seu volume:
 
@@ -95,7 +95,7 @@ docker compose down --remove-orphans
 ./scripts/validate-m1-compose.sh
 ```
 
-O smoke valida origem única, banco vazio/migration, cadastro, login genérico, autorização, perfil, senha, persistência após recriação, `413/415/503`, logs seguros, tags e cleanup. Para validar o workflow localmente em container:
+O smoke valida origem única, banco vazio/migration, cadastro, login genérico, autorização, perfil, senha, persistência após recriação, `413/415/429/503`, rate limiting independente por endpoint, não-bypass por query/header, reset do Nginx, logs seguros, tags e cleanup. Para validar o workflow localmente em container:
 
 ```sh
 docker run --rm --volume "$PWD:/repo:ro" --workdir /repo rhysd/actionlint:1.7.12
@@ -171,7 +171,7 @@ Para sessões sobreviverem ao restart local, gere uma chave própria fora do rep
 - [`docs/sdd/05-execution-plan.md`](docs/sdd/05-execution-plan.md) — milestones e evidências;
 - [`docs/sdd/06-traceability.md`](docs/sdd/06-traceability.md) — matriz de rastreabilidade;
 - [`docs/sdd/07-validation-report.md`](docs/sdd/07-validation-report.md) — auditoria final;
-- [`ADR-0001`](docs/sdd/adr/0001-modular-monolith.md), [`ADR-0002`](docs/sdd/adr/0002-sqlite-persistence.md), [`ADR-0003`](docs/sdd/adr/0003-jwt-authentication.md) e [`ADR-0004`](docs/sdd/adr/0004-nginx-same-origin.md).
+- [`ADR-0001`](docs/sdd/adr/0001-modular-monolith.md), [`ADR-0002`](docs/sdd/adr/0002-sqlite-persistence.md), [`ADR-0003`](docs/sdd/adr/0003-jwt-authentication.md), [`ADR-0004`](docs/sdd/adr/0004-nginx-same-origin.md) e [`ADR-0005`](docs/sdd/adr/0005-nginx-auth-rate-limiting.md).
 
 ## Decisões e trade-offs
 
@@ -180,6 +180,7 @@ Para sessões sobreviverem ao restart local, gere uma chave própria fora do rep
 - `sessionStorage` reduz persistência entre sessões do navegador, mas continua acessível a JavaScript; token curto e dependências controladas limitam parte da exposição, porém uma CSP não está configurada e permanece hardening de produção.
 - Não há refresh ou revogação: logout e troca de senha limpam a sessão cliente, enquanto um token capturado permanece válido até `exp`.
 - O `409` de cadastro torna email duplicado observável para cumprir o requisito; o login usa sempre o mesmo `401` genérico.
+- O Nginx limita separadamente cadastro e login por IP TCP e endpoint: até 10 tentativas imediatas, média `10r/m`, estado local/efêmero e `429` com `Retry-After: 60`. Query string, variações equivalentes de caminho e `X-Forwarded-For` do cliente não criam outra cota. Esse controle reduz rajadas simples, mas não é lockout nem defesa distribuída.
 - A chave efêmera permite `docker compose up` sem segredo versionado; uma chave externa é necessária para sessões estáveis entre restarts e para qualquer ambiente não Development.
 - Mutation testing cobre somente lógica crítica do backend e roda manualmente/semanalmente; o custo de multiplicar a suíte HTTP/SQLite não é imposto a cada PR. O ratchet deriva da baseline real, não de uma meta arbitrária, e não há mutation testing frontend.
 
@@ -190,7 +191,7 @@ Para sessões sobreviverem ao restart local, gere uma chave própria fora do rep
 - sem confirmação/recuperação de email, roles, administração, refresh token ou deploy de produção;
 - CI hospedada, inclusive o workflow semanal/manual de mutação, ainda não foi observada porque o repositório não foi associado/publicado;
 - E2E cobre Chromium e três jornadas deliberadamente pequenas, não uma matriz de browsers;
-- a demonstração não possui rate limiting ou lockout em cadastro/login; por isso o bind fica restrito ao loopback e exposição externa exige hardening adicional;
+- o rate limiting de cadastro/login é local ao Nginx, não compartilhado entre réplicas e reinicia com o contêiner; não há lockout de conta nem proteção distribuída, e exposição externa ainda exige controles próprios;
 - não há header CSP; reduzir o risco de XSS em produção exige política de conteúdo, TLS e revisão dos assets permitidos;
 - o Dockerfile do frontend usa o modelo de usuário padrão da imagem oficial Nginx, sem `USER` explícito; o container não é privilegiado, não recebe bind mount do host e publica somente a porta alta 8080 no loopback.
 
@@ -213,5 +214,6 @@ IA apoiou requisitos, design, implementação incremental, testes e revisões in
   `http://127.0.0.1:8080`; o bind validado da demonstração é IPv4.
 - **Health não fica saudável:** execute `docker compose ps` e `docker compose logs --no-color api web`; erros de migration/configuração fazem startup falhar de propósito.
 - **Token deixa de funcionar após restart:** configure `Jwt__SigningKey` estável; usuários continuam no volume.
+- **Cadastro/login retorna `429`:** aguarde um minuto antes de tentar novamente; em desenvolvimento, recriar somente `web` também limpa a cota efêmera sem apagar usuários.
 - **Reset completo:** use `docker compose down --volumes --remove-orphans` e suba novamente.
-- **Mutation testing demora:** a baseline levou cerca de cinco minutos sem contenção e pode se aproximar do timeout de 90 minutos em host compartilhado; não aumente workers nem reduza a suíte para mascarar o ambiente.
+- **Mutation testing demora:** a baseline corrente levou cerca de 19 minutos e pode se aproximar do timeout de 90 minutos em host compartilhado; não aumente workers nem reduza a suíte para mascarar o ambiente.

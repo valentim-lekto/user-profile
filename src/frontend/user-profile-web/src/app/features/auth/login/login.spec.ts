@@ -4,6 +4,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { vi } from 'vitest';
 import { AUTH_TOKEN_STORAGE_KEY } from '../../../core/auth/auth.service';
 import { Login } from './login';
 
@@ -41,6 +42,7 @@ describe('Login', () => {
 
   afterEach(() => {
     http.verify();
+    vi.useRealTimers();
     sessionStorage.clear();
   });
 
@@ -182,6 +184,46 @@ describe('Login', () => {
       'Revise os dados informados',
     );
     expect(sessionStorage.length).toBe(0);
+  });
+
+  it('handles rate limiting without losing values, altering the session or starting a countdown', async () => {
+    vi.useFakeTimers();
+    setValidForm(component);
+    const formValues = component.form.getRawValue();
+    sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'existing-session-sentinel');
+
+    const submission = component.submit();
+    http.expectOne('/api/auth/login').flush(
+      { title: 'Too Many Requests', status: 429 },
+      { status: 429, statusText: 'Too Many Requests' },
+    );
+
+    await vi.advanceTimersByTimeAsync(0);
+    await submission;
+    harness.detectChanges();
+
+    expect(router.url).toBe('/login');
+    expect(
+      harness.routeNativeElement?.querySelector('[role="alert"]')?.textContent?.trim(),
+    ).toBe('Muitas tentativas. Aguarde um minuto e tente novamente.');
+    expect(component.form.getRawValue()).toEqual(formValues);
+    expect(
+      harness.routeNativeElement?.querySelector<HTMLButtonElement>('button[type="submit"]')
+        ?.disabled,
+    ).toBe(false);
+    expect(harness.routeNativeElement?.querySelector('.loading-message')).toBeNull();
+    expect(sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBe('existing-session-sentinel');
+    const renderedText = harness.routeNativeElement?.textContent;
+
+    await vi.advanceTimersByTimeAsync(60_001);
+    harness.detectChanges();
+
+    expect(
+      harness.routeNativeElement?.querySelector('[role="alert"]')?.textContent?.trim(),
+    ).toBe('Muitas tentativas. Aguarde um minuto e tente novamente.');
+    expect(harness.routeNativeElement?.textContent).toBe(renderedText);
+    expect(component.form.getRawValue()).toEqual(formValues);
+    expect(sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBe('existing-session-sentinel');
   });
 
   it('keeps an unexpected network error on the login screen with a generic message', async () => {

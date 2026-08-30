@@ -85,6 +85,7 @@ builder.Services.AddSwaggerGen(options =>
         Description = "JWT curto emitido pelo login."
     });
     options.OperationFilter<BearerSecurityOperationFilter>();
+    options.OperationFilter<RateLimitResponseOperationFilter>();
 });
 builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>("sqlite");

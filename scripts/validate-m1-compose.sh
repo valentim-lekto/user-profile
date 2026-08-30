@@ -8,6 +8,9 @@ cd "$repository_root"
 sanitizer_script="$repository_root/scripts/sanitize-ci-output.sh"
 
 review_tmp=$(mktemp -d)
+rate_limit_tmp="$review_tmp/rate-limit"
+mkdir "$rate_limit_tmp"
+rate_limit_pids=''
 stack_started=0
 run_succeeded=0
 compose_project_prefix="${COMPOSE_PROJECT_NAME:-user-profile-m4}"
@@ -43,7 +46,16 @@ collect_failure_diagnostics() {
 cleanup() {
   cleanup_status=$?
   teardown_status=0
+  rate_cleanup_index=1
   trap - EXIT HUP INT TERM
+
+  for rate_cleanup_pid in $rate_limit_pids; do
+    kill "$rate_cleanup_pid" 2>/dev/null || true
+  done
+  for rate_cleanup_pid in $rate_limit_pids; do
+    wait "$rate_cleanup_pid" 2>/dev/null || true
+  done
+  rate_limit_pids=''
 
   if [ "$run_succeeded" -eq 0 ]; then
     collect_failure_diagnostics "$cleanup_status" || true
@@ -71,6 +83,16 @@ cleanup() {
     "$review_tmp/nginx" \
     "$review_tmp/oversized" \
     "$review_tmp/request"
+  while [ "$rate_cleanup_index" -le 11 ]; do
+    for rate_cleanup_prefix in login register; do
+      rm -f -- \
+        "$rate_limit_tmp/$rate_cleanup_prefix-$rate_cleanup_index.body" \
+        "$rate_limit_tmp/$rate_cleanup_prefix-$rate_cleanup_index.headers" \
+        "$rate_limit_tmp/$rate_cleanup_prefix-$rate_cleanup_index.status"
+    done
+    rate_cleanup_index=$((rate_cleanup_index + 1))
+  done
+  rmdir "$rate_limit_tmp" 2>/dev/null || true
   rmdir "$review_tmp" 2>/dev/null || true
 
   if [ "$teardown_status" -ne 0 ]; then
@@ -121,6 +143,134 @@ post_json() {
     --request POST \
     --header 'Content-Type: application/json' \
     --data-binary "@$review_tmp/request"
+}
+
+rate_limit_request() {
+  rate_request_path=$1
+  rate_request_index=$2
+  rate_request_prefix=$3
+  rate_request_query_marker=$4
+
+  curl --silent --show-error --max-time 30 \
+    --output "$rate_limit_tmp/$rate_request_prefix-$rate_request_index.body" \
+    --dump-header "$rate_limit_tmp/$rate_request_prefix-$rate_request_index.headers" \
+    --write-out '%{http_code}' \
+    --request POST \
+    --header 'Content-Type: application/json' \
+    --header "X-Forwarded-For: 198.51.100.$rate_request_index" \
+    --data-binary '{}' \
+    "http://127.0.0.1:8080$rate_request_path?rateProbe=$rate_request_query_marker-$rate_request_index" \
+    >"$rate_limit_tmp/$rate_request_prefix-$rate_request_index.status"
+}
+
+assert_rate_limit_problem_json() {
+  rate_problem_path=$1
+  rate_problem_body=$2
+
+  if ! docker run --rm --interactive --network none \
+    ruby:3.4.10-slim-bookworm \
+    ruby -rjson -e '
+      expected = {
+        "type" => "about:blank",
+        "title" => "Too Many Requests",
+        "status" => 429,
+        "detail" => "Too many attempts. Try again later.",
+        "instance" => ARGV.fetch(0)
+      }
+      actual = JSON.parse(STDIN.read)
+      abort "rate-limit ProblemDetails must be an object" unless actual.is_a?(Hash)
+      expected.each do |key, value|
+        abort "unexpected rate-limit ProblemDetails field #{key}" unless actual[key] == value
+      end
+
+      sensitive_key = /(?:\Aip\z|email|password|token|authorization|credential|secret|hash|remote.*addr|client.*ip|signing.*key)/i
+      pending = [actual]
+      until pending.empty?
+        value = pending.pop
+        case value
+        when Hash
+          abort "sensitive rate-limit ProblemDetails extension" if value.keys.any? { |key| key.match?(sensitive_key) }
+          pending.concat(value.values)
+        when Array
+          pending.concat(value)
+        end
+      end
+
+      serialized = JSON.generate(actual)
+      sensitive_value = /(?:Bearer\s+|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|(?:\d{1,3}\.){3}\d{1,3})/i
+      abort "sensitive rate-limit ProblemDetails value" if serialized.match?(sensitive_value)
+    ' "$rate_problem_path" <"$rate_problem_body"; then
+    fail "$rate_problem_path 429 body is not the expected generic ProblemDetails JSON"
+  fi
+}
+
+run_rate_limit_burst() {
+  rate_burst_path=$1
+  rate_burst_prefix=$2
+  rate_burst_query_marker=$3
+  rate_limit_pids=''
+  rate_burst_index=1
+
+  while [ "$rate_burst_index" -le 11 ]; do
+    rate_limit_request \
+      "$rate_burst_path" \
+      "$rate_burst_index" \
+      "$rate_burst_prefix" \
+      "$rate_burst_query_marker" &
+    rate_limit_pids="$rate_limit_pids $!"
+    rate_burst_index=$((rate_burst_index + 1))
+  done
+
+  rate_burst_transport_failure=0
+  for rate_burst_pid in $rate_limit_pids; do
+    if ! wait "$rate_burst_pid"; then
+      rate_burst_transport_failure=1
+    fi
+  done
+  rate_limit_pids=''
+  [ "$rate_burst_transport_failure" -eq 0 ] ||
+    fail "$rate_burst_path burst contained a transport failure"
+
+  rate_burst_api_count=0
+  rate_burst_limited_count=0
+  rate_burst_limited_base=''
+  rate_burst_index=1
+  while [ "$rate_burst_index" -le 11 ]; do
+    rate_burst_status=$(cat \
+      "$rate_limit_tmp/$rate_burst_prefix-$rate_burst_index.status")
+    case "$rate_burst_status" in
+      400)
+        rate_burst_api_count=$((rate_burst_api_count + 1))
+        ;;
+      429)
+        rate_burst_limited_count=$((rate_burst_limited_count + 1))
+        rate_burst_limited_base="$rate_limit_tmp/$rate_burst_prefix-$rate_burst_index"
+        ;;
+      *)
+        fail "$rate_burst_path burst returned unexpected status $rate_burst_status"
+        ;;
+    esac
+    rate_burst_index=$((rate_burst_index + 1))
+  done
+
+  [ "$rate_burst_api_count" -eq 10 ] ||
+    fail "$rate_burst_path burst reached the API $rate_burst_api_count times instead of 10"
+  [ "$rate_burst_limited_count" -eq 1 ] ||
+    fail "$rate_burst_path burst returned $rate_burst_limited_count rate-limit responses instead of 1"
+
+  rate_burst_media_type=$(sed -n \
+    's/^[Cc]ontent-[Tt]ype:[[:space:]]*//p' \
+    "$rate_burst_limited_base.headers" |
+    tr -d '\r' |
+    sed -n '1{s/[[:space:]]*;.*$//;p;}')
+  [ "$rate_burst_media_type" = 'application/problem+json' ] ||
+    fail "$rate_burst_path 429 returned media type $rate_burst_media_type"
+  tr -d '\r' <"$rate_burst_limited_base.headers" |
+    grep -Eiq '^Retry-After:[[:space:]]*60[[:space:]]*$' ||
+    fail "$rate_burst_path 429 omitted Retry-After: 60"
+  tr -d '\r' <"$rate_burst_limited_base.headers" |
+    grep -Eiq '^Cache-Control:[[:space:]]*no-store[[:space:]]*$' ||
+    fail "$rate_burst_path 429 omitted Cache-Control: no-store"
 }
 
 wait_for_health() {
@@ -367,6 +517,61 @@ grep -Eq 'proxy_read_timeout[[:space:]]+30s;' \
   src/frontend/user-profile-web/nginx.conf || fail 'Nginx response timeout is not explicit'
 grep -Eq 'error_page[[:space:]]+413[[:space:]]+=[[:space:]]+@payload_too_large;' \
   src/frontend/user-profile-web/nginx.conf || fail 'Nginx does not map 413 to ProblemDetails'
+grep -Fq 'map "$request_method:$uri" $auth_rate_limit_key {' \
+  src/frontend/user-profile-web/nginx.conf || fail 'Nginx rate-limit map does not inspect method and normalized path'
+grep -Fq 'default "";' \
+  src/frontend/user-profile-web/nginx.conf || fail 'Nginx does not exempt non-POST methods from the rate-limit key'
+grep -Fq '~*^POST:/api/auth/login/?$ "$binary_remote_addr:/api/auth/login";' \
+  src/frontend/user-profile-web/nginx.conf || fail 'Nginx does not canonicalize login paths into one IP bucket'
+grep -Fq '~*^POST:/api/auth/register/?$ "$binary_remote_addr:/api/auth/register";' \
+  src/frontend/user-profile-web/nginx.conf || fail 'Nginx does not canonicalize registration paths into one IP bucket'
+grep -Fq 'location ~* ^/api/auth/(login|register)/?$ {' \
+  src/frontend/user-profile-web/nginx.conf || fail 'Nginx authentication location does not cover accepted path variants'
+grep -Fq 'limit_req_zone $auth_rate_limit_key zone=auth_rate_limit:1m rate=10r/m;' \
+  src/frontend/user-profile-web/nginx.conf || fail 'Nginx authentication rate-limit zone is unexpected'
+grep -Eq 'limit_req[[:space:]]+zone=auth_rate_limit[[:space:]]+burst=9[[:space:]]+nodelay;' \
+  src/frontend/user-profile-web/nginx.conf || fail 'Nginx authentication burst is unexpected'
+source_rate_limit_count=$(grep -Ec \
+  '^[[:space:]]*limit_req[[:space:]]' \
+  src/frontend/user-profile-web/nginx.conf || true)
+[ "$source_rate_limit_count" -eq 1 ] ||
+  fail 'Nginx authentication limiter is not applied exactly once'
+grep -Eq 'limit_req_status[[:space:]]+429;' \
+  src/frontend/user-profile-web/nginx.conf || fail 'Nginx rate-limit rejection status is not 429'
+grep -Eq 'error_page[[:space:]]+429[[:space:]]+=[[:space:]]+@too_many_requests;' \
+  src/frontend/user-profile-web/nginx.conf || fail 'Nginx does not map 429 to ProblemDetails'
+grep -Eq 'add_header[[:space:]]+Retry-After[[:space:]]+"60"[[:space:]]+always;' \
+  src/frontend/user-profile-web/nginx.conf || fail 'Nginx 429 does not declare Retry-After: 60'
+grep -Eq 'add_header[[:space:]]+Cache-Control[[:space:]]+"no-store"[[:space:]]+always;' \
+  src/frontend/user-profile-web/nginx.conf || fail 'Nginx 429 does not disable caching'
+grep -Fq 'proxy_set_header X-Forwarded-For $remote_addr;' \
+  src/frontend/user-profile-web/nginx.conf ||
+  fail 'Nginx does not overwrite X-Forwarded-For at server scope'
+source_server_proxy_headers=$(awk '
+  /^server \{/ { in_server = 1; next }
+  in_server && /^[[:space:]]*location / { exit }
+  in_server && /^[[:space:]]*proxy_set_header / { print }
+' src/frontend/user-profile-web/nginx.conf)
+[ "$(printf '%s\n' "$source_server_proxy_headers" | grep -c .)" -eq 3 ] ||
+  fail 'Nginx does not define exactly three inherited proxy headers at server scope'
+printf '%s\n' "$source_server_proxy_headers" |
+  grep -Fq 'proxy_set_header Host $host;' ||
+  fail 'Nginx does not inherit the upstream Host header from server scope'
+printf '%s\n' "$source_server_proxy_headers" |
+  grep -Fq 'proxy_set_header X-Forwarded-For $remote_addr;' ||
+  fail 'Nginx X-Forwarded-For is shadowed below server scope'
+printf '%s\n' "$source_server_proxy_headers" |
+  grep -Fq 'proxy_set_header X-Forwarded-Proto $scheme;' ||
+  fail 'Nginx does not inherit X-Forwarded-Proto from server scope'
+source_proxy_header_count=$(grep -Ec \
+  '^[[:space:]]*proxy_set_header[[:space:]]' \
+  src/frontend/user-profile-web/nginx.conf || true)
+[ "$source_proxy_header_count" -eq 3 ] ||
+  fail 'a location overrides the inherited Nginx proxy header set'
+if grep -Fq '$http_x_forwarded_for' src/frontend/user-profile-web/nginx.conf ||
+  grep -Fq '$proxy_add_x_forwarded_for' src/frontend/user-profile-web/nginx.conf; then
+  fail 'Nginx trusts a client-controlled X-Forwarded-For chain'
+fi
 
 stack_started=1
 docker compose up --build --detach --wait --wait-timeout "${M1_COMPOSE_WAIT_TIMEOUT:-300}"
@@ -699,6 +904,52 @@ grep -Eq 'error_page[[:space:]]+502[[:space:]]+504[[:space:]]+=[[:space:]]+@serv
   "$review_tmp/nginx" || fail 'Nginx does not map both 502 and 504'
 grep -Eq 'error_page[[:space:]]+413[[:space:]]+=[[:space:]]+@payload_too_large;' \
   "$review_tmp/nginx" || fail 'rendered Nginx config does not map 413'
+grep -Fq 'map "$request_method:$uri" $auth_rate_limit_key {' \
+  "$review_tmp/nginx" || fail 'rendered Nginx rate-limit map is unexpected'
+grep -Fq '~*^POST:/api/auth/login/?$ "$binary_remote_addr:/api/auth/login";' \
+  "$review_tmp/nginx" || fail 'rendered Nginx login key is not canonical'
+grep -Fq '~*^POST:/api/auth/register/?$ "$binary_remote_addr:/api/auth/register";' \
+  "$review_tmp/nginx" || fail 'rendered Nginx registration key is not canonical'
+grep -Fq 'limit_req_zone $auth_rate_limit_key zone=auth_rate_limit:1m rate=10r/m;' \
+  "$review_tmp/nginx" || fail 'rendered Nginx rate-limit zone is unexpected'
+grep -Eq 'limit_req[[:space:]]+zone=auth_rate_limit[[:space:]]+burst=9[[:space:]]+nodelay;' \
+  "$review_tmp/nginx" || fail 'rendered Nginx authentication burst is unexpected'
+rendered_rate_limit_count=$(grep -Ec \
+  '^[[:space:]]*limit_req[[:space:]]' \
+  "$review_tmp/nginx" || true)
+[ "$rendered_rate_limit_count" -eq 1 ] ||
+  fail 'rendered Nginx authentication limiter is not applied exactly once'
+grep -Eq 'limit_req_status[[:space:]]+429;' \
+  "$review_tmp/nginx" || fail 'rendered Nginx rejection status is not 429'
+grep -Eq 'error_page[[:space:]]+429[[:space:]]+=[[:space:]]+@too_many_requests;' \
+  "$review_tmp/nginx" || fail 'rendered Nginx config does not map 429'
+grep -Eq 'add_header[[:space:]]+Retry-After[[:space:]]+"60"[[:space:]]+always;' \
+  "$review_tmp/nginx" || fail 'rendered Nginx 429 omits Retry-After: 60'
+grep -Eq 'add_header[[:space:]]+Cache-Control[[:space:]]+"no-store"[[:space:]]+always;' \
+  "$review_tmp/nginx" || fail 'rendered Nginx 429 does not disable caching'
+grep -Fq 'proxy_set_header X-Forwarded-For $remote_addr;' \
+  "$review_tmp/nginx" ||
+  fail 'rendered Nginx config does not overwrite X-Forwarded-For at server scope'
+rendered_server_proxy_headers=$(awk '
+  /^server \{/ { in_server = 1; next }
+  in_server && /^[[:space:]]*location / { exit }
+  in_server && /^[[:space:]]*proxy_set_header / { print }
+' "$review_tmp/nginx")
+[ "$(printf '%s\n' "$rendered_server_proxy_headers" | grep -c .)" -eq 3 ] ||
+  fail 'rendered Nginx config does not inherit exactly three server proxy headers'
+printf '%s\n' "$rendered_server_proxy_headers" |
+  grep -Fq 'proxy_set_header Host $host;' ||
+  fail 'rendered Nginx config does not inherit Host from server scope'
+printf '%s\n' "$rendered_server_proxy_headers" |
+  grep -Fq 'proxy_set_header X-Forwarded-For $remote_addr;' ||
+  fail 'rendered Nginx X-Forwarded-For is shadowed below server scope'
+printf '%s\n' "$rendered_server_proxy_headers" |
+  grep -Fq 'proxy_set_header X-Forwarded-Proto $scheme;' ||
+  fail 'rendered Nginx config does not inherit X-Forwarded-Proto from server scope'
+rendered_proxy_header_count=$(grep -Ec \
+  '^[[:space:]]*proxy_set_header[[:space:]]' "$review_tmp/nginx" || true)
+[ "$rendered_proxy_header_count" -eq 3 ] ||
+  fail 'rendered Nginx location overrides the inherited proxy header set'
 
 docker compose up --detach --force-recreate api >/dev/null
 wait_for_health
@@ -730,16 +981,81 @@ grep -Fq "\"email\":\"$updated_email\"" "$review_tmp/body" ||
 grep -Fq '"name":"M4 Updated"' "$review_tmp/body" ||
   fail 'the persisted profile name was lost after recreating the API'
 
-docker compose logs --no-color >"$review_tmp/logs"
+# OPS-RATE-001/002: reset only the local Nginx zone before the concurrent burst.
+docker compose logs --no-color >>"$review_tmp/logs"
+rate_api_container_id=$(docker compose ps -q api)
+docker compose up --detach --force-recreate --no-deps --wait \
+  --wait-timeout "${M1_COMPOSE_WAIT_TIMEOUT:-300}" web >/dev/null
+
+rate_query_marker="M4_RATE_QUERY_MARKER_$smoke_suffix"
+run_rate_limit_burst '/api/auth/login' 'login' "$rate_query_marker"
+
+post_json "/api/auth/Login?rateProbe=$rate_query_marker-case" '429' '{}'
+grep -Fq '"status":429' "$review_tmp/body" ||
+  fail 'login casing created a fresh rate-limit bucket'
+post_json "/api/auth/login/?rateProbe=$rate_query_marker-slash" '429' '{}'
+grep -Fq '"status":429' "$review_tmp/body" ||
+  fail 'login trailing slash created a fresh rate-limit bucket'
+assert_rate_limit_problem_json \
+  '/api/auth/login' "$rate_burst_limited_base.body"
+
+run_rate_limit_burst \
+  '/api/auth/register' 'register' "$rate_query_marker-register"
+assert_rate_limit_problem_json \
+  '/api/auth/register' "$rate_burst_limited_base.body"
+
+request '/api/auth/login' '405' 'application/problem+json'
+grep -Fq '"status":405' "$review_tmp/body" ||
+  fail 'GET login was affected by the POST rate-limit bucket'
+request '/health' '200' 'application/json'
+grep -Fq '"status":"Healthy"' "$review_tmp/body" ||
+  fail 'health was affected by the authentication rate-limit bucket'
+request '/swagger/v1/swagger.json' '200' 'application/json'
+grep -Fq '"/api/auth/login"' "$review_tmp/body" ||
+  fail 'Swagger was affected by the authentication rate-limit bucket'
+request '/api/profile' '200' 'application/json' \
+  --header "Authorization: Bearer $recreated_access_token"
+grep -Fq "\"email\":\"$updated_email\"" "$review_tmp/body" ||
+  fail 'profile was affected by the authentication rate-limit bucket'
+
+request '/api/auth/login' '413' 'application/problem+json' \
+  --request POST \
+  --header 'Content-Type: application/json' \
+  --data-binary "@$review_tmp/oversized"
+grep -Fq '"status":413' "$review_tmp/body" ||
+  fail 'the payload-size barrier was affected by the login rate-limit bucket'
+
+# Preserve this container's logs before the second web recreation removes them.
+docker compose logs --no-color >>"$review_tmp/logs"
+docker compose up --detach --force-recreate --no-deps --wait \
+  --wait-timeout "${M1_COMPOSE_WAIT_TIMEOUT:-300}" web >/dev/null
+[ "$(docker compose ps -q api)" = "$rate_api_container_id" ] ||
+  fail 'recreating web also recreated the API container'
+
+run_rate_limit_burst \
+  '/api/auth/login' 'login' "$rate_query_marker-reset"
+
+request '/api/profile' '200' 'application/json' \
+  --header "Authorization: Bearer $recreated_access_token"
+grep -Fq "\"email\":\"$updated_email\"" "$review_tmp/body" ||
+  fail 'profile persistence was lost after recreating only web'
+grep -Fq '"name":"M4 Updated"' "$review_tmp/body" ||
+  fail 'profile name was lost after recreating only web'
+
+docker compose logs --no-color >>"$review_tmp/logs"
 if grep -Fq -- "$query_marker" "$review_tmp/logs" ||
   grep -Fq -- "$body_marker" "$review_tmp/logs" ||
   grep -Fq -- "$header_marker" "$review_tmp/logs" ||
+  grep -Fq -- "$rate_query_marker" "$review_tmp/logs" ||
+  grep -Fq -- '198.51.100.11' "$review_tmp/logs" ||
+  grep -Fq -- "$smoke_email" "$review_tmp/logs" ||
+  grep -Fq -- "$updated_email" "$review_tmp/logs" ||
   grep -Fq -- "$smoke_password" "$review_tmp/logs" ||
   grep -Fq -- "$new_password" "$review_tmp/logs" ||
   grep -Fq -- "$access_token" "$review_tmp/logs" ||
   grep -Fq -- "$post_change_access_token" "$review_tmp/logs" ||
   grep -Fq -- "$recreated_access_token" "$review_tmp/logs"; then
-  fail 'a synthetic credential or marker was exposed in logs after recreating the API'
+  fail 'a synthetic credential or marker was exposed in the accumulated container logs'
 fi
 
 docker compose stop api >/dev/null
@@ -748,4 +1064,4 @@ grep -Fq '"status":503' "$review_tmp/body" || fail 'upstream failure body is not
 
 run_succeeded=1
 printf '%s\n' \
-  'M1+M2+M3+M4 Compose OK: same origin, registration, login, profile/password updates, auth failures, persistence, 413/415, safe logs and upstream 503 verified'
+  'M1+M2+M3+M4 Compose OK: same origin, auth rate limiting, registration, login, profile/password updates, auth failures, persistence, 413/415, safe logs and upstream 503 verified'

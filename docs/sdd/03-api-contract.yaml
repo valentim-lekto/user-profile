@@ -33,6 +33,8 @@ paths:
         - FR-REG-02
         - FR-REG-03
         - FR-REG-04
+      x-non-functional-requirements:
+        - NFR-SEC-02
       x-acceptance-criteria:
         - AC-REG-01
         - AC-REG-02
@@ -40,6 +42,9 @@ paths:
         - AC-REG-04
         - AC-REG-05
         - AC-REG-06
+        - SEC-RATE-01
+        - SEC-RATE-02
+        - API-ERROR-02
       requestBody:
         required: true
         content:
@@ -73,6 +78,8 @@ paths:
           $ref: '#/components/responses/PayloadTooLargeProblem'
         '415':
           $ref: '#/components/responses/UnsupportedMediaTypeProblem'
+        '429':
+          $ref: '#/components/responses/RateLimitProblem'
         '500':
           $ref: '#/components/responses/UnexpectedProblem'
         '503':
@@ -93,10 +100,15 @@ paths:
         - FR-LOGIN-01
         - FR-LOGIN-02
         - FR-LOGIN-03
+      x-non-functional-requirements:
+        - NFR-SEC-02
       x-acceptance-criteria:
         - AC-LOGIN-01
         - AC-LOGIN-02
         - AC-LOGIN-03
+        - SEC-RATE-01
+        - SEC-RATE-02
+        - API-ERROR-02
       requestBody:
         required: true
         content:
@@ -128,6 +140,8 @@ paths:
           $ref: '#/components/responses/PayloadTooLargeProblem'
         '415':
           $ref: '#/components/responses/UnsupportedMediaTypeProblem'
+        '429':
+          $ref: '#/components/responses/RateLimitProblem'
         '500':
           $ref: '#/components/responses/UnexpectedProblem'
         '503':
@@ -638,6 +652,39 @@ components:
                 title: Unsupported Media Type
                 status: 415
                 detail: The request content type is not supported.
+    RateLimitProblem:
+      description: >-
+        O bucket local deste cliente e endpoint foi esgotado no Nginx antes
+        de a requisição alcançar a API. A cota é efêmera e reposta
+        gradualmente; o header informa a espera conservadora sugerida.
+      headers:
+        Retry-After:
+          required: true
+          description: Quantidade de segundos sugerida antes de uma nova tentativa.
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+          example: 60
+        Cache-Control:
+          required: true
+          description: Impede o armazenamento da resposta de limitação por caches intermediários.
+          schema:
+            type: string
+            pattern: '^no-store$'
+          example: no-store
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          examples:
+            tooManyRequests:
+              value:
+                type: about:blank
+                title: Too Many Requests
+                status: 429
+                detail: Too many attempts. Try again later.
+                instance: /api/auth/login
     BearerUnauthorizedProblem:
       description: Bearer ausente, inválido ou expirado.
       headers:

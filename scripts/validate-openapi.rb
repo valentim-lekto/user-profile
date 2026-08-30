@@ -38,12 +38,12 @@ expected_operations = {
   ["/api/auth/register", "post"] => {
     "operationId" => "registerUser", "security" => [],
     "requestSchema" => "RegisterRequest", "success" => ["201", "MessageResponse"],
-    "responses" => %w[201 400 409 413 415 500 503]
+    "responses" => %w[201 400 409 413 415 429 500 503]
   },
   ["/api/auth/login", "post"] => {
     "operationId" => "loginUser", "security" => [],
     "requestSchema" => "LoginRequest", "success" => ["200", "LoginResponse"],
-    "responses" => %w[200 400 401 413 415 500 503]
+    "responses" => %w[200 400 401 413 415 429 500 503]
   },
   ["/api/profile", "get"] => {
     "operationId" => "getCurrentProfile", "security" => [{ "bearerAuth" => [] }],
@@ -264,6 +264,45 @@ assert_contract paths.dig("/api/auth/login", "post", "responses", "401", "$ref")
                 "#/components/responses/LoginUnauthorizedProblem",
                 "Unrecognized credentials must use 401 LoginUnauthorizedProblem"
 
+rate_limited_operations = [
+  ["/api/auth/register", "post"],
+  ["/api/auth/login", "post"]
+].freeze
+rate_limited_operations.each do |path, method|
+  operation = paths.fetch(path).fetch(method)
+  label = "#{method.upcase} #{path}"
+  assert_contract operation.dig("responses", "429", "$ref") ==
+                  "#/components/responses/RateLimitProblem",
+                  "#{label} must use RateLimitProblem"
+  assert_contract operation.fetch("x-non-functional-requirements", []).include?("NFR-SEC-02"),
+                  "#{label} must trace NFR-SEC-02"
+  acceptance_criteria = operation.fetch("x-acceptance-criteria", [])
+  %w[SEC-RATE-01 SEC-RATE-02 API-ERROR-02].each do |criterion|
+    assert_contract acceptance_criteria.include?(criterion),
+                    "#{label} must trace #{criterion}"
+  end
+end
+
+rate_limit_problem = document.dig("components", "responses", "RateLimitProblem")
+assert_contract rate_limit_problem.is_a?(Hash), "Missing RateLimitProblem response"
+retry_after = rate_limit_problem.dig("headers", "Retry-After")
+assert_contract retry_after.is_a?(Hash) && retry_after["required"] == true,
+                "RateLimitProblem must require Retry-After"
+assert_contract retry_after.dig("schema", "type") == "integer" &&
+                retry_after.dig("schema", "format") == "int32" &&
+                retry_after.dig("schema", "minimum") == 1,
+                "Retry-After must be a positive int32"
+cache_control = rate_limit_problem.dig("headers", "Cache-Control")
+assert_contract cache_control.is_a?(Hash) && cache_control["required"] == true,
+                "RateLimitProblem must require Cache-Control"
+assert_contract cache_control.dig("schema", "type") == "string" &&
+                cache_control.dig("schema", "pattern") == "^no-store$",
+                "Cache-Control must require no-store"
+assert_contract rate_limit_problem.dig(
+  "content", "application/problem+json", "schema", "$ref"
+) == "#/components/schemas/ProblemDetails",
+                "RateLimitProblem must use ProblemDetails"
+
 references = []
 walk = lambda do |value|
   case value
@@ -279,4 +318,4 @@ end
 walk.call(document)
 references.each { |reference| resolve_reference(document, reference) }
 
-puts "OpenAPI OK: SPEC-OAS-001..005, #{expected_operations.length} operations, #{references.length} local references"
+puts "OpenAPI OK: SPEC-OAS-001..006, #{expected_operations.length} operations, #{references.length} local references"

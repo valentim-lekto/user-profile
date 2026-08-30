@@ -3,7 +3,9 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { vi } from 'vitest';
 import { routes } from '../../../app.routes';
+import { AUTH_TOKEN_STORAGE_KEY } from '../../../core/auth/auth.service';
 import { Register } from './register';
 
 describe('Register', () => {
@@ -31,6 +33,7 @@ describe('Register', () => {
 
   afterEach(() => {
     http.verify();
+    vi.useRealTimers();
     window.sessionStorage.clear();
   });
 
@@ -250,6 +253,49 @@ describe('Register', () => {
       { status: 201, statusText: 'Created' },
     );
     await retry;
+  });
+
+  it('handles rate limiting without losing values, altering the session or starting a countdown', async () => {
+    vi.useFakeTimers();
+    setValidFormValues(component);
+    const formValues = component.form.getRawValue();
+    sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'existing-session-sentinel');
+
+    const submission = component.submit();
+    http.expectOne('/api/auth/register').flush(
+      { title: 'Too Many Requests', status: 429 },
+      { status: 429, statusText: 'Too Many Requests' },
+    );
+
+    await vi.advanceTimersByTimeAsync(0);
+    await submission;
+    harness.detectChanges();
+
+    expect(router.url).toBe('/register');
+    expect(
+      harness.routeNativeElement?.querySelector('[role="alert"]')?.textContent?.trim(),
+    ).toBe('Muitas tentativas. Aguarde um minuto e tente novamente.');
+    expect(component.form.getRawValue()).toEqual(formValues);
+    expect(Object.values(component.form.controls).some((control) => control.hasError('api'))).toBe(
+      false,
+    );
+    expect(
+      harness.routeNativeElement?.querySelector<HTMLButtonElement>('button[type="submit"]')
+        ?.disabled,
+    ).toBe(false);
+    expect(harness.routeNativeElement?.querySelector('.loading-message')).toBeNull();
+    expect(sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBe('existing-session-sentinel');
+    const renderedText = harness.routeNativeElement?.textContent;
+
+    await vi.advanceTimersByTimeAsync(60_001);
+    harness.detectChanges();
+
+    expect(
+      harness.routeNativeElement?.querySelector('[role="alert"]')?.textContent?.trim(),
+    ).toBe('Muitas tentativas. Aguarde um minuto e tente novamente.');
+    expect(harness.routeNativeElement?.textContent).toBe(renderedText);
+    expect(component.form.getRawValue()).toEqual(formValues);
+    expect(sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBe('existing-session-sentinel');
   });
 
   it('shows a safe message when the API is unavailable', async () => {

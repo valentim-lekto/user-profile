@@ -120,6 +120,10 @@ function loginErrorMessage(status: number | undefined): string {
     return 'Revise os dados informados e tente novamente.';
   }
 
+  if (status === 429) {
+    return 'Muitas tentativas. Aguarde um minuto e tente novamente.';
+  }
+
   if (status === 503) {
     return 'O serviço está indisponível no momento. Tente novamente em breve.';
   }

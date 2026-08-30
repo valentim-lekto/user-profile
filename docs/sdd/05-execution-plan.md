@@ -13,8 +13,8 @@ Somente um milestone pode estar em andamento. O próximo começa após o anterio
 - `AC-DASH-01`–`AC-DASH-04` — dashboard protegido.
 - `AC-PROF-01`–`AC-PROF-05` — consulta e edição de perfil.
 - `AC-PASS-01`–`AC-PASS-05` — alteração de senha, concorrência e encerramento da sessão.
-- `UI-STATE-01`, `API-ERROR-01` — estados de UI e erros HTTP.
-- `SEC-AUTH-01`, `SEC-SESSION-01`, `SEC-SECRET-01`, `SEC-LOG-01` — segurança.
+- `UI-STATE-01`, `API-ERROR-01`, `API-ERROR-02` — estados de UI e erros HTTP.
+- `SEC-AUTH-01`, `SEC-SESSION-01`, `SEC-SECRET-01`, `SEC-LOG-01`, `SEC-RATE-01`, `SEC-RATE-02` — segurança.
 - `TECH-BACKEND-01`, `TECH-FRONTEND-01` — tecnologias obrigatórias e builds reproduzíveis.
 - `OPS-DOCKER-01`–`OPS-DOCKER-03` — execução e persistência.
 - `DOC-RUN-01`, `DOC-SDD-01`, `DOC-TRACE-01` — documentação e rastreabilidade.
@@ -303,6 +303,28 @@ Gates observáveis:
 - reintroduzir temporariamente o precheck síncrono com `Any()` reprova o teste de contagem;
 - os três mutantes descartáveis são removidos antes do build e da suíte backend completa.
 
+### Atividade pós-M6 — rate limiting de autenticação no Nginx
+
+**Estado:** concluída e validada localmente em 2026-08-30
+
+Entregas:
+
+- proteger somente `POST /api/auth/login` e `POST /api/auth/register` na origem Nginx, com buckets independentes por endereço TCP e endpoint canônico derivado de `$uri`, zona de 1 MiB, `rate=10r/m`, `burst=9` e `nodelay`;
+- ignorar métodos diferentes e impedir que query string ou `X-Forwarded-For` do cliente escolham outra partição;
+- devolver `429 application/problem+json` genérico com `Retry-After: 60` e `Cache-Control: no-store`, preservando `413` como limite independente;
+- declarar o `429` somente nas duas operações no OpenAPI normativo e Swagger runtime, com filtro pequeno para `Retry-After` e `Cache-Control`;
+- mostrar no login/cadastro a mensagem fixa acessível, preservando formulário, sessão, rota e capacidade de nova submissão;
+- ampliar o smoke acumulado com rajada concorrente real, independência das rotas, não-bypass, reset ao recriar somente `web`, persistência e logs seguros, sem quarta jornada Playwright;
+- registrar a decisão no ADR-0005, sem serviço/configuração Compose adicional, middleware backend, banco, lockout ou estado distribuído.
+
+Gates observáveis:
+
+- contrato estático/runtime contém `429`, `Retry-After` e `Cache-Control` apenas nas duas operações públicas de autenticação;
+- frontend prova mensagem exata, valores preservados, loading encerrado, botão habilitado, ausência de navegação/countdown e sessão existente preservada;
+- rajadas independentes de 11 requisições em login e cadastro produzem, cada uma, exatamente 10 respostas da API e um `429`; outros métodos, health, Swagger, perfil e `413` permanecem fora do limite;
+- query string, variações de caixa/barra final e `X-Forwarded-For` forjado não renovam a cota; depois de recriar somente Nginx, outra rajada completa de login comprova a restauração das dez admissões sem apagar o usuário;
+- backend, frontend, contrato, smoke, três E2E e mutation testing continuam verdes; logs/relatórios não contêm segredo, credencial, token, email de teste ou query.
+
 ## Progresso
 
 - `2026-08-24` — `design concluído` — artefatos de design e planejamento criados; M1–M6 permanecem pendentes e nenhum código foi implementado.
@@ -333,6 +355,7 @@ Gates observáveis:
 - `2026-08-28` — `recuperação de startup e eficiência de queries concluídas` — três regressões reproduziram lock técnico órfão sem recuperação, duas aberturas por health e precheck redundante para email canonicamente igual. A re-revisão acrescentou provas para as duas fases do deadline e a corrida do próprio usuário. O patch direto recupera somente `__EFMigrationsLock` na instância única, aplica deadline total de 15 segundos, reutiliza uma conexão, evita o precheck quando a chave canônica não muda, exclui corretamente a própria conta quando muda e usa ID exato no oráculo de migration. Build/119 integrações, contrato e config/smoke Compose passaram; API, schema e frontend permaneceram inalterados.
 - `2026-08-28` — `fechamento da revisão completa de queries/startup concluído` — migrations passaram para `IHostedLifecycleService.StartingAsync`, depois do registro dos sinais do host e antes do listener. Uma integração em subprocesso envia `SIGTERM` durante um lock real, observa o cancelamento cooperativo e comprova saída antes do deadline interno sem prontidão ou resíduo técnico. Os testes de health/perfil reutilizam `ApiFactory.WithInterceptor` e HTTP real; o cenário deliberadamente concorrente continua direto. Build/120 integrações, contrato, configuração/smoke, probes e Stryker 97,47% passaram.
 - `2026-08-30` — `oráculos de startup e queries fortalecidos` — o subprocesso tornou o log de lifetime observável, um teste direto comprovou o token entregue a `MigrateAsync` e o observer passou a contar queries síncronas/assíncronas. Durante a organização dos commits, exigir exit code zero revelou o abort `134` que o oráculo anterior aceitava; a fronteira de execução passou a normalizar somente `SIGTERM` anterior à prontidão. O teste focado, build e 121/121 integrações, contrato, Compose, smoke e três probes `200` passaram; a baseline Stryker anterior permanece aplicável porque lifecycle e `Program.cs` estão fora da allowlist.
+- `2026-08-30` — `rate limiting de autenticação concluído localmente` — Nginx passou a limitar somente cadastro/login por IP TCP e endpoint canônico, com resposta `429 ProblemDetails`; contrato/Swagger, frontend e smoke concorrente foram validados. Duas revisões independentes encerraram lacunas de `Cache-Control`, JSON runtime, sessão/countdown, estados documentais e herança efetiva dos headers do proxy. Backend 121/121, frontend 70/70, 3/3 E2E, OpenAPI 56 referências, smoke, actionlint e Stryker 97,50% passaram; a stack principal foi restaurada com o volume preservado.
 
 ## Evidências de M1
 
@@ -502,6 +525,16 @@ Execuções intermediárias de mutação foram rejeitadas, e não promovidas a b
 | Jornadas finais | `./scripts/e2e-playwright.sh` | 3/3 jornadas aprovadas em 5,0 s; `E2E-001` comprovou as quatro telas sem overflow em 320 px, formulário completo rolável em landscape curto, ordem visual/Tab, ambas as ações na primeira viewport e contenção visível do nome de 200 caracteres sem nova jornada. |
 | Publicação, inspeção real e re-revisão dos oráculos | Recriação somente do serviço `web`; `/health`; navegador em `667×375`, `360×800` e `320×568`; E2E reforçado | API/volume preservados e health saudável. Login/cadastro completos ficaram alcançáveis em landscape; as quatro telas passaram sem overflow em 320 px; ações seguiram DOM/foco; nome integral de 200 caracteres ficou visível em 3/2 linhas, e `Ir para o perfil`/`Sair` terminaram dentro da primeira viewport móvel. |
 
+## Evidências do rate limiting de autenticação pós-M6
+
+| Gate | Execução observada em 2026-08-30 | Resultado |
+|---|---|---|
+| Contrato e backend | Profiles Docker `contract-tests` e `backend-tests` | `SPEC-OAS-001..006`, 6 operações/56 referências e Swagger runtime aprovados; build Release com 0 warnings/erros e 121/121 integrações. Somente cadastro/login declaram `429`, `Retry-After` e `Cache-Control`. |
+| Frontend | Profile Docker `frontend-tests` | Lint, 70/70 testes em 10 arquivos e build de 327,59 kB bruto/90,19 kB estimado. Os testes preservam valores e sessão-sentinela, encerram loading, reabilitam submit e rejeitam countdown em `429`. |
+| Proxy e persistência | `./scripts/validate-m1-compose.sh` | Rajadas concorrentes independentes em login/cadastro e nova rajada após reset produziram, cada uma, exatamente 10 respostas `400` da API e um `429` Nginx; JSON/headers, query/XFF/caixa/barra, demais rotas, `413`, persistência e logs seguros aprovados. |
+| Regressão e infraestrutura | `./scripts/e2e-playwright.sh`; Compose config; `rhysd/actionlint:1.7.12` | 3/3 E2E em 28,4 s; configuração sem `.env` e workflows aprovados. A stack principal voltou saudável em `localhost:8080` sem remover o volume. |
+| Mutação backend | Profile Docker `mutation-tests` | 513 descobertos/200 executados; 195 killed, 5 survived equivalentes, 109 ignored e 3 `CompileError` classificados; 0 timeout/`NoCoverage`/erro, score 97,50%, ratchet 97/97/97 e exit 0 em 18m48s. |
+
 Ao iniciar um milestone, alterar somente seu estado para `em andamento`. Ao concluir, registrar data, comandos, evidências, desvios e hash do commit antes de iniciar o próximo.
 
 ## Comandos
@@ -563,7 +596,7 @@ Os nomes de scripts npm devem ser confirmados no scaffold e então congelados. M
 - **Drift OpenAPI/implementação** — validar contrato em CI e revisar status/schemas em cada milestone.
 - **Concorrência SQLite/migrations** — manter uma instância; falhar startup em migration; documentar o limite.
 - **Token em `sessionStorage`** — evitar HTML inseguro e dependências desnecessárias; expiração curta e limpeza em `401`.
-- **Enumeração no cadastro** — o `409` de email duplicado é observável para cumprir o feedback explícito de erro; não expor outros dados e manter login genérico. Controles de abuso de produção permanecem fora da demonstração.
+- **Enumeração no cadastro** — o `409` de email duplicado é observável para cumprir o feedback explícito de erro; não expor outros dados e manter login genérico. O limiter local reduz rajadas, mas lockout e controles distribuídos de produção permanecem fora da demonstração.
 - **Token antigo após troca de senha** — aceitar validade até `exp`; não ampliar para revogação fora do escopo.
 - **Chave sem `.env`** — gerar somente em `Development`; exigir configuração externa nos demais ambientes.
 - **Tags envelhecidas** — reconfirmar as tags fixadas em M1; qualquer upgrade deve ser explícito e testado.
@@ -608,7 +641,8 @@ Os nomes de scripts npm devem ser confirmados no scaffold e então congelados. M
 - `2026-08-28` — O refinamento visual modernizou somente o shell e as quatro telas Material. Paleta, tipografia do sistema, cartões e formas CSS foram inspirados na linguagem pública da Lekto sem copiar marca/ativos; labels, estados, rotas, payloads e regras permaneceram intactos. O `id` continua obrigatório no DTO de transporte, mas não é renderizado porque o desafio pede consulta visual somente de nome, email e senha.
 - `2026-08-28` — A simplificação final do dashboard removeu somente o bloco de três cartões informativos e seus estilos exclusivos. Hero, dados retornados, navegação, logout, loading/erro e contratos permaneceram intactos; nenhuma abstração ou funcionalidade substituta foi criada.
 - `2026-08-28` — A correção responsiva pós-revisão ocultou apenas o painel editorial em viewport simultaneamente estreita/baixa, alinhou o empilhamento móvel à ordem do DOM e limitou visualmente o nome no dashboard. O texto integral continua no DOM/API/perfil; não houve TypeScript, dependência, estado, rota ou contrato novo.
+- `2026-08-30` — O rate limiting pós-M6 ficou na fronteira Nginx: buckets locais/efêmeros independentes por IP TCP e endpoint canônico, `10r/m` com dez admissões imediatas, `429 ProblemDetails` e feedback direto no frontend. Não foram adicionados middleware backend, lockout, serviço, banco, variável ou estado distribuído.
 
 ## Resultado final
 
-M1–M6 estão concluídos quanto ao escopo técnico e documental. As revisões posteriores corrigiram sessão, estabilidade, apresentação, robustez SQLite, recuperação de startup e eficiência de queries sem ampliar funcionalidade. A evidência corrente contém 121 integrações backend, 68 testes frontend, três jornadas Playwright, contrato e smoke completo aprovados. Mutation testing foi recalibrado localmente para 97,50%, com ratchet 97/97/97 e relatórios HTML/JSON; concorrência de senha, lifecycle cooperativo sob `SIGTERM`, recuperação/deadline de ambas as fases de migration, health com uma conexão/IDs exatos, precheck condicional com exclusão correta da própria conta e margem de timeout do Compose estão comprovados. Os oráculos detectam listener prematuro, CTS não ligado e precheck síncrono redundante. A execução hospedada da CI, a confirmação de `AI-EXPLAIN-01` por uma pessoa e `DEL-REPO-01` permanecem ações externas e não foram marcadas como Verified.
+M1–M6 e as atividades pós-M6 estão concluídos quanto ao escopo técnico e documental. As revisões posteriores corrigiram sessão, estabilidade, apresentação, robustez SQLite, startup/queries e limitaram rajadas de autenticação sem ampliar a funcionalidade de negócio. A evidência corrente contém 121 integrações backend, 70 testes frontend, três jornadas Playwright, contrato com 56 referências e smoke concorrente aprovados. Mutation testing permanece em 97,50%, com ratchet 97/97/97 e relatórios HTML/JSON; o limiter local/efêmero, suas partições, resposta `429`, reset e persistência foram comprovados. A execução hospedada da CI, a confirmação de `AI-EXPLAIN-01` por uma pessoa e `DEL-REPO-01` permanecem ações externas e não foram marcadas como Verified.
