@@ -1,8 +1,10 @@
+using System.Data.Common;
 using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using UserProfile.Api.Data;
 using UserProfile.Api.Features.Auth;
@@ -13,6 +15,9 @@ namespace UserProfile.Api.IntegrationTests;
 
 public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
+    private const string RawEmailPattern =
+        @"^\s*[\x21-\x3F\x41-\x7E]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\s*$";
+
     [Fact]
     public async Task HealthReturnsHealthyAfterStartupMigration()
     {
@@ -25,6 +30,22 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
 
         using var body = JsonDocument.Parse(await response.Content.ReadAsStreamAsync());
         Assert.Equal("Healthy", body.RootElement.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task HealthOpensOneDatabaseConnectionPerProbe()
+    {
+        var connectionObserver = new ConnectionOpenObserver();
+        using var interceptedFactory = ApiFactory.WithInterceptor(connectionObserver);
+        using var client = interceptedFactory.CreateClient();
+        connectionObserver.Reset();
+
+        using var response = await client.GetAsync("/health");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStreamAsync());
+        Assert.Equal("Healthy", body.RootElement.GetProperty("status").GetString());
+        Assert.Equal(1, connectionObserver.OpenedConnections);
     }
 
     [Fact]
@@ -43,11 +64,19 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
 
         await using var migrationCommand = connection.CreateCommand();
         migrationCommand.CommandText = """
-            SELECT COUNT(*)
+            SELECT "MigrationId"
             FROM "__EFMigrationsHistory"
-            WHERE "MigrationId" LIKE '%_InitialCreate';
+            ORDER BY "MigrationId";
             """;
-        Assert.Equal(1L, Convert.ToInt64(await migrationCommand.ExecuteScalarAsync()));
+        var appliedMigrations = new List<string>();
+        await using (var migrations = await migrationCommand.ExecuteReaderAsync())
+        {
+            while (await migrations.ReadAsync())
+            {
+                appliedMigrations.Add(migrations.GetString(0));
+            }
+        }
+        Assert.Equal(["20260824182132_InitialCreate"], appliedMigrations);
 
         await using var indexCommand = connection.CreateCommand();
         indexCommand.CommandText = """
@@ -350,7 +379,7 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.False(emailProperty.TryGetProperty("maxLength", out _));
         Assert.False(emailProperty.TryGetProperty("format", out _));
         Assert.Equal(
-            RegisterRequestSchemaFilter.RawEmailPattern,
+            RawEmailPattern,
             emailProperty.GetProperty("pattern").GetString());
         Assert.True(emailProperty.GetProperty("x-trim").GetBoolean());
         Assert.Equal(1, emailProperty.GetProperty("x-min-length-after-trim").GetInt32());
@@ -391,7 +420,7 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var loginProperties = loginSchema.GetProperty("properties");
         var loginEmail = loginProperties.GetProperty("email");
         Assert.Equal(
-            RegisterRequestSchemaFilter.RawEmailPattern,
+            RawEmailPattern,
             loginEmail.GetProperty("pattern").GetString());
         Assert.True(loginEmail.GetProperty("x-trim").GetBoolean());
         Assert.Equal(1, loginEmail.GetProperty("x-min-length-after-trim").GetInt32());
@@ -476,7 +505,7 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.False(updateEmail.TryGetProperty("maxLength", out _));
         Assert.False(updateEmail.TryGetProperty("format", out _));
         Assert.Equal(
-            RegisterRequestSchemaFilter.RawEmailPattern,
+            RawEmailPattern,
             updateEmail.GetProperty("pattern").GetString());
         Assert.True(updateEmail.GetProperty("x-trim").GetBoolean());
         Assert.Equal(1, updateEmail.GetProperty("x-min-length-after-trim").GetInt32());
@@ -579,5 +608,30 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
     {
         return new SqliteConnection(
             $"Data Source={factory.DatabasePath};Default Timeout=1;Pooling=False");
+    }
+
+    private sealed class ConnectionOpenObserver : DbConnectionInterceptor
+    {
+        private int openedConnections;
+
+        public int OpenedConnections => Volatile.Read(ref openedConnections);
+
+        public void Reset() => Volatile.Write(ref openedConnections, 0);
+
+        public override void ConnectionOpened(
+            DbConnection connection,
+            ConnectionEndEventData eventData)
+        {
+            Interlocked.Increment(ref openedConnections);
+        }
+
+        public override Task ConnectionOpenedAsync(
+            DbConnection connection,
+            ConnectionEndEventData eventData,
+            CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref openedConnections);
+            return Task.CompletedTask;
+        }
     }
 }

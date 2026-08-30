@@ -14,11 +14,6 @@ public sealed class DatabaseHealthCheck(IServiceScopeFactory scopeFactory) : IHe
             await using var scope = scopeFactory.CreateAsyncScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<UserProfileDbContext>();
 
-            if (!await dbContext.Database.CanConnectAsync(cancellationToken))
-            {
-                return HealthCheckResult.Unhealthy("Database is unavailable.");
-            }
-
             await dbContext.Database.OpenConnectionAsync(cancellationToken);
 
             await using var command = dbContext.Database.GetDbConnection().CreateCommand();

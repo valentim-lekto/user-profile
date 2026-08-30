@@ -7,13 +7,14 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Security.Cryptography;
-using UserProfile.Api.Configuration;
 using UserProfile.Api.Data;
 
 namespace UserProfile.Api.IntegrationTests.Infrastructure;
 
 public sealed class ApiFactory : WebApplicationFactory<Program>
 {
+    private const int TestSigningKeyBytes = 64;
+
     private static readonly DateTimeOffset FixedUtcNow =
         new(2026, 8, 24, 12, 0, 0, TimeSpan.Zero);
 
@@ -21,7 +22,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     private readonly IInterceptor? dbInterceptor;
     private readonly AdjustableTimeProvider timeProvider = new(FixedUtcNow);
     private readonly byte[] jwtSigningKey = RandomNumberGenerator.GetBytes(
-        JwtOptions.MinimumSigningKeyBytes * 2);
+        TestSigningKeyBytes);
     private readonly string testDirectory = Path.Combine(
         Path.GetTempPath(),
         $"user-profile-api-tests-{Guid.NewGuid():N}");
@@ -43,9 +44,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 
     public byte[] JwtSigningKey => jwtSigningKey.ToArray();
 
-    public string JwtIssuer => JwtOptions.DefaultIssuer;
+    public string JwtIssuer => "UserProfile.Api";
 
-    public string JwtAudience => JwtOptions.DefaultAudience;
+    public string JwtAudience => "UserProfile.Web";
 
     public static ApiFactory WithDatabaseTimeout(int seconds) => new(seconds, null);
 
@@ -65,7 +66,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
                 ["Jwt:SigningKey"] = Convert.ToBase64String(jwtSigningKey),
                 ["Jwt:Issuer"] = JwtIssuer,
                 ["Jwt:Audience"] = JwtAudience,
-                ["Jwt:LifetimeMinutes"] = JwtOptions.RequiredLifetimeMinutes.ToString()
+                ["Jwt:LifetimeMinutes"] = "15"
             });
         });
 

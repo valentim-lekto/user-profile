@@ -1,13 +1,20 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Data.Common;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using UserProfile.Api.Data;
+using UserProfile.Api.Features.Profile;
 using UserProfile.Api.IntegrationTests.Infrastructure;
 
 namespace UserProfile.Api.IntegrationTests;
@@ -158,6 +165,106 @@ public sealed class ProfileUpdateTests(ApiFactory factory) : IClassFixture<ApiFa
         Assert.Equal(first.Email.ToUpperInvariant(), afterOwnEmail.Email);
         Assert.Equal(first.Email.ToUpperInvariant(), afterOwnEmail.NormalizedEmail);
         Assert.Equal(secondBefore, await LoadUserAsync(factory, second.Id));
+    }
+
+    [Fact]
+    public async Task ProfileUpdateSkipsConflictQueryWhenNormalizedEmailIsUnchanged()
+    {
+        var queryObserver = new LinqQueryObserver();
+        using var queryFactory = ApiFactory.WithInterceptor(queryObserver);
+        using var client = queryFactory.CreateClient();
+        var account = await RegisterAsync(queryFactory, client, "Original User");
+        var token = await GetAccessTokenAsync(client, account.Email, account.Password);
+        queryObserver.Enable();
+
+        using var response = await PutProfileAsync(
+            client,
+            token,
+            new
+            {
+                name = "Display Value Updated",
+                email = $"  {account.Email.ToUpperInvariant()}  "
+            });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var profile = await response.Content.ReadFromJsonAsync<ProfileResponse>();
+        Assert.NotNull(profile);
+        Assert.Equal(account.Id, profile.Id);
+        Assert.Equal("Display Value Updated", profile.Name);
+        Assert.Equal(account.Email.ToUpperInvariant(), profile.Email);
+        Assert.Equal(1, queryObserver.Queries);
+    }
+
+    [Fact]
+    public async Task ProfileUpdateDoesNotTreatCurrentUserAsConflictAfterConcurrentSameUserChange()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<UserProfileDbContext>()
+            .UseSqlite(connection)
+            .Options;
+        var userId = Guid.NewGuid();
+        var originalEmail = $"original-{Guid.NewGuid():N}@example.test";
+        var targetEmail = $"target-{Guid.NewGuid():N}@example.test";
+        var now = DateTime.UtcNow;
+
+        await using (var setupContext = new UserProfileDbContext(options))
+        {
+            await setupContext.Database.EnsureCreatedAsync();
+            setupContext.Users.Add(new User
+            {
+                Id = userId,
+                Name = "Original User",
+                Email = originalEmail,
+                NormalizedEmail = originalEmail.ToUpperInvariant(),
+                PasswordHash = "synthetic-test-hash",
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
+            });
+            await setupContext.SaveChangesAsync();
+        }
+
+        await using var staleContext = new UserProfileDbContext(options);
+        _ = await staleContext.Users.SingleAsync(user => user.Id == userId);
+
+        await using (var concurrentContext = new UserProfileDbContext(options))
+        {
+            var concurrentUser = await concurrentContext.Users.SingleAsync(
+                user => user.Id == userId);
+            concurrentUser.Email = targetEmail;
+            concurrentUser.NormalizedEmail = targetEmail.ToUpperInvariant();
+            concurrentUser.UpdatedAtUtc = now.AddMinutes(1);
+            await concurrentContext.SaveChangesAsync();
+        }
+
+        var controller = new ProfileController(
+            staleContext,
+            new PasswordHasher<User>(),
+            TimeProvider.System);
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Path = "/api/profile";
+        httpContext.User = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(JwtRegisteredClaimNames.Sub, userId.ToString())],
+            "Test"));
+        controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
+
+        var action = await controller.UpdateCurrent(
+            new UpdateProfileRequest
+            {
+                Name = "Concurrent Update Winner",
+                Email = targetEmail
+            },
+            CancellationToken.None);
+
+        var result = Assert.IsType<OkObjectResult>(action.Result);
+        var profile = Assert.IsType<ProfileResponse>(result.Value);
+        Assert.Equal("Concurrent Update Winner", profile.Name);
+        Assert.Equal(targetEmail, profile.Email);
+
+        staleContext.ChangeTracker.Clear();
+        var persisted = await staleContext.Users.SingleAsync(user => user.Id == userId);
+        Assert.Equal("Concurrent Update Winner", persisted.Name);
+        Assert.Equal(targetEmail, persisted.Email);
     }
 
     [Fact]
@@ -987,6 +1094,44 @@ public sealed class ProfileUpdateTests(ApiFactory factory) : IClassFixture<ApiFa
                 TimeSpan.FromSeconds(10),
                 cancellationToken);
             return result;
+        }
+    }
+
+    private sealed class LinqQueryObserver : DbCommandInterceptor
+    {
+        private int queries;
+        private int enabled;
+
+        public int Queries => Volatile.Read(ref queries);
+
+        public void Enable() => Volatile.Write(ref enabled, 1);
+
+        public override InterceptionResult<DbDataReader> ReaderExecuting(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<DbDataReader> result)
+        {
+            ObserveLinqQuery(eventData);
+            return result;
+        }
+
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<DbDataReader> result,
+            CancellationToken cancellationToken = default)
+        {
+            ObserveLinqQuery(eventData);
+            return ValueTask.FromResult(result);
+        }
+
+        private void ObserveLinqQuery(CommandEventData eventData)
+        {
+            if (Volatile.Read(ref enabled) != 0 &&
+                eventData.CommandSource == CommandSource.LinqQuery)
+            {
+                Interlocked.Increment(ref queries);
+            }
         }
     }
 

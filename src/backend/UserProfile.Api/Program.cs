@@ -52,7 +52,7 @@ builder.Services
         options.JsonSerializerOptions.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
     });
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
-builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton(serviceProvider => JwtOptions.Load(
     serviceProvider.GetRequiredService<IConfiguration>(),
     serviceProvider.GetRequiredService<IHostEnvironment>()));
@@ -88,15 +88,10 @@ builder.Services.AddSwaggerGen(options =>
 });
 builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>("sqlite");
+builder.Services.AddHostedService<DatabaseMigrationStartupService>();
 
 var app = builder.Build();
 _ = app.Services.GetRequiredService<JwtOptions>();
-
-await using (var scope = app.Services.CreateAsyncScope())
-{
-    var dbContext = scope.ServiceProvider.GetRequiredService<UserProfileDbContext>();
-    await dbContext.Database.MigrateAsync();
-}
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();
@@ -106,6 +101,17 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
-app.Run();
+var applicationStarted = app.Lifetime.ApplicationStarted;
+var applicationStopping = app.Lifetime.ApplicationStopping;
+try
+{
+    await app.RunAsync();
+}
+catch (OperationCanceledException) when (
+    applicationStopping.IsCancellationRequested &&
+    !applicationStarted.IsCancellationRequested)
+{
+    // Host-requested shutdown during startup is cooperative, not an application fault.
+}
 
 public partial class Program;

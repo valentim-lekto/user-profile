@@ -81,7 +81,8 @@ public sealed class ProfileController(
         }
 
         var normalizedEmail = request.Email!.ToUpperInvariant();
-        if (await dbContext.Users
+        if (user.NormalizedEmail != normalizedEmail &&
+            await dbContext.Users
                 .AsNoTracking()
                 .AnyAsync(
                     candidate => candidate.Id != userId &&
@@ -156,12 +157,7 @@ public sealed class ProfileController(
                     .SetProperty(candidate => candidate.UpdatedAtUtc, updatedAtUtc),
                 cancellationToken);
 
-        if (affectedRows == 0)
-        {
-            return CurrentPasswordIncorrect();
-        }
-
-        return Ok(new MessageResponse("Password changed successfully."));
+        return affectedRows == 0 ? CurrentPasswordIncorrect() : Ok(new MessageResponse("Password changed successfully."));
     }
 
     private bool TryGetCurrentUserId(out Guid userId)
