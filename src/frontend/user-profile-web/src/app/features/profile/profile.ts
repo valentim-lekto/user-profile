@@ -258,8 +258,11 @@ export class Profile implements OnInit {
   }
 
   protected newPasswordConfirmationMismatch(): boolean {
+    const confirmation = this.passwordForm.controls.newPasswordConfirmation;
+
     return (
-      this.passwordForm.controls.newPasswordConfirmation.touched &&
+      confirmation.touched &&
+      confirmation.valid &&
       this.passwordForm.hasError('passwordsMismatch')
     );
   }

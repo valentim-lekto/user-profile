@@ -1,5 +1,6 @@
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { MAT_FORM_FIELD_DEFAULT_OPTIONS } from '@angular/material/form-field';
 import { Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { App } from './app';
@@ -24,6 +25,12 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance;
     expect(app).toBeTruthy();
+  });
+
+  it('reserves the real height of Material form-field messages', () => {
+    expect(TestBed.inject(MAT_FORM_FIELD_DEFAULT_OPTIONS)).toEqual({
+      subscriptSizing: 'dynamic',
+    });
   });
 
   it('should render the application shell and router outlet', () => {

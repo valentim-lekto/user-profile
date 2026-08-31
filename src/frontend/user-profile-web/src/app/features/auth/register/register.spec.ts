@@ -93,13 +93,41 @@ describe('Register', () => {
     expect(component.form.hasError('passwordsMismatch')).toBe(false);
 
     component.form.controls.password.setValue('valid-password');
-    component.form.controls.passwordConfirmation.setValue('different-password');
+    component.form.controls.passwordConfirmation.setValue('');
     component.form.controls.passwordConfirmation.markAsTouched();
     expect(component.form.hasError('passwordsMismatch')).toBe(true);
+    expect(component.form.controls.passwordConfirmation.hasError('required')).toBe(true);
     harness.detectChanges();
     const confirmation = harness.routeNativeElement?.querySelector<HTMLInputElement>(
       'input[formControlName="passwordConfirmation"]',
     );
+    expect(harness.routeNativeElement?.textContent).toContain('Confirme sua senha.');
+    expect(harness.routeNativeElement?.querySelector('#register-password-mismatch')).toBeNull();
+    expect(confirmation?.hasAttribute('aria-errormessage')).toBe(false);
+
+    component.form.controls.passwordConfirmation.setValue('x');
+    expect(component.form.hasError('passwordsMismatch')).toBe(true);
+    expect(component.form.controls.passwordConfirmation.hasError('minlength')).toBe(true);
+    harness.detectChanges();
+    expect(harness.routeNativeElement?.textContent).toContain(
+      'A confirmação deve ter pelo menos 6 caracteres.',
+    );
+    expect(harness.routeNativeElement?.querySelector('#register-password-mismatch')).toBeNull();
+    expect(confirmation?.hasAttribute('aria-errormessage')).toBe(false);
+
+    component.form.controls.passwordConfirmation.setValue('x'.repeat(129));
+    expect(component.form.hasError('passwordsMismatch')).toBe(true);
+    expect(component.form.controls.passwordConfirmation.hasError('maxlength')).toBe(true);
+    harness.detectChanges();
+    expect(harness.routeNativeElement?.textContent).toContain(
+      'A confirmação deve ter no máximo 128 caracteres.',
+    );
+    expect(harness.routeNativeElement?.querySelector('#register-password-mismatch')).toBeNull();
+    expect(confirmation?.hasAttribute('aria-errormessage')).toBe(false);
+
+    component.form.controls.passwordConfirmation.setValue('different-password');
+    expect(component.form.hasError('passwordsMismatch')).toBe(true);
+    harness.detectChanges();
     expect(confirmation?.getAttribute('aria-invalid')).toBe('true');
     expect(confirmation?.getAttribute('aria-errormessage')).toBe(
       'register-password-mismatch',

@@ -148,8 +148,11 @@ export class Register {
   }
 
   protected passwordConfirmationMismatch(): boolean {
+    const confirmation = this.form.controls.passwordConfirmation;
+
     return (
-      this.form.controls.passwordConfirmation.touched &&
+      confirmation.touched &&
+      confirmation.valid &&
       this.form.hasError('passwordsMismatch')
     );
   }

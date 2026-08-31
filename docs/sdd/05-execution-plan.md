@@ -547,6 +547,18 @@ Esta atividade corrige somente o sinal e o contrato de `OPS-RATE-001`, sem alter
 
 Dois falsos vermelhos intermediários não foram promovidos como evidência: contar `Cache-Control` globalmente confundia handlers distintos de `413/429/503`, e procurar `$http_x_forwarded_for` em todo `nginx -T` atingia o `log_format` inativo da imagem base. As verificações finais ficaram nas fronteiras responsáveis: cardinalidade nos headers da resposta `429`, inventário no bloco carregado e proibição de confiança em XFF no arquivo do servidor publicado.
 
+## Evidências da correção de sobreposição das mensagens
+
+| Gate | Execução observada em 2026-08-30 | Resultado |
+|---|---|---|
+| Reprodução real | Navegador publicado em `320×568`, cadastro e perfil | Antes da correção, um erro longo de email invadiu o campo seguinte em 8,8 px e a combinação de erro local/divergência da confirmação colidiu em 18,4 px. |
+| Regressão frontend | Profile `frontend-tests` após especificação/testes e antes do código | Lint aprovado; 68/71 testes passaram. As três falhas exigiram o provider de altura dinâmica e a prioridade do erro local nos dois formulários. |
+| Frontend final | `docker compose --profile frontend-tests run --rm --build frontend-tests` | Lint, 71/71 testes em 10 arquivos e build de produção aprovados. |
+| Provas discriminantes e jornadas | Execuções positivas/negativas de `./scripts/e2e-playwright.sh` | O oráculo aguarda as animações reais, sem `sleep`, antes de medir o erro renderizado. Altura fixa temporária fez `E2E-001` falhar com 7,8 px de invasão; a margem negativa antiga falhou com 1,4 px. Após restaurar ambos os responsáveis, 3/3 passaram em 6,4 s. |
+| Publicação e inspeção | Recriação do `web` com o volume preservado; navegador real em 320 e 1280 px | Serviços saudáveis. Em 320 px, o erro de email terminou em `y=241` e o campo seguinte começou em `y=247`; a confirmação curta terminou em `y=408` e as ações começaram em `y=425`. Em 1280 px, mensagem e ações também permaneceram separadas. |
+
+O ajuste permanece proporcional: uma opção global do Angular Material reserva a altura real dos subtítulos, os dois formulários exibem a divergência somente quando a confirmação é localmente válida e a margem negativa do alerta externo foi removida. API, banco, rotas e regras de negócio não mudaram.
+
 Ao iniciar um milestone, alterar somente seu estado para `em andamento`. Ao concluir, registrar data, comandos, evidências, desvios e hash do commit antes de iniciar o próximo.
 
 ## Comandos
@@ -654,7 +666,8 @@ Os nomes de scripts npm devem ser confirmados no scaffold e então congelados. M
 - `2026-08-28` — A simplificação final do dashboard removeu somente o bloco de três cartões informativos e seus estilos exclusivos. Hero, dados retornados, navegação, logout, loading/erro e contratos permaneceram intactos; nenhuma abstração ou funcionalidade substituta foi criada.
 - `2026-08-28` — A correção responsiva pós-revisão ocultou apenas o painel editorial em viewport simultaneamente estreita/baixa, alinhou o empilhamento móvel à ordem do DOM e limitou visualmente o nome no dashboard. O texto integral continua no DOM/API/perfil; não houve TypeScript, dependência, estado, rota ou contrato novo.
 - `2026-08-30` — O rate limiting pós-M6 ficou na fronteira Nginx: buckets locais/efêmeros independentes por IP TCP e endpoint canônico, `10r/m` com dez admissões imediatas, `429 ProblemDetails` e feedback direto no frontend. Não foram adicionados middleware backend, lockout, serviço, banco, variável ou estado distribuído.
+- `2026-08-30` — A correção visual das mensagens configurou subtítulos Material com altura dinâmica, deu prioridade ao erro próprio da confirmação e removeu a margem negativa do alerta externo. A mesma jornada E2E mede os retângulos estáveis em 320 px; não foram criados componente, dependência, estado ou regra nova.
 
 ## Resultado final
 
-M1–M6 e as atividades pós-M6 estão concluídos quanto ao escopo técnico e documental. As revisões posteriores corrigiram sessão, estabilidade, apresentação, robustez SQLite, startup/queries e limitaram rajadas de autenticação sem ampliar a funcionalidade de negócio. A evidência corrente contém 121 integrações backend, 70 testes frontend, três jornadas Playwright, contrato com 56 referências e smoke concorrente aprovados. Mutation testing permanece em 97,50%, com ratchet 97/97/97 e relatórios HTML/JSON; o limiter local/efêmero, suas partições, resposta `429`, reset e persistência foram comprovados. A execução hospedada da CI, a confirmação de `AI-EXPLAIN-01` por uma pessoa e `DEL-REPO-01` permanecem ações externas e não foram marcadas como Verified.
+M1–M6 e as atividades pós-M6 estão concluídos quanto ao escopo técnico e documental. As revisões posteriores corrigiram sessão, estabilidade, apresentação, robustez SQLite, startup/queries e limitaram rajadas de autenticação sem ampliar a funcionalidade de negócio. A evidência corrente contém 121 integrações backend, 71 testes frontend, três jornadas Playwright, contrato com 56 referências e smoke concorrente aprovados. Mutation testing permanece em 97,50%, com ratchet 97/97/97 e relatórios HTML/JSON; o limiter local/efêmero, suas partições, resposta `429`, reset e persistência foram comprovados. A execução hospedada da CI, a confirmação de `AI-EXPLAIN-01` por uma pessoa e `DEL-REPO-01` permanecem ações externas e não foram marcadas como Verified.

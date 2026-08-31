@@ -298,3 +298,12 @@ Não armazenar conversas completas nem transcrições integrais de prompts e res
 - **Validação:** três probes sintéticos reutilizaram os oráculos reais; sintaxe/diff, OpenAPI local e Docker, build Release e 121/121 integrações backend, Compose config, smoke completo e três URLs restauradas em `200`. Dois falsos vermelhos intermediários foram corrigidos sem afrouxar os contratos.
 - **Re-revisão:** as lentes de consistência/testes detectaram que OpenAPI/Swagger ainda era mais permissivo que `API-ERROR-02`, aceitava composições/headers concorrentes e que ordem de `allOf`, whitespace textual, número decimal e whitespace Unicode geravam falsos sinais; o agente alinhou contrato/filtro/integração e acrescentou probes sem alterar fluxos funcionais.
 - **Limites:** frontend, configuração Nginx de produção, banco e alvo Stryker permaneceram inalterados; frontend/E2E/Stryker não foram repetidos. Nenhum segredo, banco, commit ou push foi produzido.
+
+### 2026-08-30 — Correção visual das mensagens
+
+- **Objetivo:** verificar e eliminar alertas/mensagens que se sobrepunham a outros elementos, sem inventar funcionalidade de negócio.
+- **Entradas:** aplicação publicada, SDD de requisitos/design/testes/rastreabilidade, templates/TypeScript/SCSS de cadastro e perfil e a jornada Playwright existente.
+- **Apoio da IA:** reprodução em 320 px; classificação dos estados sem defeito; atualização spec-first; testes unitários e geométricos; implementação mínima; re-revisão independente dos seletores e do poder discriminante; inspeção publicada em mobile/desktop.
+- **Decisão influenciada pelo KISS:** usar o provider oficial de altura dinâmica do Material, priorizar o erro próprio da confirmação nos dois predicados existentes e remover a margem negativa compartilhada. Não foram criados componente, diretiva, service, dependência ou snapshot visual.
+- **Validação:** primeira execução com três falhas em 71 testes; estado final com lint, 71/71 e build; altura fixa/margem antiga rejeitadas separadamente pelo E2E por 7,8/1,4 px; 3/3 finais em 6,4 s; inspeção real em 320/1280 px e stack saudável com volume preservado.
+- **Limites:** a inspeção cobre os 17 blocos de feedback e os dois responsáveis reproduzidos, sem prometer equivalência pixel a pixel entre browsers. API, banco, autenticação, dados persistidos, fluxos, payloads e regras de negócio permaneceram inalterados; apresentação e atributos ARIA foram corrigidos. Nenhuma credencial real, segredo ou push foi usado.

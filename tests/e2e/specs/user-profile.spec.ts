@@ -6,7 +6,7 @@ interface Account {
   readonly name: string;
 }
 
-type SecretKey = 'primary' | 'replacement' | 'invalid';
+type SecretKey = 'primary' | 'replacement' | 'invalid' | 'tooShort' | 'mismatch';
 
 interface SecretField {
   readonly locator: Locator;
@@ -103,6 +103,8 @@ async function fillSecret(field: Locator, secretKey: SecretKey): Promise<void> {
           primary: `E2E-${randomHex()}-Aa1!`,
           replacement: `E2E-${randomHex()}-Aa2!`,
           invalid: `E2E-${randomHex()}-Aa3!`,
+          tooShort: randomHex().slice(0, 1),
+          mismatch: `E2E-${randomHex()}-Mismatch!`,
         });
         sessionStorage.setItem(storageKey, serializedVault);
       }
@@ -152,6 +154,31 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
       ),
     )
     .toBe(true);
+}
+
+async function expectNoVerticalOverlap(upper: Locator, lower: Locator): Promise<void> {
+  await expect(upper).toBeVisible();
+  await expect(lower).toBeVisible();
+
+  await Promise.all(
+    [upper, lower].map((locator) =>
+      locator.evaluate(async (element) => {
+        const animationRoot = element.closest('mat-form-field') ?? element;
+
+        await Promise.all(
+          animationRoot
+            .getAnimations({ subtree: true })
+            .map((animation) => animation.finished.catch(() => undefined)),
+        );
+      }),
+    ),
+  );
+
+  const [upperBox, lowerBox] = await Promise.all([upper.boundingBox(), lower.boundingBox()]);
+
+  expect(upperBox).not.toBeNull();
+  expect(lowerBox).not.toBeNull();
+  expect(upperBox!.y + upperBox!.height).toBeLessThanOrEqual(lowerBox!.y);
 }
 
 async function expectAuthFormInShortLandscape(
@@ -267,6 +294,48 @@ test('E2E-001 registration, profile update, fresh dashboard and logout', async (
     page.getByRole('link', { name: 'Voltar para o login' }),
     page.getByRole('button', { name: 'Criar conta' }),
   );
+  await page.getByLabel('Nome').fill('Visual Test');
+  await page.getByLabel('Email').fill(`${'a'.repeat(309)}@example.com`);
+  await page.getByRole('button', { name: 'Criar conta' }).click();
+  const emailLengthError = page.getByText('O email deve ter no máximo 320 caracteres.', {
+    exact: true,
+  });
+  const passwordField = page.locator('mat-form-field').filter({
+    has: page.getByLabel('Senha', { exact: true }),
+  });
+  await expectNoVerticalOverlap(emailLengthError, passwordField);
+  await expectNoHorizontalOverflow(page);
+
+  await page.getByLabel('Email').fill('visual@example.test');
+  const registrationConfirmation = page.getByLabel('Confirmação de senha', { exact: true });
+  const registrationConfirmationField = page.locator('mat-form-field').filter({
+    has: registrationConfirmation,
+  });
+  const registrationActions = page.locator('.form-actions');
+  try {
+    await fillSecret(page.getByLabel('Senha', { exact: true }), 'primary');
+    await fillSecret(registrationConfirmation, 'tooShort');
+    await page.getByRole('button', { name: 'Criar conta' }).click();
+    const confirmationLengthError = page.getByText(
+      'A confirmação deve ter pelo menos 6 caracteres.',
+      { exact: true },
+    );
+    await expect(confirmationLengthError).toBeVisible();
+    await expect(page.locator('#register-password-mismatch')).toHaveCount(0);
+    await expect(registrationConfirmation).not.toHaveAttribute('aria-errormessage', /.+/);
+    await expectNoVerticalOverlap(confirmationLengthError, registrationActions);
+
+    await fillSecret(registrationConfirmation, 'mismatch');
+    const registrationMismatch = page.locator('#register-password-mismatch');
+    await expect(registrationMismatch).toBeVisible();
+    await expectNoVerticalOverlap(registrationConfirmationField, registrationMismatch);
+    await expectNoVerticalOverlap(registrationMismatch, registrationActions);
+  } finally {
+    await redactSecrets(page, [
+      '[formControlName="password"]',
+      '[formControlName="passwordConfirmation"]',
+    ]);
+  }
   await register(page, account);
   await expectStackedActionsFollowFocusOrder(
     page,
@@ -282,6 +351,43 @@ test('E2E-001 registration, profile update, fresh dashboard and logout', async (
   await expectNoHorizontalOverflow(page);
   await expect(page.getByLabel('Nome')).toBeVisible();
   await expect(page.getByText('Identificador da conta')).toHaveCount(0);
+  const currentPassword = page.getByLabel('Senha atual', { exact: true });
+  const newPassword = page.getByLabel('Nova senha', { exact: true });
+  const newPasswordConfirmation = page.getByLabel('Confirmação da nova senha', { exact: true });
+  const newPasswordConfirmationField = page.locator('mat-form-field').filter({
+    has: newPasswordConfirmation,
+  });
+  const passwordCardActions = page
+    .locator('.profile-card')
+    .filter({ has: page.getByRole('heading', { name: 'Alterar senha' }) })
+    .locator('mat-card-actions');
+  try {
+    await fillSecret(currentPassword, 'primary');
+    await fillSecret(newPassword, 'replacement');
+    await fillSecret(newPasswordConfirmation, 'tooShort');
+    await page.getByRole('button', { name: 'Alterar senha' }).click();
+    const newConfirmationLengthError = page.getByText(
+      'A confirmação deve ter pelo menos 6 caracteres.',
+      { exact: true },
+    );
+    await expect(newConfirmationLengthError).toBeVisible();
+    await expect(page.locator('#profile-password-mismatch')).toHaveCount(0);
+    await expect(newPasswordConfirmation).not.toHaveAttribute('aria-errormessage', /.+/);
+    await expectNoVerticalOverlap(newConfirmationLengthError, passwordCardActions);
+
+    await fillSecret(newPasswordConfirmation, 'mismatch');
+    const profileMismatch = page.locator('#profile-password-mismatch');
+    await expect(profileMismatch).toBeVisible();
+    await expectNoVerticalOverlap(newPasswordConfirmationField, profileMismatch);
+    await expectNoVerticalOverlap(profileMismatch, passwordCardActions);
+    await expectNoHorizontalOverflow(page);
+  } finally {
+    await redactSecrets(page, [
+      '[formControlName="currentPassword"]',
+      '[formControlName="newPassword"]',
+      '[formControlName="newPasswordConfirmation"]',
+    ]);
+  }
   await page.getByLabel('Nome').fill(updatedName);
   await page.getByLabel('Email').fill(updatedEmail);
   await page.getByRole('button', { name: 'Salvar dados' }).click();

@@ -542,3 +542,28 @@ Em 2026-08-30, uma revisão completa do commit `3a169f7` não encontrou defeito 
 Duas execuções intermediárias reprovaram corretamente a própria tentativa de refatoração e não foram promovidas: a primeira contou `Cache-Control` de handlers distintos como duplicidade; a segunda examinou o `log_format` inativo da imagem base para XFF. O estado final mede cardinalidade na resposta `429` e restringe a proibição de confiança em XFF ao arquivo do servidor publicado. Frontend, Nginx de produção, banco e política `10r/m` não mudaram; por isso frontend/E2E e Stryker não foram repetidos. Somente metadados Swagger do backend e seu teste de integração mudaram, e a suíte backend completa foi reexecutada.
 
 **Resultado corrente:** os três achados de teste e a inconsistência contratual encontrada na re-revisão foram encerrados com evidência real. As limitações local/efêmera e os itens externos Pending permanecem inalterados.
+
+## Adendo — mensagens responsivas sem sobreposição
+
+Em 2026-08-30, a inspeção manual da aplicação publicada encontrou dois defeitos de apresentação em 320 px: um erro de email em duas linhas invadia o campo seguinte em 8,8 px; confirmação curta exibia simultaneamente seu erro local e a divergência, com 18,4 px de colisão. Alertas globais de login, cadastro e perfil não apresentaram interseção.
+
+### Correção e limites
+
+- `mat-form-field` usa `subscriptSizing: dynamic` por provider raiz, reservando a altura real de hints e erros longos em todas as rotas lazy.
+- Cadastro e perfil mostram a divergência somente quando a confirmação está tocada e localmente válida; obrigatoriedade e limites continuam validando o grupo, mas recebem precedência visual.
+- A margem superior negativa do alerta externo foi removida. Não houve componente, dependência, rota, API, persistência, autenticação ou regra de negócio nova.
+
+### Comandos e resultados observados
+
+| Gate | Resultado resumido |
+|---|---|
+| Regressão frontend antes do código | Lint passou; 68/71 testes ficaram verdes. As três falhas isolaram provider ausente e mensagens de divergência simultâneas nos formulários de cadastro/perfil. |
+| `docker compose --profile frontend-tests run --rm --build frontend-tests` | Lint, 71/71 testes em 10 arquivos e build de produção aprovados. |
+| `./scripts/e2e-playwright.sh` | Estado final aprovado em 3/3 jornadas, 6,4 s. `E2E-001` mede erros, campos, alertas e ações em `320×568`, sem request inválida à API. |
+| Provas negativas | Altura fixa e margem antiga foram recolocadas separadamente somente durante os testes: `E2E-001` reprovou com 7,8 px e 1,4 px de interseção, enquanto `E2E-002/003` passaram. Os dois responsáveis corretos foram restaurados antes do verde final. |
+| Inventário de feedback | Quatro templates contêm 17 blocos condicionais `role=alert/status`: 15 usam as classes compartilhadas de sucesso/erro/loading, sem posicionamento ou margem negativos, e os dois `field-error` usam a margem corrigida. Specs dos quatro componentes renderizam os estados; runtime manual confirmou os alertas globais de login, cadastro e perfil. |
+| Publicação e inspeção real | `docker compose up --build --detach --wait web` preservou API/volume e deixou ambos os serviços saudáveis. Em 320 px, erro de email/campo seguinte ficaram separados por 6 px e confirmação curta/ações por 17 px; o estado desktop em 1280 px também ficou sem interseção. |
+
+O oráculo geométrico aguarda as animações Web do `mat-form-field` ancestral e seus descendentes terminarem, sem pausa fixa, antes de medir o erro renderizado contra o próximo controle. Quando não há esse ancestral, usa o próprio elemento como raiz. Também renderiza uma confirmação válida e diferente e compara campo/alerta/ação para provar que a margem externa não puxa o alerta sobre o campo. Isso encerra as lacunas encontradas nas re-revisões sem snapshot pixel a pixel.
+
+**Resultado corrente:** `UI-RESP-01` está Verified pela geometria discriminante nos responsáveis reproduzidos, pelo inventário estrutural de todos os feedbacks e pela inspeção publicada. A aplicação em `http://localhost:8080` contém a correção e preserva o volume existente.

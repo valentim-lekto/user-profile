@@ -132,15 +132,54 @@ describe('Profile', () => {
     });
     expect(component.passwordForm.valid).toBe(true);
 
-    component.passwordForm.controls.newPasswordConfirmation.setValue('different');
+    component.passwordForm.setValue({
+      currentPassword: 'current-password',
+      newPassword: 'valid-password',
+      newPasswordConfirmation: '',
+    });
+    component.passwordForm.controls.newPasswordConfirmation.markAsTouched();
+    expect(component.passwordForm.hasError('passwordsMismatch')).toBe(true);
+    expect(component.passwordForm.controls.newPasswordConfirmation.hasError('required')).toBe(
+      true,
+    );
+    harness.detectChanges();
+    const confirmation = harness.routeNativeElement?.querySelector<HTMLInputElement>(
+      'input[formControlName="newPasswordConfirmation"]',
+    );
+    expect(harness.routeNativeElement?.textContent).toContain('Confirme a nova senha.');
+    expect(harness.routeNativeElement?.querySelector('#profile-password-mismatch')).toBeNull();
+    expect(confirmation?.hasAttribute('aria-errormessage')).toBe(false);
+
+    component.passwordForm.controls.newPasswordConfirmation.setValue('x');
+    expect(component.passwordForm.hasError('passwordsMismatch')).toBe(true);
+    expect(component.passwordForm.controls.newPasswordConfirmation.hasError('minlength')).toBe(
+      true,
+    );
+    harness.detectChanges();
+    expect(harness.routeNativeElement?.textContent).toContain(
+      'A confirmação deve ter pelo menos 6 caracteres.',
+    );
+    expect(harness.routeNativeElement?.querySelector('#profile-password-mismatch')).toBeNull();
+    expect(confirmation?.hasAttribute('aria-errormessage')).toBe(false);
+
+    component.passwordForm.controls.newPasswordConfirmation.setValue('x'.repeat(129));
+    expect(component.passwordForm.hasError('passwordsMismatch')).toBe(true);
+    expect(component.passwordForm.controls.newPasswordConfirmation.hasError('maxlength')).toBe(
+      true,
+    );
+    harness.detectChanges();
+    expect(harness.routeNativeElement?.textContent).toContain(
+      'A confirmação deve ter no máximo 128 caracteres.',
+    );
+    expect(harness.routeNativeElement?.querySelector('#profile-password-mismatch')).toBeNull();
+    expect(confirmation?.hasAttribute('aria-errormessage')).toBe(false);
+
+    component.passwordForm.controls.newPasswordConfirmation.setValue('different-password');
     expect(component.passwordForm.hasError('passwordsMismatch')).toBe(true);
     harness.detectChanges();
     expect(
       harness.routeNativeElement?.querySelector('.field-error[role="alert"]')?.textContent,
     ).toContain('A confirmação deve ser idêntica à nova senha.');
-    const confirmation = harness.routeNativeElement?.querySelector<HTMLInputElement>(
-      'input[formControlName="newPasswordConfirmation"]',
-    );
     expect(confirmation?.getAttribute('aria-invalid')).toBe('true');
     expect(confirmation?.getAttribute('aria-errormessage')).toBe(
       'profile-password-mismatch',
