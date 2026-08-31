@@ -656,7 +656,11 @@ components:
       description: >-
         O bucket local deste cliente e endpoint foi esgotado no Nginx antes
         de a requisição alcançar a API. A cota é efêmera e reposta
-        gradualmente; o header informa a espera conservadora sugerida.
+        gradualmente; o header informa a espera conservadora sugerida. Os
+        headers declarados ocorrem uma única vez e o texto de detail mostrado
+        abaixo é apenas ilustrativo: qualquer mensagem genérica que permaneça
+        não vazia após remover espaços externos e não contenha dados sensíveis
+        preserva o contrato.
       headers:
         Retry-After:
           required: true
@@ -664,7 +668,8 @@ components:
           schema:
             type: integer
             format: int32
-            minimum: 1
+            minimum: 60
+            maximum: 60
           example: 60
         Cache-Control:
           required: true
@@ -676,7 +681,33 @@ components:
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/ProblemDetails'
+            allOf:
+              - $ref: '#/components/schemas/ProblemDetails'
+              - type: object
+                required:
+                  - type
+                  - title
+                  - status
+                  - detail
+                  - instance
+                properties:
+                  type:
+                    type: string
+                    format: uri-reference
+                  title:
+                    type: string
+                  status:
+                    type: integer
+                    format: int32
+                    minimum: 429
+                    maximum: 429
+                  detail:
+                    type: string
+                    minLength: 1
+                    pattern: '\S'
+                  instance:
+                    type: string
+                    format: uri-reference
           examples:
             tooManyRequests:
               value:

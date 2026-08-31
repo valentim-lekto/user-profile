@@ -512,3 +512,33 @@ O bucket usa o endereço TCP real observado pelo Nginx e o endpoint canônico; q
 O estado é deliberadamente local e efêmero: reiniciar `web` limpa a cota. Não há lockout por conta, coordenação entre réplicas ou proteção distribuída. Essa limitação e o trade-off de `sessionStorage`/ausência de refresh permanecem explícitos no README e ADRs. Relatórios gerados ficaram sob `artifacts/`, ignorado pelo Git; nenhum segredo, banco ou relatório foi versionado.
 
 **Resultado corrente:** `NFR-SEC-02` e seus três critérios estão Verified localmente. CI hospedada, publicação e confirmação humana continuam Pending; nenhum push foi realizado.
+
+## Adendo — fortalecimento dos oráculos do rate limiter
+
+Em 2026-08-30, uma revisão completa do commit `3a169f7` não encontrou defeito qualificável na implementação Nginx, mas confirmou três problemas de sinal em `OPS-RATE-001`: uma diretiva `10r/m` comentada podia mascarar `1r/m` ativo; headers duplicados e conflitantes satisfaziam uma busca por presença; e o teste tratava o texto inglês ilustrativo de `detail` como valor normativo.
+
+### Correção aplicada
+
+- O SDD e a descrição OpenAPI foram atualizados antes do oráculo para explicitar cardinalidade dos headers e semântica genérica de `detail`.
+- O inventário duplicado da fonte foi removido. A configuração carregada por `nginx -T` agora é normalizada para excluir comentários e só então exige as linhas ativas exatas de `rate=10r/m`, `burst=9 nodelay`, mapa, status e error handler.
+- A resposta HTTP real exige exatamente uma ocorrência case-insensitive de `Retry-After: 60` e `Cache-Control: no-store`; duplicata idêntica ou conflitante reprova.
+- `status` deve ser o inteiro `429`; `detail` deve conter um caractere não branco segundo Unicode e continua submetido, junto com extensões, aos scanners recursivos de chaves e valores sensíveis. `type`, `title` e `instance` permanecem confrontados.
+- A re-revisão de consistência encontrou que o OpenAPI ainda aceitava qualquer `Retry-After >= 1`, herdava apenas dois campos obrigatórios de `ProblemDetails` e os oráculos não resolviam tipos/nulabilidade efetivos do `allOf`. Contrato, validador, filtro do Swagger runtime e integração foram alinhados para 60 exato, cinco campos obrigatórios/não nulos com seus tipos e `detail` não branco.
+- A re-revisão de testes também eliminou falsos sinais: `allOf` passou a ser avaliado sem depender da ordem; whitespace equivalente de diretivas Nginx é normalizado; `429.0` e detalhe somente NBSP são rejeitados pelos mesmos oráculos usados no runtime.
+- A forma normativa também ficou fechada contra composições concorrentes que poderiam reintroduzir DTOs sensíveis: erros ordinários usam somente `$ref` direto de erro; o `429` usa somente o `allOf` contratado; headers de metadata são únicos sem diferenciar caixa. O filtro reconstrói esse dicionário case-insensitive antes de publicar Swagger.
+
+### Comandos e resultados observados
+
+| Gate | Resultado resumido |
+|---|---|
+| `sh -n scripts/validate-m1-compose.sh`; `git diff --check` | Sintaxe e whitespace aprovados durante a implementação. |
+| `ruby scripts/validate-openapi.rb`; profile Docker `contract-tests` | Ambos aprovaram `SPEC-OAS-001..006`, seis operações e 56 referências, inclusive o schema restrito do `429`. |
+| Profile Docker `backend-tests` | Build Release com 0 warnings/erros e 121/121 integrações; o Swagger runtime apresenta as mesmas restrições do contrato normativo. |
+| Compose config com todos os profiles | Configuração aprovada sem `.env`. |
+| Probes sintéticos dentro de `./scripts/validate-m1-compose.sh` | Comentário `10r/m` sobre `1r/m` ativo, texto quoted multilinha com nome de diretiva, `Retry-After: 60` junto de `0`, `status: 429.0` e detalhe somente NBSP foram rejeitados; quebra dentro da diretiva, diretivas compactas com `#` entre aspas e `detail` alternativo “Please retry later.” foram aceitos pelos mesmos oráculos usados no runtime. |
+| `./scripts/validate-m1-compose.sh` | Estado final aprovado: três rajadas `10+1`, configuração ativa, headers/corpo, não-bypass, reset, persistência, logs e cleanup. |
+| Stack principal restaurada | Contêineres/volume prévios preservados; `/`, `/health` e `/swagger/v1/swagger.json` responderam `200`. |
+
+Duas execuções intermediárias reprovaram corretamente a própria tentativa de refatoração e não foram promovidas: a primeira contou `Cache-Control` de handlers distintos como duplicidade; a segunda examinou o `log_format` inativo da imagem base para XFF. O estado final mede cardinalidade na resposta `429` e restringe a proibição de confiança em XFF ao arquivo do servidor publicado. Frontend, Nginx de produção, banco e política `10r/m` não mudaram; por isso frontend/E2E e Stryker não foram repetidos. Somente metadados Swagger do backend e seu teste de integração mudaram, e a suíte backend completa foi reexecutada.
+
+**Resultado corrente:** os três achados de teste e a inconsistência contratual encontrada na re-revisão foram encerrados com evidência real. As limitações local/efêmera e os itens externos Pending permanecem inalterados.

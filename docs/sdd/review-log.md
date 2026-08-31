@@ -1462,3 +1462,14 @@ A lente KISS evitou porta fixa, probe TCP, instrumentação de produção ou nov
 - **Limites:** deadline, falha SQLite, cancelamento sem shutdown e falha após prontidão não satisfazem o filtro e continuam propagando.
 - **Validação:** teste focado verde em 1 segundo; build Release e 121/121 integrações em 31 segundos; OpenAPI 6 operações/53 referências; Compose config e smoke completos; pilha principal restaurada e três URLs em `200` com o volume preservado.
 - **Escopo:** nenhum rate limiter foi iniciado; nenhum schema, endpoint, payload, frontend ou regra de negócio mudou.
+
+## 2026-08-30 — Revisão completa e correção dos oráculos do rate limiter
+
+- **Snapshot revisado:** `3a169f790703e5ee2ff4936de52ee6533899e6ca` contra `861025b4b2d1bd5fc44b296ed8f6502347b648f6`, com worktree limpo.
+- **Cobertura:** passagens completas de correção/segurança, sinal de testes, resíduos, simplicidade e KISS. Não houve finding de produção, segurança ou stale.
+- **Achados:** um P2/Test — texto comentado podia satisfazer o inventário de `rate=10r/m` enquanto `1r/m` ativo preservava as rajadas `10+1`; dois P3/Test — headers contraditórios eram aceitos por presença e outra mensagem `detail` genérica era rejeitada por igualdade ao exemplo.
+- **Correção KISS:** manter um único inventário sobre diretivas ativas efetivamente carregadas, validar cardinalidade na resposta real e trocar apenas a igualdade de copy pela semântica genérica/não sensível já exigida. Três probes sintéticos reutilizam os próprios oráculos; nenhum helper externo, probe com sleep, middleware ou mudança Nginx foi criado.
+- **Transparência:** duas primeiras execuções identificaram falsos vermelhos introduzidos durante a correção — `Cache-Control` contado entre handlers distintos e XFF encontrado no formato de log inativo da imagem base. Ambos foram corrigidos na fronteira responsável antes do verde final.
+- **Re-revisão:** revisores encontraram que contrato/Swagger ainda permitia `Retry-After >= 1`, headers duplicados por caixa e composição concorrente com DTOs; os oráculos ignoravam tipos/nulabilidade efetivos do `allOf`, dependiam de sua ordem, aceitavam `status: 429.0` e whitespace Unicode como detalhe, e rejeitavam formatação Nginx equivalente. A correção alinhou contrato/filtro/integração, fechou a forma dos schemas de erro e tornou os oráculos semânticos, sem alterar a resposta `429` de produção.
+- **Validação:** probes rejeitaram comentário-isca/header conflitante e aceitaram copy segura alternativa; OpenAPI local e Docker com seis operações/56 referências; build Release sem warnings e 121/121 integrações; Compose config; smoke completo final; stack original restaurada e três URLs em `200`. Suítes frontend/E2E/Stryker não afetadas não foram repetidas.
+- **Estado:** três achados originais e a inconsistência contratual da re-revisão encerrados; nenhum segredo, banco, relatório, commit ou push produzido nesta correção.

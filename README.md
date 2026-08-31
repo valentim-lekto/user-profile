@@ -95,7 +95,7 @@ docker compose down --remove-orphans
 ./scripts/validate-m1-compose.sh
 ```
 
-O smoke valida origem única, banco vazio/migration, cadastro, login genérico, autorização, perfil, senha, persistência após recriação, `413/415/429/503`, rate limiting independente por endpoint, não-bypass por query/header, reset do Nginx, logs seguros, tags e cleanup. Para validar o workflow localmente em container:
+O smoke valida origem única, banco vazio/migration, cadastro, login genérico, autorização, perfil, senha, persistência após recriação, `413/415/429/503`, rate limiting independente por endpoint, inventário das diretivas Nginx ativas, headers `429` sem duplicidade, corpo genérico seguro, não-bypass por query/header, reset do Nginx, logs seguros, tags e cleanup. Para validar o workflow localmente em container:
 
 ```sh
 docker run --rm --volume "$PWD:/repo:ro" --workdir /repo rhysd/actionlint:1.7.12

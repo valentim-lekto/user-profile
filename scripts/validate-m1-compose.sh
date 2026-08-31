@@ -81,6 +81,7 @@ cleanup() {
     "$review_tmp/invalid-login-body" \
     "$review_tmp/logs" \
     "$review_tmp/nginx" \
+    "$review_tmp/nginx-active" \
     "$review_tmp/oversized" \
     "$review_tmp/request"
   while [ "$rate_cleanup_index" -le 11 ]; do
@@ -145,6 +146,115 @@ post_json() {
     --data-binary "@$review_tmp/request"
 }
 
+assert_single_response_header() {
+  response_headers=$1
+  expected_header_name=$2
+  expected_header_value=$3
+
+  if ! awk -v expected_name="$expected_header_name" \
+    -v expected_value="$expected_header_value" '
+      {
+        line = $0
+        sub(/\r$/, "", line)
+        separator = index(line, ":")
+        if (separator == 0) {
+          next
+        }
+
+        name = substr(line, 1, separator - 1)
+        value = substr(line, separator + 1)
+        sub(/^[[:space:]]*/, "", name)
+        sub(/[[:space:]]*$/, "", name)
+        sub(/^[[:space:]]*/, "", value)
+        sub(/[[:space:]]*$/, "", value)
+
+        if (tolower(name) == tolower(expected_name)) {
+          seen++
+          if (value == expected_value) {
+            valid++
+          }
+        }
+      }
+      END { exit !(seen == 1 && valid == 1) }
+    ' "$response_headers"; then
+    fail "$expected_header_name must occur exactly once with value $expected_header_value"
+  fi
+}
+
+assert_active_nginx_line() {
+  expected_nginx_line=$1
+  nginx_failure_message=$2
+  active_nginx_line_count=$(grep -Fxc \
+    "$expected_nginx_line" "$review_tmp/nginx-active" || true)
+
+  [ "$active_nginx_line_count" -eq 1 ] || fail "$nginx_failure_message"
+}
+
+write_active_nginx_config() {
+  nginx_config_source=$1
+  nginx_config_target=$2
+
+  awk '
+    function flush_space() {
+      if (space_pending && statement != "") {
+        statement = statement " "
+      }
+      space_pending = 0
+    }
+    function emit_statement() {
+      sub(/ $/, "", statement)
+      if (statement != "") {
+        print statement
+      }
+      statement = ""
+      space_pending = 0
+    }
+    BEGIN { single_quote = sprintf("%c", 39) }
+    {
+      for (position = 1; position <= length($0); position++) {
+        character = substr($0, position, 1)
+        if (quote != "") {
+          statement = statement character
+          if (escaped) {
+            escaped = 0
+          } else if (character == "\\") {
+            escaped = 1
+          } else if (character == quote) {
+            quote = ""
+          }
+        } else if (character == "\"" || character == single_quote) {
+          flush_space()
+          quote = character
+          statement = statement character
+        } else if (character == "#") {
+          break
+        } else if (character ~ /[[:space:]]/) {
+          space_pending = 1
+        } else if (character == ";") {
+          statement = statement character
+          emit_statement()
+        } else if (character == "{" && space_pending) {
+          flush_space()
+          statement = statement character
+          emit_statement()
+        } else if (character == "}" && statement == "") {
+          statement = character
+          emit_statement()
+        } else {
+          flush_space()
+          statement = statement character
+        }
+      }
+      if (quote != "") {
+        statement = statement " "
+      } else {
+        space_pending = 1
+      }
+    }
+    END { emit_statement() }
+  ' "$nginx_config_source" >"$nginx_config_target"
+}
+
 rate_limit_request() {
   rate_request_path=$1
   rate_request_index=$2
@@ -174,13 +284,19 @@ assert_rate_limit_problem_json() {
         "type" => "about:blank",
         "title" => "Too Many Requests",
         "status" => 429,
-        "detail" => "Too many attempts. Try again later.",
         "instance" => ARGV.fetch(0)
       }
       actual = JSON.parse(STDIN.read)
       abort "rate-limit ProblemDetails must be an object" unless actual.is_a?(Hash)
       expected.each do |key, value|
         abort "unexpected rate-limit ProblemDetails field #{key}" unless actual[key] == value
+      end
+      unless actual["status"].is_a?(Integer) && actual["status"] == 429
+        abort "rate-limit ProblemDetails status must be the integer 429"
+      end
+      detail = actual["detail"]
+      unless detail.is_a?(String) && detail.match?(/[^\p{Space}\uFEFF]/u)
+        abort "rate-limit ProblemDetails detail must contain a non-whitespace character"
       end
 
       sensitive_key = /(?:\Aip\z|email|password|token|authorization|credential|secret|hash|remote.*addr|client.*ip|signing.*key)/i
@@ -265,12 +381,10 @@ run_rate_limit_burst() {
     sed -n '1{s/[[:space:]]*;.*$//;p;}')
   [ "$rate_burst_media_type" = 'application/problem+json' ] ||
     fail "$rate_burst_path 429 returned media type $rate_burst_media_type"
-  tr -d '\r' <"$rate_burst_limited_base.headers" |
-    grep -Eiq '^Retry-After:[[:space:]]*60[[:space:]]*$' ||
-    fail "$rate_burst_path 429 omitted Retry-After: 60"
-  tr -d '\r' <"$rate_burst_limited_base.headers" |
-    grep -Eiq '^Cache-Control:[[:space:]]*no-store[[:space:]]*$' ||
-    fail "$rate_burst_path 429 omitted Cache-Control: no-store"
+  assert_single_response_header \
+    "$rate_burst_limited_base.headers" 'Retry-After' '60'
+  assert_single_response_header \
+    "$rate_burst_limited_base.headers" 'Cache-Control' 'no-store'
 }
 
 wait_for_health() {
@@ -504,6 +618,11 @@ if grep -Eq '\$(request|request_uri|args|query_string|request_body|http_authoriz
   fail 'Nginx logging references request data that can contain credentials'
 fi
 
+if grep -Fq '$http_x_forwarded_for' src/frontend/user-profile-web/nginx.conf ||
+  grep -Fq '$proxy_add_x_forwarded_for' src/frontend/user-profile-web/nginx.conf; then
+  fail 'Nginx trusts a client-controlled X-Forwarded-For chain'
+fi
+
 if grep -Eq '"Microsoft\.AspNetCore\.Hosting\.Diagnostics"[[:space:]]*:[[:space:]]*"(Trace|Debug|Information)"' \
   src/backend/UserProfile.Api/appsettings.json; then
   fail 'ASP.NET request diagnostics can log query strings at the configured level'
@@ -517,60 +636,81 @@ grep -Eq 'proxy_read_timeout[[:space:]]+30s;' \
   src/frontend/user-profile-web/nginx.conf || fail 'Nginx response timeout is not explicit'
 grep -Eq 'error_page[[:space:]]+413[[:space:]]+=[[:space:]]+@payload_too_large;' \
   src/frontend/user-profile-web/nginx.conf || fail 'Nginx does not map 413 to ProblemDetails'
-grep -Fq 'map "$request_method:$uri" $auth_rate_limit_key {' \
-  src/frontend/user-profile-web/nginx.conf || fail 'Nginx rate-limit map does not inspect method and normalized path'
-grep -Fq 'default "";' \
-  src/frontend/user-profile-web/nginx.conf || fail 'Nginx does not exempt non-POST methods from the rate-limit key'
-grep -Fq '~*^POST:/api/auth/login/?$ "$binary_remote_addr:/api/auth/login";' \
-  src/frontend/user-profile-web/nginx.conf || fail 'Nginx does not canonicalize login paths into one IP bucket'
-grep -Fq '~*^POST:/api/auth/register/?$ "$binary_remote_addr:/api/auth/register";' \
-  src/frontend/user-profile-web/nginx.conf || fail 'Nginx does not canonicalize registration paths into one IP bucket'
-grep -Fq 'location ~* ^/api/auth/(login|register)/?$ {' \
-  src/frontend/user-profile-web/nginx.conf || fail 'Nginx authentication location does not cover accepted path variants'
-grep -Fq 'limit_req_zone $auth_rate_limit_key zone=auth_rate_limit:1m rate=10r/m;' \
-  src/frontend/user-profile-web/nginx.conf || fail 'Nginx authentication rate-limit zone is unexpected'
-grep -Eq 'limit_req[[:space:]]+zone=auth_rate_limit[[:space:]]+burst=9[[:space:]]+nodelay;' \
-  src/frontend/user-profile-web/nginx.conf || fail 'Nginx authentication burst is unexpected'
-source_rate_limit_count=$(grep -Ec \
-  '^[[:space:]]*limit_req[[:space:]]' \
-  src/frontend/user-profile-web/nginx.conf || true)
-[ "$source_rate_limit_count" -eq 1 ] ||
-  fail 'Nginx authentication limiter is not applied exactly once'
-grep -Eq 'limit_req_status[[:space:]]+429;' \
-  src/frontend/user-profile-web/nginx.conf || fail 'Nginx rate-limit rejection status is not 429'
-grep -Eq 'error_page[[:space:]]+429[[:space:]]+=[[:space:]]+@too_many_requests;' \
-  src/frontend/user-profile-web/nginx.conf || fail 'Nginx does not map 429 to ProblemDetails'
-grep -Eq 'add_header[[:space:]]+Retry-After[[:space:]]+"60"[[:space:]]+always;' \
-  src/frontend/user-profile-web/nginx.conf || fail 'Nginx 429 does not declare Retry-After: 60'
-grep -Eq 'add_header[[:space:]]+Cache-Control[[:space:]]+"no-store"[[:space:]]+always;' \
-  src/frontend/user-profile-web/nginx.conf || fail 'Nginx 429 does not disable caching'
-grep -Fq 'proxy_set_header X-Forwarded-For $remote_addr;' \
-  src/frontend/user-profile-web/nginx.conf ||
-  fail 'Nginx does not overwrite X-Forwarded-For at server scope'
-source_server_proxy_headers=$(awk '
-  /^server \{/ { in_server = 1; next }
-  in_server && /^[[:space:]]*location / { exit }
-  in_server && /^[[:space:]]*proxy_set_header / { print }
-' src/frontend/user-profile-web/nginx.conf)
-[ "$(printf '%s\n' "$source_server_proxy_headers" | grep -c .)" -eq 3 ] ||
-  fail 'Nginx does not define exactly three inherited proxy headers at server scope'
-printf '%s\n' "$source_server_proxy_headers" |
-  grep -Fq 'proxy_set_header Host $host;' ||
-  fail 'Nginx does not inherit the upstream Host header from server scope'
-printf '%s\n' "$source_server_proxy_headers" |
-  grep -Fq 'proxy_set_header X-Forwarded-For $remote_addr;' ||
-  fail 'Nginx X-Forwarded-For is shadowed below server scope'
-printf '%s\n' "$source_server_proxy_headers" |
-  grep -Fq 'proxy_set_header X-Forwarded-Proto $scheme;' ||
-  fail 'Nginx does not inherit X-Forwarded-Proto from server scope'
-source_proxy_header_count=$(grep -Ec \
-  '^[[:space:]]*proxy_set_header[[:space:]]' \
-  src/frontend/user-profile-web/nginx.conf || true)
-[ "$source_proxy_header_count" -eq 3 ] ||
-  fail 'a location overrides the inherited Nginx proxy header set'
-if grep -Fq '$http_x_forwarded_for' src/frontend/user-profile-web/nginx.conf ||
-  grep -Fq '$proxy_add_x_forwarded_for' src/frontend/user-profile-web/nginx.conf; then
-  fail 'Nginx trusts a client-controlled X-Forwarded-For chain'
+
+printf '%s\n' \
+  '# limit_req_zone $auth_rate_limit_key zone=auth_rate_limit:1m rate=10r/m;' \
+  'limit_req_zone $auth_rate_limit_key zone=auth_rate_limit:1m rate=1r/m;' \
+  >"$review_tmp/nginx"
+write_active_nginx_config "$review_tmp/nginx" "$review_tmp/nginx-active"
+if (assert_active_nginx_line \
+  'limit_req_zone $auth_rate_limit_key zone=auth_rate_limit:1m rate=10r/m;' \
+  'synthetic commented zone was accepted') >/dev/null 2>&1; then
+  fail 'Nginx rate-limit oracle accepts a commented 10r/m zone over an active wrong rate'
+fi
+
+printf '%s\n' \
+  'limit_req_zone' \
+  '  $auth_rate_limit_key' \
+  '  zone=auth_rate_limit:1m' \
+  '  rate=10r/m;' \
+  >"$review_tmp/nginx"
+write_active_nginx_config "$review_tmp/nginx" "$review_tmp/nginx-active"
+assert_active_nginx_line \
+  'limit_req_zone $auth_rate_limit_key zone=auth_rate_limit:1m rate=10r/m;' \
+  'Nginx rate-limit oracle rejects equivalent whitespace or line breaks'
+
+printf '%s\n' \
+  'return 429 "safe#detail"; limit_req_status 429; error_page 429 = @too_many_requests;' \
+  >"$review_tmp/nginx"
+write_active_nginx_config "$review_tmp/nginx" "$review_tmp/nginx-active"
+assert_active_nginx_line \
+  'limit_req_status 429;' \
+  'Nginx rate-limit oracle rejects a compact active directive'
+assert_active_nginx_line \
+  'error_page 429 = @too_many_requests;' \
+  'Nginx rate-limit oracle treats a quoted hash as a comment'
+
+printf '%s\n' \
+  'return 200 "safe' \
+  'limit_req_status 429;' \
+  'detail";' \
+  >"$review_tmp/nginx"
+write_active_nginx_config "$review_tmp/nginx" "$review_tmp/nginx-active"
+if (assert_active_nginx_line \
+  'limit_req_status 429;' \
+  'quoted multiline directive text was accepted') >/dev/null 2>&1; then
+  fail 'Nginx rate-limit oracle treats multiline quoted text as an active directive'
+fi
+
+printf '%s\n' \
+  'HTTP/1.1 429 Too Many Requests' \
+  'Retry-After: 60' \
+  'Retry-After: 0' \
+  >"$review_tmp/headers"
+if (assert_single_response_header \
+  "$review_tmp/headers" 'Retry-After' '60') >/dev/null 2>&1; then
+  fail 'rate-limit header oracle accepts duplicate conflicting Retry-After values'
+fi
+
+printf '%s' \
+  '{"type":"about:blank","title":"Too Many Requests","status":429,"detail":"Please retry later.","instance":"/api/auth/login"}' \
+  >"$review_tmp/body"
+assert_rate_limit_problem_json '/api/auth/login' "$review_tmp/body"
+
+printf '%s' \
+  '{"type":"about:blank","title":"Too Many Requests","status":429.0,"detail":"Please retry later.","instance":"/api/auth/login"}' \
+  >"$review_tmp/body"
+if (assert_rate_limit_problem_json \
+  '/api/auth/login' "$review_tmp/body") >/dev/null 2>&1; then
+  fail 'rate-limit body oracle accepts a non-integer 429 status'
+fi
+
+printf '%s' \
+  '{"type":"about:blank","title":"Too Many Requests","status":429,"detail":"\u00a0","instance":"/api/auth/login"}' \
+  >"$review_tmp/body"
+if (assert_rate_limit_problem_json \
+  '/api/auth/login' "$review_tmp/body") >/dev/null 2>&1; then
+  fail 'rate-limit body oracle accepts Unicode whitespace-only detail'
 fi
 
 stack_started=1
@@ -900,41 +1040,47 @@ request '/api/auth/register' '413' 'application/problem+json' \
 grep -Fq '"status":413' "$review_tmp/body" || fail 'oversized request is not ProblemDetails'
 
 docker compose exec -T web nginx -T >"$review_tmp/nginx" 2>&1
+write_active_nginx_config "$review_tmp/nginx" "$review_tmp/nginx-active"
 grep -Eq 'error_page[[:space:]]+502[[:space:]]+504[[:space:]]+=[[:space:]]+@service_unavailable;' \
-  "$review_tmp/nginx" || fail 'Nginx does not map both 502 and 504'
+  "$review_tmp/nginx-active" || fail 'Nginx does not map both 502 and 504'
 grep -Eq 'error_page[[:space:]]+413[[:space:]]+=[[:space:]]+@payload_too_large;' \
-  "$review_tmp/nginx" || fail 'rendered Nginx config does not map 413'
-grep -Fq 'map "$request_method:$uri" $auth_rate_limit_key {' \
-  "$review_tmp/nginx" || fail 'rendered Nginx rate-limit map is unexpected'
-grep -Fq '~*^POST:/api/auth/login/?$ "$binary_remote_addr:/api/auth/login";' \
-  "$review_tmp/nginx" || fail 'rendered Nginx login key is not canonical'
-grep -Fq '~*^POST:/api/auth/register/?$ "$binary_remote_addr:/api/auth/register";' \
-  "$review_tmp/nginx" || fail 'rendered Nginx registration key is not canonical'
-grep -Fq 'limit_req_zone $auth_rate_limit_key zone=auth_rate_limit:1m rate=10r/m;' \
-  "$review_tmp/nginx" || fail 'rendered Nginx rate-limit zone is unexpected'
-grep -Eq 'limit_req[[:space:]]+zone=auth_rate_limit[[:space:]]+burst=9[[:space:]]+nodelay;' \
-  "$review_tmp/nginx" || fail 'rendered Nginx authentication burst is unexpected'
-rendered_rate_limit_count=$(grep -Ec \
-  '^[[:space:]]*limit_req[[:space:]]' \
-  "$review_tmp/nginx" || true)
+  "$review_tmp/nginx-active" || fail 'rendered Nginx config does not map 413'
+assert_active_nginx_line \
+  'map "$request_method:$uri" $auth_rate_limit_key {' \
+  'rendered Nginx rate-limit map is unexpected'
+assert_active_nginx_line \
+  'default "";' \
+  'rendered Nginx config does not exempt non-POST methods'
+assert_active_nginx_line \
+  '~*^POST:/api/auth/login/?$ "$binary_remote_addr:/api/auth/login";' \
+  'rendered Nginx login key is not canonical'
+assert_active_nginx_line \
+  '~*^POST:/api/auth/register/?$ "$binary_remote_addr:/api/auth/register";' \
+  'rendered Nginx registration key is not canonical'
+assert_active_nginx_line \
+  'location ~* ^/api/auth/(login|register)/?$ {' \
+  'rendered Nginx authentication location is unexpected'
+assert_active_nginx_line \
+  'limit_req_zone $auth_rate_limit_key zone=auth_rate_limit:1m rate=10r/m;' \
+  'rendered Nginx rate-limit zone is unexpected'
+assert_active_nginx_line \
+  'limit_req zone=auth_rate_limit burst=9 nodelay;' \
+  'rendered Nginx authentication burst is unexpected'
+rendered_rate_limit_count=$(grep -Ec '^limit_req[[:space:]]' \
+  "$review_tmp/nginx-active" || true)
 [ "$rendered_rate_limit_count" -eq 1 ] ||
   fail 'rendered Nginx authentication limiter is not applied exactly once'
-grep -Eq 'limit_req_status[[:space:]]+429;' \
-  "$review_tmp/nginx" || fail 'rendered Nginx rejection status is not 429'
-grep -Eq 'error_page[[:space:]]+429[[:space:]]+=[[:space:]]+@too_many_requests;' \
-  "$review_tmp/nginx" || fail 'rendered Nginx config does not map 429'
-grep -Eq 'add_header[[:space:]]+Retry-After[[:space:]]+"60"[[:space:]]+always;' \
-  "$review_tmp/nginx" || fail 'rendered Nginx 429 omits Retry-After: 60'
-grep -Eq 'add_header[[:space:]]+Cache-Control[[:space:]]+"no-store"[[:space:]]+always;' \
-  "$review_tmp/nginx" || fail 'rendered Nginx 429 does not disable caching'
-grep -Fq 'proxy_set_header X-Forwarded-For $remote_addr;' \
-  "$review_tmp/nginx" ||
-  fail 'rendered Nginx config does not overwrite X-Forwarded-For at server scope'
+assert_active_nginx_line \
+  'limit_req_status 429;' \
+  'rendered Nginx rejection status is not 429'
+assert_active_nginx_line \
+  'error_page 429 = @too_many_requests;' \
+  'rendered Nginx config does not map 429'
 rendered_server_proxy_headers=$(awk '
   /^server \{/ { in_server = 1; next }
-  in_server && /^[[:space:]]*location / { exit }
-  in_server && /^[[:space:]]*proxy_set_header / { print }
-' "$review_tmp/nginx")
+  in_server && /^location / { exit }
+  in_server && /^proxy_set_header / { print }
+' "$review_tmp/nginx-active")
 [ "$(printf '%s\n' "$rendered_server_proxy_headers" | grep -c .)" -eq 3 ] ||
   fail 'rendered Nginx config does not inherit exactly three server proxy headers'
 printf '%s\n' "$rendered_server_proxy_headers" |
@@ -947,7 +1093,7 @@ printf '%s\n' "$rendered_server_proxy_headers" |
   grep -Fq 'proxy_set_header X-Forwarded-Proto $scheme;' ||
   fail 'rendered Nginx config does not inherit X-Forwarded-Proto from server scope'
 rendered_proxy_header_count=$(grep -Ec \
-  '^[[:space:]]*proxy_set_header[[:space:]]' "$review_tmp/nginx" || true)
+  '^proxy_set_header[[:space:]]' "$review_tmp/nginx-active" || true)
 [ "$rendered_proxy_header_count" -eq 3 ] ||
   fail 'rendered Nginx location overrides the inherited proxy header set'
 

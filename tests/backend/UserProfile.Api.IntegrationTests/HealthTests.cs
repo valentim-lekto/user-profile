@@ -237,12 +237,7 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
                 .EnumerateObject()
                 .Select(operationResponse => operationResponse.Name)
                 .Order());
-        AssertResponseSchema(
-            registerOperation,
-            "429",
-            "application/problem+json",
-            "ProblemDetails");
-        AssertRateLimitHeader(registerOperation);
+        AssertRateLimitContract(registerOperation);
 
         var loginOperation = paths.GetProperty("/api/auth/login").GetProperty("post");
         Assert.Equal("loginUser", loginOperation.GetProperty("operationId").GetString());
@@ -255,12 +250,7 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
                 .Select(operationResponse => operationResponse.Name)
                 .Order());
         AssertBearerChallengeHeader(loginOperation);
-        AssertResponseSchema(
-            loginOperation,
-            "429",
-            "application/problem+json",
-            "ProblemDetails");
-        AssertRateLimitHeader(loginOperation);
+        AssertRateLimitContract(loginOperation);
 
         var profilePath = paths.GetProperty("/api/profile");
         var profileOperation = profilePath.GetProperty("get");
@@ -358,6 +348,29 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal("http", bearerScheme.GetProperty("type").GetString());
         Assert.Equal("bearer", bearerScheme.GetProperty("scheme").GetString());
         Assert.Equal("JWT", bearerScheme.GetProperty("bearerFormat").GetString());
+        var problemDetailsSchema = schemas.GetProperty("ProblemDetails");
+        AssertSchemaKeys(problemDetailsSchema, "additionalProperties", "properties", "type");
+        Assert.Equal("object", problemDetailsSchema.GetProperty("type").GetString());
+        var problemDetailsProperties = problemDetailsSchema.GetProperty("properties");
+        Assert.Equal(
+            ["detail", "instance", "status", "title", "type"],
+            problemDetailsProperties.EnumerateObject().Select(property => property.Name).Order());
+        AssertGeneratedProblemDetailsProperty(
+            problemDetailsProperties.GetProperty("type"),
+            "string");
+        AssertGeneratedProblemDetailsProperty(
+            problemDetailsProperties.GetProperty("title"),
+            "string");
+        AssertGeneratedProblemDetailsProperty(
+            problemDetailsProperties.GetProperty("status"),
+            "integer",
+            "int32");
+        AssertGeneratedProblemDetailsProperty(
+            problemDetailsProperties.GetProperty("detail"),
+            "string");
+        AssertGeneratedProblemDetailsProperty(
+            problemDetailsProperties.GetProperty("instance"),
+            "string");
         var healthSchema = schemas.GetProperty(nameof(HealthResponse));
         Assert.Contains(
             healthSchema.GetProperty("required").EnumerateArray(),
@@ -563,25 +576,136 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal("^Bearer(?: .*)?$", schema.GetProperty("pattern").GetString());
     }
 
-    private static void AssertRateLimitHeader(JsonElement operation)
+    private static void AssertRateLimitContract(JsonElement operation)
     {
-        var headers = operation
+        var response = operation
             .GetProperty("responses")
-            .GetProperty("429")
-            .GetProperty("headers");
+            .GetProperty("429");
+        var headers = response.GetProperty("headers");
+        Assert.Equal(
+            ["cache-control", "retry-after"],
+            headers
+                .EnumerateObject()
+                .Select(header => header.Name.ToLowerInvariant())
+                .Order());
 
         var retryAfter = headers.GetProperty("Retry-After");
         Assert.True(retryAfter.GetProperty("required").GetBoolean());
         var retryAfterSchema = retryAfter.GetProperty("schema");
+        AssertSchemaKeys(retryAfterSchema, "format", "maximum", "minimum", "type");
         Assert.Equal("integer", retryAfterSchema.GetProperty("type").GetString());
         Assert.Equal("int32", retryAfterSchema.GetProperty("format").GetString());
-        Assert.Equal(1, retryAfterSchema.GetProperty("minimum").GetInt32());
+        Assert.Equal(60, retryAfterSchema.GetProperty("minimum").GetInt32());
+        Assert.Equal(60, retryAfterSchema.GetProperty("maximum").GetInt32());
 
         var cacheControl = headers.GetProperty("Cache-Control");
         Assert.True(cacheControl.GetProperty("required").GetBoolean());
         var cacheControlSchema = cacheControl.GetProperty("schema");
+        AssertSchemaKeys(cacheControlSchema, "pattern", "type");
         Assert.Equal("string", cacheControlSchema.GetProperty("type").GetString());
         Assert.Equal("^no-store$", cacheControlSchema.GetProperty("pattern").GetString());
+
+        var content = response.GetProperty("content");
+        Assert.Equal(
+            ["application/problem+json"],
+            content.EnumerateObject().Select(mediaType => mediaType.Name));
+        var schema = content
+            .GetProperty("application/problem+json")
+            .GetProperty("schema");
+        AssertSchemaKeys(schema, "allOf");
+        var allOf = schema.GetProperty("allOf").EnumerateArray().ToArray();
+        Assert.Equal(2, allOf.Length);
+        var problemDetailsReference = Assert.Single(
+            allOf,
+            item => item.TryGetProperty("$ref", out _));
+        Assert.Equal(
+            "#/components/schemas/ProblemDetails",
+            problemDetailsReference.GetProperty("$ref").GetString());
+        Assert.Equal(
+            ["$ref"],
+            problemDetailsReference.EnumerateObject().Select(property => property.Name));
+
+        var rateLimitSchema = Assert.Single(
+            allOf,
+            item => !item.TryGetProperty("$ref", out _));
+        Assert.Equal("object", rateLimitSchema.GetProperty("type").GetString());
+        AssertSchemaKeys(rateLimitSchema, "properties", "required", "type");
+        Assert.Equal(
+            ["detail", "instance", "status", "title", "type"],
+            rateLimitSchema
+                .GetProperty("required")
+                .EnumerateArray()
+                .Select(property => property.GetString())
+                .Order());
+
+        var properties = rateLimitSchema.GetProperty("properties");
+        Assert.Equal(
+            ["detail", "instance", "status", "title", "type"],
+            properties.EnumerateObject().Select(property => property.Name).Order());
+
+        var type = properties.GetProperty("type");
+        AssertSchemaKeys(type, "format", "type");
+        Assert.Equal("string", type.GetProperty("type").GetString());
+        Assert.Equal("uri-reference", type.GetProperty("format").GetString());
+
+        var title = properties.GetProperty("title");
+        AssertSchemaKeys(title, "type");
+        Assert.Equal("string", title.GetProperty("type").GetString());
+
+        var status = properties.GetProperty("status");
+        AssertSchemaKeys(status, "format", "maximum", "minimum", "type");
+        Assert.Equal("integer", status.GetProperty("type").GetString());
+        Assert.Equal("int32", status.GetProperty("format").GetString());
+        Assert.Equal(429, status.GetProperty("minimum").GetInt32());
+        Assert.Equal(429, status.GetProperty("maximum").GetInt32());
+
+        var detail = properties.GetProperty("detail");
+        AssertSchemaKeys(detail, "minLength", "pattern", "type");
+        Assert.Equal("string", detail.GetProperty("type").GetString());
+        Assert.Equal(1, detail.GetProperty("minLength").GetInt32());
+        Assert.Equal(@"\S", detail.GetProperty("pattern").GetString());
+
+        var instance = properties.GetProperty("instance");
+        AssertSchemaKeys(instance, "format", "type");
+        Assert.Equal("string", instance.GetProperty("type").GetString());
+        Assert.Equal("uri-reference", instance.GetProperty("format").GetString());
+    }
+
+    private static void AssertGeneratedProblemDetailsProperty(
+        JsonElement schema,
+        string type,
+        string? format = null)
+    {
+        var expectedProperties = format is null
+            ? new[] { "type" }
+            : ["format", "type"];
+        Assert.Equal(
+            expectedProperties,
+            schema
+                .EnumerateObject()
+                .Where(property => property.Name != "nullable")
+                .Select(property => property.Name)
+                .Order());
+        Assert.Equal(type, schema.GetProperty("type").GetString());
+        if (schema.TryGetProperty("nullable", out var nullable))
+        {
+            Assert.True(nullable.ValueKind is JsonValueKind.True or JsonValueKind.False);
+        }
+        if (format is not null)
+        {
+            Assert.Equal(format, schema.GetProperty("format").GetString());
+        }
+    }
+
+    private static void AssertSchemaKeys(JsonElement schema, params string[] expectedKeys)
+    {
+        var actualKeys = schema
+            .EnumerateObject()
+            .Where(property =>
+                property.Name != "nullable" || property.Value.ValueKind != JsonValueKind.False)
+            .Select(property => property.Name)
+            .Order();
+        Assert.Equal(expectedKeys.Order(), actualKeys);
     }
 
     private static void AssertRequestSchema(JsonElement operation, string schemaName)
@@ -607,6 +731,9 @@ public sealed class HealthTests(ApiFactory factory) : IClassFixture<ApiFactory>
             .GetProperty("content")
             .GetProperty(mediaType)
             .GetProperty("schema");
+        Assert.Equal(
+            ["$ref"],
+            schema.EnumerateObject().Select(property => property.Name));
         Assert.Equal($"#/components/schemas/{schemaName}", schema.GetProperty("$ref").GetString());
     }
 

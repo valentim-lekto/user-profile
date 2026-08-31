@@ -529,11 +529,23 @@ Execuções intermediárias de mutação foram rejeitadas, e não promovidas a b
 
 | Gate | Execução observada em 2026-08-30 | Resultado |
 |---|---|---|
-| Contrato e backend | Profiles Docker `contract-tests` e `backend-tests` | `SPEC-OAS-001..006`, 6 operações/56 referências e Swagger runtime aprovados; build Release com 0 warnings/erros e 121/121 integrações. Somente cadastro/login declaram `429`, `Retry-After` e `Cache-Control`. |
+| Contrato e backend | Profiles Docker `contract-tests` e `backend-tests` | `SPEC-OAS-001..006`, 6 operações/56 referências e Swagger runtime aprovados; build Release com 0 warnings/erros e 121/121 integrações. Somente cadastro/login declaram `429`, `Retry-After: 60`, `Cache-Control: no-store`, os cinco campos obrigatórios e `detail` não branco. |
 | Frontend | Profile Docker `frontend-tests` | Lint, 70/70 testes em 10 arquivos e build de 327,59 kB bruto/90,19 kB estimado. Os testes preservam valores e sessão-sentinela, encerram loading, reabilitam submit e rejeitam countdown em `429`. |
 | Proxy e persistência | `./scripts/validate-m1-compose.sh` | Rajadas concorrentes independentes em login/cadastro e nova rajada após reset produziram, cada uma, exatamente 10 respostas `400` da API e um `429` Nginx; JSON/headers, query/XFF/caixa/barra, demais rotas, `413`, persistência e logs seguros aprovados. |
 | Regressão e infraestrutura | `./scripts/e2e-playwright.sh`; Compose config; `rhysd/actionlint:1.7.12` | 3/3 E2E em 28,4 s; configuração sem `.env` e workflows aprovados. A stack principal voltou saudável em `localhost:8080` sem remover o volume. |
 | Mutação backend | Profile Docker `mutation-tests` | 513 descobertos/200 executados; 195 killed, 5 survived equivalentes, 109 ignored e 3 `CompileError` classificados; 0 timeout/`NoCoverage`/erro, score 97,50%, ratchet 97/97/97 e exit 0 em 18m48s. |
+
+## Correção dos oráculos de rate limiting pós-revisão
+
+Esta atividade corrige somente o sinal e o contrato de `OPS-RATE-001`, sem alterar Nginx, respostas funcionais da API, frontend, banco ou política de segurança. O dump de `nginx -T` é reduzido a diretivas ativas antes do inventário; assim, `rate=10r/m` comentado não pode mascarar outra taxa ativa. Os headers são validados na resposta real por nome case-insensitive, cardinalidade um e valor exato. O corpo continua permitindo extensões seguras, mas `detail` passa a ser validado como texto genérico não vazio após remover espaços externos, em vez de copiar literalmente o exemplo OpenAPI. O OpenAPI estático e o Swagger runtime também fixam `Retry-After` em 60 e tornam obrigatórios, tipados e não nulos os cinco campos do `429`.
+
+| Gate | Execução observada em 2026-08-30 | Resultado |
+|---|---|---|
+| Contrato e backend | `ruby scripts/validate-openapi.rb`; profiles Docker `contract-tests`/`backend-tests` | `SPEC-OAS-001..006`, seis operações e 56 referências aprovadas; exemplo inglês preservado como ilustrativo; build Release sem warnings e 121/121 integrações com as mesmas restrições no Swagger runtime. |
+| Configuração e smoke | Compose config; probes sintéticos; `./scripts/validate-m1-compose.sh` | Comentário-isca, texto quoted multilinha com nome de diretiva, header conflitante, status decimal e detalhe somente NBSP foram rejeitados; quebra de diretiva, diretivas compactas, `#` entre aspas e copy genérica alternativa foram aceitos; estado final aprovado com três rajadas `10+1`, diretivas ativas exatas, headers inequívocos, JSON seguro, bypass/reset/persistência e cleanup. |
+| Recuperação da stack principal | `docker compose start`; probes HTTP | Contêineres e volume anteriores foram preservados; `/`, `/health` e Swagger responderam `200`. |
+
+Dois falsos vermelhos intermediários não foram promovidos como evidência: contar `Cache-Control` globalmente confundia handlers distintos de `413/429/503`, e procurar `$http_x_forwarded_for` em todo `nginx -T` atingia o `log_format` inativo da imagem base. As verificações finais ficaram nas fronteiras responsáveis: cardinalidade nos headers da resposta `429`, inventário no bloco carregado e proibição de confiança em XFF no arquivo do servidor publicado.
 
 Ao iniciar um milestone, alterar somente seu estado para `em andamento`. Ao concluir, registrar data, comandos, evidências, desvios e hash do commit antes de iniciar o próximo.
 

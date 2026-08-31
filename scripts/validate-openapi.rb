@@ -23,6 +23,10 @@ def resolve_object(document, value)
   value.is_a?(Hash) && value.key?("$ref") ? resolve_reference(document, value.fetch("$ref")) : value
 end
 
+def without_explicit_non_nullable(schema)
+  schema.reject { |key, value| key == "nullable" && value == false }
+end
+
 default_contract_path = File.expand_path("../docs/sdd/03-api-contract.yaml", __dir__)
 contract_path = File.expand_path(ARGV.fetch(0, default_contract_path), Dir.pwd)
 document = YAML.safe_load(File.read(contract_path), aliases: false)
@@ -241,11 +245,17 @@ expected_operations.each_key do |path, method|
     assert_contract content.keys == ["application/problem+json"],
                     "#{method.upcase} #{path} #{status} must use application/problem+json"
     problem_schema = content.fetch("application/problem+json").fetch("schema")
-    assert_contract problem_schema["$ref"]&.start_with?("#/components/schemas/") == true,
-                    "#{method.upcase} #{path} #{status} must reference a ProblemDetails schema"
-    problem_schema_name = problem_schema.fetch("$ref").split("/").last
-    assert_contract %w[ProblemDetails ValidationProblemDetails].include?(problem_schema_name),
-                    "#{method.upcase} #{path} #{status} must use ProblemDetails"
+    if status == "429"
+      assert_contract problem_schema.keys == ["allOf"],
+                      "#{method.upcase} #{path} #{status} must use only the contracted allOf schema"
+    else
+      assert_contract problem_schema.keys == ["$ref"] &&
+                      problem_schema["$ref"].start_with?("#/components/schemas/"),
+                      "#{method.upcase} #{path} #{status} must directly reference a ProblemDetails schema"
+      problem_schema_name = problem_schema.fetch("$ref").split("/").last
+      assert_contract %w[ProblemDetails ValidationProblemDetails].include?(problem_schema_name),
+                      "#{method.upcase} #{path} #{status} must use ProblemDetails"
+    end
 
     next unless status == "401"
 
@@ -285,23 +295,99 @@ end
 
 rate_limit_problem = document.dig("components", "responses", "RateLimitProblem")
 assert_contract rate_limit_problem.is_a?(Hash), "Missing RateLimitProblem response"
+rate_limit_headers = rate_limit_problem.fetch("headers", {})
+normalized_rate_limit_headers = rate_limit_headers.keys.map(&:downcase)
+assert_contract normalized_rate_limit_headers.sort == %w[cache-control retry-after] &&
+                normalized_rate_limit_headers.uniq.length == 2,
+                "RateLimitProblem must declare exactly one Retry-After and Cache-Control header"
 retry_after = rate_limit_problem.dig("headers", "Retry-After")
 assert_contract retry_after.is_a?(Hash) && retry_after["required"] == true,
                 "RateLimitProblem must require Retry-After"
-assert_contract retry_after.dig("schema", "type") == "integer" &&
-                retry_after.dig("schema", "format") == "int32" &&
-                retry_after.dig("schema", "minimum") == 1,
-                "Retry-After must be a positive int32"
+retry_after_schema = retry_after.fetch("schema", {})
+assert_contract without_explicit_non_nullable(retry_after_schema) == {
+                  "type" => "integer",
+                  "format" => "int32",
+                  "minimum" => 60,
+                  "maximum" => 60
+                },
+                "Retry-After must be exactly 60 seconds"
 cache_control = rate_limit_problem.dig("headers", "Cache-Control")
 assert_contract cache_control.is_a?(Hash) && cache_control["required"] == true,
                 "RateLimitProblem must require Cache-Control"
-assert_contract cache_control.dig("schema", "type") == "string" &&
-                cache_control.dig("schema", "pattern") == "^no-store$",
+assert_contract without_explicit_non_nullable(cache_control.fetch("schema", {})) == {
+                  "type" => "string",
+                  "pattern" => "^no-store$"
+                },
                 "Cache-Control must require no-store"
-assert_contract rate_limit_problem.dig(
-  "content", "application/problem+json", "schema", "$ref"
-) == "#/components/schemas/ProblemDetails",
-                "RateLimitProblem must use ProblemDetails"
+rate_limit_schema = rate_limit_problem.dig("content", "application/problem+json", "schema")
+assert_contract without_explicit_non_nullable(rate_limit_schema).keys == ["allOf"],
+                "RateLimitProblem schema wrapper must contain only allOf"
+rate_limit_all_of = rate_limit_schema.fetch("allOf", [])
+rate_limit_references = rate_limit_all_of.filter_map { |schema| schema["$ref"] }
+rate_limit_constraint_schemas = rate_limit_all_of.reject { |schema| schema.key?("$ref") }
+assert_contract rate_limit_all_of.length == 2 &&
+                rate_limit_references == ["#/components/schemas/ProblemDetails"] &&
+                rate_limit_constraint_schemas.length == 1,
+                "RateLimitProblem must extend ProblemDetails"
+rate_limit_reference_schema = rate_limit_all_of.find { |schema| schema.key?("$ref") }
+assert_contract rate_limit_reference_schema.keys == ["$ref"],
+                "RateLimitProblem reference member must not have sibling constraints"
+problem_details_schema = resolve_reference(document, rate_limit_references.first)
+problem_details_properties = problem_details_schema.fetch("properties", {})
+expected_problem_details_properties = {
+  "type" => { "type" => "string", "format" => "uri-reference" },
+  "title" => { "type" => "string" },
+  "status" => { "type" => "integer", "format" => "int32", "minimum" => 400, "maximum" => 599 },
+  "detail" => { "type" => "string" },
+  "instance" => { "type" => "string", "format" => "uri-reference" }
+}.freeze
+assert_contract without_explicit_non_nullable(problem_details_schema).keys.sort ==
+                  %w[properties required type].sort &&
+                problem_details_schema["type"] == "object" &&
+                problem_details_schema.fetch("required").sort == %w[status title] &&
+                problem_details_properties.keys.sort == expected_problem_details_properties.keys.sort,
+                "ProblemDetails base schema has an unexpected shape"
+expected_problem_details_properties.each do |property_name, expected_property|
+  property = problem_details_properties.fetch(property_name)
+  comparable_property = without_explicit_non_nullable(property)
+  assert_contract comparable_property.keys.sort == (expected_property.keys + ["example"]).sort &&
+                  expected_property.all? { |key, value| property[key] == value },
+                  "ProblemDetails.#{property_name} has unexpected validation constraints"
+end
+rate_limit_constraints = rate_limit_constraint_schemas.first
+assert_contract rate_limit_constraints["type"] == "object" &&
+                without_explicit_non_nullable(rate_limit_constraints).keys.sort ==
+                  %w[properties required type].sort &&
+                rate_limit_constraints.fetch("required").sort ==
+                  %w[type title status detail instance].sort,
+                "RateLimitProblem must require the five contracted fields"
+rate_limit_properties = rate_limit_constraints.fetch("properties", {})
+expected_rate_limit_properties = {
+  "type" => { "type" => "string", "format" => "uri-reference" },
+  "title" => { "type" => "string" },
+  "status" => { "type" => "integer", "format" => "int32", "minimum" => 429, "maximum" => 429 },
+  "detail" => { "type" => "string", "minLength" => 1, "pattern" => '\S' },
+  "instance" => { "type" => "string", "format" => "uri-reference" }
+}.freeze
+assert_contract rate_limit_properties.keys.sort == expected_rate_limit_properties.keys.sort,
+                "RateLimitProblem must constrain all five contracted fields"
+expected_rate_limit_properties.each do |property_name, expected_property|
+  property = rate_limit_properties.fetch(property_name)
+  comparable_property = without_explicit_non_nullable(property)
+  assert_contract comparable_property == expected_property,
+                  "RateLimitProblem.#{property_name} has unexpected validation constraints"
+end
+rate_limit_status = rate_limit_constraints.dig("properties", "status")
+assert_contract rate_limit_status["type"] == "integer" &&
+                rate_limit_status["format"] == "int32" &&
+                rate_limit_status["minimum"] == 429 &&
+                rate_limit_status["maximum"] == 429,
+                "RateLimitProblem status must be exactly 429"
+rate_limit_detail = rate_limit_constraints.dig("properties", "detail")
+assert_contract rate_limit_detail["type"] == "string" &&
+                rate_limit_detail["minLength"] == 1 &&
+                rate_limit_detail["pattern"] == '\S',
+                "RateLimitProblem detail must contain a non-whitespace character"
 
 references = []
 walk = lambda do |value|
